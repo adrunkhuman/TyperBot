@@ -168,6 +168,12 @@ class AdminCommands(commands.Cog):
 
     async def _handle_results_dm(self, message: discord.Message, user_id: str):
         """Handle results entry DM."""
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        logger.info(f"Processing results DM from user {user_id}")
+
         fixture_id = pending_results.pop(user_id)
         fixture = await self.db.get_fixture_by_id(fixture_id)
 
@@ -175,49 +181,69 @@ class AdminCommands(commands.Cog):
             await message.author.send("❌ Error: Fixture no longer exists.")
             return
 
-        # Parse results from DM
-        lines = message.content.strip().split("\n")
-        results = []
-        errors = []
+        # Send acknowledgment first
+        processing_msg = await message.author.send("⏳ Processing your results...")
 
-        if len(lines) != len(fixture["games"]):
-            errors.append(f"Expected {len(fixture['games'])} lines, got {len(lines)}")
-        else:
-            for i, line in enumerate(lines):
-                match = re.search(r"\s*(\d+)\s*[-:]\s*(\d+)\s*$", line)
-                if match:
-                    home_score = match.group(1)
-                    away_score = match.group(2)
-                    if len(home_score) > 1 or len(away_score) > 1:
-                        errors.append(
-                            f"Line {i + 1}: Double-digit scores not allowed ({home_score}-{away_score})"
-                        )
+        try:
+            # Parse results from DM
+            content = message.content.strip()
+            lines = content.split("\n")
+            results = []
+            errors = []
+
+            logger.info(f"Received {len(lines)} lines, expected {len(fixture['games'])}")
+
+            if len(lines) != len(fixture["games"]):
+                errors.append(f"Expected {len(fixture['games'])} lines, got {len(lines)}")
+            else:
+                for i, line in enumerate(lines):
+                    logger.info(f"Processing line {i + 1}: '{line}'")
+                    # More flexible regex to handle various formats
+                    match = re.search(r"(\d+)\s*[-:]\s*(\d+)\s*$", line.strip())
+                    if match:
+                        home_score = match.group(1)
+                        away_score = match.group(2)
+                        if len(home_score) > 1 or len(away_score) > 1:
+                            errors.append(
+                                f"Line {i + 1}: Double-digit scores not allowed ({home_score}-{away_score})"
+                            )
+                        else:
+                            results.append(f"{home_score}-{away_score}")
+                            logger.info(f"Parsed score: {home_score}-{away_score}")
                     else:
-                        results.append(f"{home_score}-{away_score}")
-                else:
-                    errors.append(
-                        f"Line {i + 1}: Could not find score (expected format: '2:0' or '2-1')"
-                    )
+                        errors.append(
+                            f"Line {i + 1}: Could not find score (expected format: '2:0' or '2-1')"
+                        )
+                        logger.warning(f"No score found in line {i + 1}: '{line}'")
 
-        if errors:
-            error_msg = "\n".join(errors)
-            await message.author.send(
-                f"❌ **Invalid results:**\n```{error_msg}```\n\n"
-                f"Please send the results again in this format:\n"
-                f"```\n{fixture['games'][0]} 2:0\n{fixture['games'][1]} 1:1\n...\n```"
+            if errors:
+                error_msg = "\n".join(errors)
+                logger.warning(f"Validation errors: {error_msg}")
+                await processing_msg.edit(
+                    content=f"❌ **Invalid results:**\n```{error_msg}```\n\n"
+                    f"Please send the results again in this format:\n"
+                    f"```\n{fixture['games'][0]} 2:0\n{fixture['games'][1]} 1:1\n...\n```"
+                )
+                pending_results[user_id] = fixture_id
+                return
+
+            # Build preview
+            preview_lines = [f"**Week {fixture['week_number']} Results Preview**\n"]
+            for i, (game, result) in enumerate(zip(fixture["games"], results, strict=False), 1):
+                preview_lines.append(f"{i}. {game} **{result}**")
+
+            preview_text = "\n".join(preview_lines)
+
+            logger.info("Results parsed successfully, showing preview")
+            view = ResultsConfirmView(self.db, fixture_id, results, preview_text)
+            await processing_msg.edit(content=f"{preview_text}\n\nSave these results?", view=view)
+
+        except Exception as e:
+            logger.error(f"Error processing results: {e}", exc_info=True)
+            await processing_msg.edit(
+                content=f"❌ Error processing results: {e}\n\nPlease try again."
             )
             pending_results[user_id] = fixture_id
-            return
-
-        # Build preview
-        lines = [f"**Week {fixture['week_number']} Results Preview**\n"]
-        for i, (game, result) in enumerate(zip(fixture["games"], results, strict=False), 1):
-            lines.append(f"{i}. {game} **{result}**")
-
-        preview_text = "\n".join(lines)
-
-        view = ResultsConfirmView(self.db, fixture_id, results, preview_text)
-        await message.author.send(f"{preview_text}\n\nSave these results?", view=view)
 
     @app_commands.command(name="admin", description="Admin commands for managing fixtures")
     @app_commands.describe(action="Action to perform")

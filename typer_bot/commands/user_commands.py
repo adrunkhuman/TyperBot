@@ -40,77 +40,93 @@ class UserCommands(commands.Cog):
             await message.author.send("❌ Error: Fixture no longer exists.")
             return
 
-        # Check deadline
-        now = datetime.now()
-        is_late = now > fixture["deadline"]
+        # Send acknowledgment first
+        processing_msg = await message.author.send("⏳ Processing your predictions...")
 
-        # Parse predictions from user's message
-        # Expected format: "Team A - Team B 2:0" or "Team A - Team B 2-1"
-        lines = message.content.strip().split("\n")
-        predictions = []
-        errors = []
+        try:
+            # Check deadline
+            now = datetime.now()
+            is_late = now > fixture["deadline"]
 
-        if len(lines) != len(games):
-            errors.append(f"Expected {len(games)} lines, got {len(lines)}")
-        else:
-            for i, (line, _game) in enumerate(zip(lines, games, strict=False)):
-                # Try to extract score at the end of the line
-                # Pattern: anything followed by score like "2:0" or "2-1"
-                match = re.search(r"\s*(\d+)\s*[-:]\s*(\d+)\s*$", line)
-                if match:
-                    home_score = match.group(1)
-                    away_score = match.group(2)
-                    # Validate single digits
-                    if len(home_score) > 1 or len(away_score) > 1:
-                        errors.append(
-                            f"Line {i + 1}: Double-digit scores not allowed ({home_score}-{away_score})"
-                        )
+            # Parse predictions from user's message
+            # Expected format: "Team A - Team B 2:0" or "Team A - Team B 2-1"
+            lines = message.content.strip().split("\n")
+            predictions = []
+            errors = []
+
+            if len(lines) != len(games):
+                errors.append(f"Expected {len(games)} lines, got {len(lines)}")
+            else:
+                for i, (line, _game) in enumerate(zip(lines, games, strict=False)):
+                    # Try to extract score at the end of the line
+                    # Pattern: anything followed by score like "2:0" or "2-1"
+                    match = re.search(r"(\d+)\s*[-:]\s*(\d+)\s*$", line.strip())
+                    if match:
+                        home_score = match.group(1)
+                        away_score = match.group(2)
+                        # Validate single digits
+                        if len(home_score) > 1 or len(away_score) > 1:
+                            errors.append(
+                                f"Line {i + 1}: Double-digit scores not allowed ({home_score}-{away_score})"
+                            )
+                        else:
+                            predictions.append(f"{home_score}-{away_score}")
                     else:
-                        predictions.append(f"{home_score}-{away_score}")
-                else:
-                    errors.append(
-                        f"Line {i + 1}: Could not find score (expected format: '2:0' or '2-1')"
-                    )
+                        errors.append(
+                            f"Line {i + 1}: Could not find score (expected format: '2:0' or '2-1')"
+                        )
 
-        if errors:
-            error_msg = "\n".join(errors)
-            await message.author.send(
-                f"❌ **Invalid predictions:**\n```{error_msg}```\n\n"
-                f"Please send your predictions again in this format:\n"
-                f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
+            if errors:
+                error_msg = "\n".join(errors)
+                await processing_msg.edit(
+                    content=f"❌ **Invalid predictions:**\n```{error_msg}```\n\n"
+                    f"Please send your predictions again in this format:\n"
+                    f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
+                )
+                # Put back in pending so they can retry
+                pending_predictions[user_id] = (fixture_id, games)
+                return
+
+            # Build preview
+            preview_lines = ["**Your Predictions:**\n"]
+            for i, (game, pred) in enumerate(zip(games, predictions, strict=False), 1):
+                preview_lines.append(f"{i}. {game} **{pred}**")
+
+            deadline_str = fixture["deadline"].strftime("%A, %B %d at %H:%M")
+            preview_lines.append(f"\n**Deadline:** {deadline_str}")
+
+            late_warning = ""
+            if is_late:
+                late_warning = (
+                    "\n\n⚠️ **Late prediction!** You will receive 0 points for this round."
+                )
+
+            preview_text = "\n".join(preview_lines)
+
+            # Show confirmation with buttons
+            view = PredictionConfirmView(
+                self.db,
+                fixture_id,
+                message.author.id,
+                message.author.display_name,
+                predictions,
+                is_late,
+                preview_text,
             )
-            # Put back in pending so they can retry
+
+            await processing_msg.edit(
+                content=f"{preview_text}{late_warning}\n\nSubmit these predictions?", view=view
+            )
+
+        except Exception as e:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error processing predictions: {e}", exc_info=True)
+            await processing_msg.edit(
+                content=f"❌ Error processing predictions: {e}\n\nPlease try again."
+            )
             pending_predictions[user_id] = (fixture_id, games)
-            return
-
-        # Build preview
-        preview_lines = ["**Your Predictions:**\n"]
-        for i, (game, pred) in enumerate(zip(games, predictions, strict=False), 1):
-            preview_lines.append(f"{i}. {game} **{pred}**")
-
-        deadline_str = fixture["deadline"].strftime("%A, %B %d at %H:%M")
-        preview_lines.append(f"\n**Deadline:** {deadline_str}")
-
-        late_warning = ""
-        if is_late:
-            late_warning = "\n\n⚠️ **Late prediction!** You will receive 0 points for this round."
-
-        preview_text = "\n".join(preview_lines)
-
-        # Show confirmation with buttons
-        view = PredictionConfirmView(
-            self.db,
-            fixture_id,
-            message.author.id,
-            message.author.display_name,
-            predictions,
-            is_late,
-            preview_text,
-        )
-
-        await message.author.send(
-            f"{preview_text}{late_warning}\n\nSubmit these predictions?", view=view
-        )
 
     @app_commands.command(
         name="predict", description="Submit your predictions for this week's fixtures"
