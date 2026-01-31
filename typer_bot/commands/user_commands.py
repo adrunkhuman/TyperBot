@@ -27,11 +27,9 @@ class UserCommands(commands.Cog):
 
         logger = logging.getLogger(__name__)
 
-        # Ignore bot messages and non-DMs
         if message.author.bot or message.guild is not None:
             return
 
-        # Check if this user has a pending prediction
         user_id = str(message.author.id)
         logger.info(
             f"[USER] on_message from user {user_id}, pending_predictions={user_id in pending_predictions}"
@@ -46,15 +44,12 @@ class UserCommands(commands.Cog):
             await message.author.send("❌ Error: Fixture no longer exists.")
             return
 
-        # Send acknowledgment first
         processing_msg = await message.author.send("⏳ Processing your predictions...")
 
         try:
-            # Check deadline
             now = datetime.now()
             is_late = now > fixture["deadline"]
 
-            # Parse predictions from user's message
             lines = message.content.strip().split("\n")
             predictions, errors = parse_line_predictions(lines, games)
 
@@ -65,11 +60,9 @@ class UserCommands(commands.Cog):
                     f"Please send your predictions again in this format:\n"
                     f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
                 )
-                # Put back in pending so they can retry
                 pending_predictions[user_id] = (fixture_id, games)
                 return
 
-            # Build preview
             preview_lines = ["**Your Predictions:**\n"]
             for i, (game, pred) in enumerate(zip(games, predictions, strict=False), 1):
                 preview_lines.append(f"{i}. {game} **{pred}**")
@@ -85,7 +78,6 @@ class UserCommands(commands.Cog):
 
             preview_text = "\n".join(preview_lines)
 
-            # Show confirmation with buttons
             view = PredictionConfirmView(
                 self.db,
                 fixture_id,
@@ -115,7 +107,6 @@ class UserCommands(commands.Cog):
     )
     async def predict(self, interaction: discord.Interaction):
         """Initiate prediction submission via DM."""
-        # Get current fixture
         fixture = await self.db.get_current_fixture()
         if not fixture:
             await interaction.response.send_message(
@@ -123,7 +114,6 @@ class UserCommands(commands.Cog):
             )
             return
 
-        # Check if user already submitted
         existing = await self.db.get_prediction(fixture["id"], str(interaction.user.id))
         if existing:
             await interaction.response.send_message(
@@ -133,14 +123,12 @@ class UserCommands(commands.Cog):
             )
             return
 
-        # Store pending request
         pending_predictions[str(interaction.user.id)] = (fixture["id"], fixture["games"])
 
         await interaction.response.send_message(
             "📩 Check your DMs! I've sent you the fixture list to predict.", ephemeral=True
         )
 
-        # Build fixture list for DM
         lines = [
             f"**Week {fixture['week_number']} - Submit Your Predictions**",
             "",
@@ -158,7 +146,6 @@ class UserCommands(commands.Cog):
             ]
         )
 
-        # Send DM
         try:
             await interaction.user.send("\n".join(lines))
         except discord.Forbidden:
@@ -258,7 +245,6 @@ class UserCommands(commands.Cog):
             await interaction.response.send_message("❌ No active fixture found!", ephemeral=True)
             return
 
-        # Build fixture display
         lines = [f"### Week {fixture['week_number']} Fixtures\n"]
 
         for i, game in enumerate(fixture["games"], 1):
@@ -300,7 +286,6 @@ class UserCommands(commands.Cog):
             )
             return
 
-        # Build display
         lines = ["**Your Predictions:**\n"]
         for i, (game, pred) in enumerate(
             zip(fixture["games"], prediction["predictions"], strict=False), 1
@@ -347,7 +332,6 @@ class PredictionConfirmView(discord.ui.View):
     @discord.ui.button(label="✅ Submit Predictions", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Save predictions."""
-        # Clear pending predictions state
         pending_predictions.pop(str(self.user_id), None)
 
         await self.db.save_prediction(
@@ -362,7 +346,6 @@ class PredictionConfirmView(discord.ui.View):
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Cancel predictions."""
-        # Clear pending predictions state
         pending_predictions.pop(str(self.user_id), None)
 
         await interaction.response.edit_message(

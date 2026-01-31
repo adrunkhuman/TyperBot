@@ -6,24 +6,15 @@ import re
 def parse_predictions(input_text: str, expected_count: int = 9) -> tuple[list[str], list[str]]:
     """Parse predictions from user input.
 
-    Accepts formats like:
-    - "2-1 1-0 3-3 0-2..."
-    - "2:1, 1:0, 3:3..."
-    - "2 - 1, 1- 0, 2-0..."
-
+    Format agnostic: "2-1 1-0", "2:1, 1:0", "2 - 1".
     Returns: (valid_predictions, errors)
     """
-    # Normalize input: replace commas with spaces, normalize separators
     normalized = input_text.replace(",", " ")
-
-    # Pattern to match scores like "2-1", "2:1", "2 - 1", "2- 1"
-    # Matches optional whitespace, digit(s), separator, digit(s), optional whitespace
     pattern = r"\s*(\d+)\s*[-:]\s*(\d+)\s*"
 
     predictions = []
     errors = []
 
-    # Find all score patterns in the text
     matches = list(re.finditer(pattern, normalized))
 
     for match in matches:
@@ -31,7 +22,6 @@ def parse_predictions(input_text: str, expected_count: int = 9) -> tuple[list[st
         away = match.group(2)
         predictions.append(f"{home}-{away}")
 
-    # Check count
     if len(predictions) != expected_count:
         errors.append(f"Expected {expected_count} scores, found {len(predictions)}")
 
@@ -69,15 +59,9 @@ def parse_line_predictions(lines: list[str], games: list[str]) -> tuple[list[str
 
 
 def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
-    """Format standings for display in Discord.
-
-    Args:
-        standings: List of user standings with total_points, etc.
-        last_fixture: Optional dict with last week's scores
-    """
+    """Format standings table for Discord."""
     lines = []
 
-    # Overall standings
     lines.append("## Overall Standings")
     lines.append("")
 
@@ -93,7 +77,6 @@ def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
                 f"{user['total_exact']} | {user['total_correct']} | {user['weeks_played']} |"
             )
 
-    # Last week's results
     if last_fixture:
         lines.append("")
         lines.append(f"## Last Week (Week {last_fixture['week_number']})")

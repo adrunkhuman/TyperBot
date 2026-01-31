@@ -12,10 +12,8 @@ from dotenv import load_dotenv
 
 from typer_bot.database import Database
 
-# Load environment variables
 load_dotenv()
 
-# Configure logging with more detail
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -23,7 +21,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Log startup info
 logger.info("=" * 50)
 logger.info("STARTING TYPER BOT")
 logger.info("=" * 50)
@@ -54,10 +51,8 @@ class TyperBot(commands.Bot):
             logger.error(traceback.format_exc())
             raise
 
-        # Check for and run archive SQL files if database is empty
         await self._run_archive_imports()
 
-        # Load command cogs
         logger.info("Loading command cogs...")
         try:
             await self.load_extension("typer_bot.commands.user_commands")
@@ -75,7 +70,6 @@ class TyperBot(commands.Bot):
             logger.error(traceback.format_exc())
             raise
 
-        # Sync commands
         logger.info("Syncing slash commands...")
         try:
             synced = await self.tree.sync()
@@ -84,7 +78,6 @@ class TyperBot(commands.Bot):
             logger.error(f"Failed to sync commands: {e}")
             logger.error(traceback.format_exc())
 
-        # Start scheduled tasks
         logger.info("Starting reminder task...")
         self.reminder_task.start()
         logger.info("Setup hook complete")
@@ -96,7 +89,6 @@ class TyperBot(commands.Bot):
         import aiosqlite
 
         try:
-            # Check if database has any fixtures
             async with (
                 aiosqlite.connect(self.db.db_path) as db,
                 db.execute("SELECT COUNT(*) FROM fixtures") as cursor,
@@ -106,7 +98,6 @@ class TyperBot(commands.Bot):
                     logger.info("Database already has fixtures, skipping archive import")
                     return
 
-            # Look for SQL files in archive folder
             archive_files = sorted(glob.glob("archive/*.sql"))
             if not archive_files:
                 logger.info("No archive SQL files found")
@@ -121,17 +112,14 @@ class TyperBot(commands.Bot):
                         sql_content = f.read()
 
                     async with aiosqlite.connect(self.db.db_path) as db:
-                        # Execute SQL statements
                         await db.executescript(sql_content)
                         await db.commit()
 
-                        # Count what was imported
                         async with db.execute("SELECT COUNT(*) FROM fixtures") as cursor:
                             fixture_count = (await cursor.fetchone())[0]
                         async with db.execute("SELECT COUNT(*) FROM predictions") as cursor:
                             prediction_count = (await cursor.fetchone())[0]
 
-                        # Get games count from first fixture
                         async with db.execute("SELECT games FROM fixtures LIMIT 1") as cursor:
                             row = await cursor.fetchone()
                             games_count = len(row[0].split("\n")) if row else 0
@@ -176,12 +164,10 @@ class TyperBot(commands.Bot):
         """Check for reminders to send."""
         now = datetime.now()
 
-        # Thursday 19:00 reminder
         if now.weekday() == 3 and now.hour == 19 and now.minute == 0:
             logger.info("Sending Thursday reminder...")
             await self.send_reminder("Thursday evening")
 
-        # Friday 17:00 reminder
         if now.weekday() == 4 and now.hour == 17 and now.minute == 0:
             logger.info("Sending Friday reminder...")
             await self.send_reminder("Friday evening")

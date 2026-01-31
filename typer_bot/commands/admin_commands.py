@@ -34,7 +34,6 @@ class AdminCommands(commands.Cog):
 
         logger = logging.getLogger(__name__)
 
-        # Ignore bot messages and non-DMs
         if message.author.bot or message.guild is not None:
             return
 
@@ -43,12 +42,10 @@ class AdminCommands(commands.Cog):
             f"[ADMIN] on_message from user {user_id}, pending_fixtures={user_id in pending_fixtures}, pending_results={user_id in pending_results}"
         )
 
-        # Check for pending fixture request
         if user_id in pending_fixtures:
             await self._handle_fixture_dm(message, user_id)
             return
 
-        # Check for pending results request
         if user_id in pending_results:
             await self._handle_results_dm(message, user_id)
             return
@@ -59,7 +56,6 @@ class AdminCommands(commands.Cog):
         step = state.get("step", "games")
 
         if step == "games":
-            # Parse games from DM
             games = [line.strip() for line in message.content.strip().split("\n") if line.strip()]
 
             if len(games) < 1:
@@ -68,11 +64,9 @@ class AdminCommands(commands.Cog):
                 )
                 return
 
-            # Store games and move to deadline step
             state["games"] = games
             state["step"] = "deadline"
 
-            # Calculate default deadline
             now = datetime.now()
             days_until_friday = (4 - now.weekday()) % 7
             if days_until_friday == 0 and now.hour >= 18:
@@ -81,7 +75,6 @@ class AdminCommands(commands.Cog):
             default_deadline = default_deadline.replace(hour=18, minute=0, second=0, microsecond=0)
             state["default_deadline"] = default_deadline
 
-            # Ask about deadline
             default_str = default_deadline.strftime("%A, %B %d at %H:%M")
             view = DeadlineChoiceView(self.db, user_id)
             await message.author.send(
@@ -93,9 +86,7 @@ class AdminCommands(commands.Cog):
             )
 
         elif step == "deadline":
-            # Try to parse custom deadline
             try:
-                # Try various formats
                 deadline = None
                 formats = [
                     "%Y-%m-%d %H:%M",
@@ -122,7 +113,6 @@ class AdminCommands(commands.Cog):
                     )
                     return
 
-                # Store custom deadline and show preview
                 state["deadline"] = deadline
                 await self._show_fixture_preview(message.author, user_id)
 
@@ -141,12 +131,10 @@ class AdminCommands(commands.Cog):
             pending_fixtures.pop(user_id, None)
             return
 
-        # Get next week number
         current = await self.db.get_current_fixture()
         week_number = 1 if not current else current["week_number"] + 1
         state["week_number"] = week_number
 
-        # Build preview
         lines = [f"**Week {week_number} Fixture Preview**\n"]
         for i, game in enumerate(games, 1):
             lines.append(f"{i}. {game}")
@@ -154,7 +142,6 @@ class AdminCommands(commands.Cog):
         deadline_str = deadline.strftime("%A, %B %d at %H:%M")
         lines.append(f"\n**Deadline:** {deadline_str}")
 
-        # Validation warning
         warning = ""
         if len(games) != 9:
             warning = f"\n\n⚠️ **Warning:** Expected 9 games, got {len(games)}"
@@ -162,10 +149,8 @@ class AdminCommands(commands.Cog):
         preview_text = "\n".join(lines)
         state["preview"] = preview_text + warning
 
-        # Move to confirmation step
         state["step"] = "confirm"
 
-        # Send preview with confirmation buttons
         view = FixtureConfirmView(
             self.db, user_id, week_number, games, deadline, channel, preview_text + warning
         )
@@ -187,11 +172,9 @@ class AdminCommands(commands.Cog):
             await message.author.send("❌ Error: Fixture no longer exists.")
             return
 
-        # Send acknowledgment first
         processing_msg = await message.author.send("⏳ Processing your results...")
 
         try:
-            # Parse results from DM
             content = message.content.strip()
             lines = content.split("\n")
 
@@ -213,7 +196,6 @@ class AdminCommands(commands.Cog):
                 pending_results[user_id] = fixture_id
                 return
 
-            # Build preview
             preview_lines = [f"**Week {fixture['week_number']} Results Preview**\n"]
             for i, (game, result) in enumerate(zip(fixture["games"], results, strict=False), 1):
                 preview_lines.append(f"{i}. {game} **{result}**")
@@ -260,7 +242,6 @@ class AdminCommands(commands.Cog):
 
     async def _create_fixture(self, interaction: discord.Interaction):
         """Initiate fixture creation via DM."""
-        # Store pending request with initial state
         pending_fixtures[str(interaction.user.id)] = {
             "channel_id": interaction.channel_id,
             "step": "games",
@@ -394,7 +375,6 @@ class AdminCommands(commands.Cog):
             )
             return
 
-        # Create confirmation view
         view = DeleteConfirmView(self.db, fixture["id"], fixture["week_number"])
 
         lines = [f"**⚠️ Delete Week {fixture['week_number']}?**\n"]
@@ -433,15 +413,12 @@ class DeadlineChoiceView(discord.ui.View):
             )
             return
 
-        # Use default deadline
         state["deadline"] = state["default_deadline"]
 
-        # Update message and show preview
         await interaction.response.edit_message(
             content="✅ Using default deadline. Showing preview...", view=None
         )
 
-        # Show preview
         cog = interaction.client.get_cog("AdminCommands")
         if cog:
             await cog._show_fixture_preview(interaction.user, self.user_id)
@@ -472,7 +449,6 @@ class FixtureConfirmView(discord.ui.View):
     @discord.ui.button(label="✅ Create Fixture", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Save fixture to database and announce."""
-        # Clear pending fixture state
         pending_fixtures.pop(self.user_id, None)
 
         await self.db.create_fixture(self.week_number, self.games, self.deadline)
@@ -496,7 +472,6 @@ class FixtureConfirmView(discord.ui.View):
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Cancel fixture creation."""
-        # Clear pending fixture state
         pending_fixtures.pop(self.user_id, None)
 
         await interaction.response.edit_message(content="❌ Fixture creation cancelled.", view=None)
@@ -523,7 +498,6 @@ class ResultsConfirmView(discord.ui.View):
     @discord.ui.button(label="✅ Save Results", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Save results to database."""
-        # Clear pending results state
         pending_results.pop(self.user_id, None)
 
         await self.db.save_results(self.fixture_id, self.results)
@@ -536,7 +510,6 @@ class ResultsConfirmView(discord.ui.View):
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Cancel results entry."""
-        # Clear pending results state
         pending_results.pop(self.user_id, None)
 
         await interaction.response.edit_message(

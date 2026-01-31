@@ -10,11 +10,8 @@ class Database:
     """SQLite database wrapper for football predictions."""
 
     def __init__(self, db_path: str = None):
-        # Use environment variable or default to local file
-        # On Railway, set DB_PATH=/app/data/typer.db for persistent storage
         self.db_path = db_path or os.getenv("DB_PATH", "typer.db")
 
-        # Ensure directory exists for database file
         db_dir = os.path.dirname(self.db_path)
         if db_dir and not os.path.exists(db_dir):
             os.makedirs(db_dir, exist_ok=True)
@@ -281,10 +278,8 @@ class Database:
     async def delete_fixture(self, fixture_id: int):
         """Delete a fixture and all associated data."""
         async with aiosqlite.connect(self.db_path) as db:
-            # Delete related records first (foreign key constraints)
             await db.execute("DELETE FROM scores WHERE fixture_id = ?", (fixture_id,))
             await db.execute("DELETE FROM results WHERE fixture_id = ?", (fixture_id,))
             await db.execute("DELETE FROM predictions WHERE fixture_id = ?", (fixture_id,))
-            # Delete the fixture
             await db.execute("DELETE FROM fixtures WHERE id = ?", (fixture_id,))
             await db.commit()

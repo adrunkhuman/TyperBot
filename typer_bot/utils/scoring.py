@@ -4,16 +4,13 @@
 def calculate_points(
     predictions: list[str], actual_results: list[str], is_late: bool = False
 ) -> dict:
-    """Calculate points for a set of predictions.
+    """Calculate points.
 
-    Scoring:
-    - Exact score: 3 points
-    - Correct result (win/loss/draw): 1 point
-    - Wrong: 0 points
+    Exact: 3pts
+    Outcome: 1pt
+    Late: -100% penalty (0pts)
 
-    Late predictions get -100% penalty (0 points regardless).
-
-    Returns dict with total points and breakdown.
+    Returns: dict with points, exact_scores, correct_results, penalty
     """
     if is_late:
         return {
@@ -31,11 +28,9 @@ def calculate_points(
         pred_home, pred_away = map(int, pred.split("-"))
         actual_home, actual_away = map(int, actual.split("-"))
 
-        # Check exact score
         if pred_home == actual_home and pred_away == actual_away:
             total_points += 3
             exact_count += 1
-        # Check correct result (home win, away win, or draw)
         elif (
             (pred_home > pred_away and actual_home > actual_away)
             or (pred_home < pred_away and actual_home < actual_away)
@@ -43,7 +38,6 @@ def calculate_points(
         ):
             total_points += 1
             correct_count += 1
-        # Wrong result: 0 points
 
     return {
         "points": total_points,
