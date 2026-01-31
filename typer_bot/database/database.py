@@ -269,3 +269,14 @@ class Database:
                             ],
                         }
                 return None
+
+    async def delete_fixture(self, fixture_id: int):
+        """Delete a fixture and all associated data."""
+        async with aiosqlite.connect(self.db_path) as db:
+            # Delete related records first (foreign key constraints)
+            await db.execute("DELETE FROM scores WHERE fixture_id = ?", (fixture_id,))
+            await db.execute("DELETE FROM results WHERE fixture_id = ?", (fixture_id,))
+            await db.execute("DELETE FROM predictions WHERE fixture_id = ?", (fixture_id,))
+            # Delete the fixture
+            await db.execute("DELETE FROM fixtures WHERE id = ?", (fixture_id,))
+            await db.commit()

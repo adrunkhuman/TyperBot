@@ -226,6 +226,7 @@ class AdminCommands(commands.Cog):
             app_commands.Choice(name="fixture", value="fixture"),
             app_commands.Choice(name="results", value="results"),
             app_commands.Choice(name="calculate", value="calculate"),
+            app_commands.Choice(name="delete", value="delete"),
             app_commands.Choice(name="close", value="close"),
         ]
     )
@@ -243,6 +244,8 @@ class AdminCommands(commands.Cog):
             await self._enter_results(interaction)
         elif action.value == "calculate":
             await self._calculate_scores(interaction)
+        elif action.value == "delete":
+            await self._delete_fixture(interaction)
         elif action.value == "close":
             await self._close_fixture(interaction)
 
@@ -373,6 +376,29 @@ class AdminCommands(commands.Cog):
 
         await interaction.response.send_message("\n".join(lines))
 
+    async def _delete_fixture(self, interaction: discord.Interaction):
+        """Delete current fixture."""
+        fixture = await self.db.get_current_fixture()
+        if not fixture:
+            await interaction.response.send_message(
+                "❌ No active fixture found to delete!", ephemeral=True
+            )
+            return
+
+        # Create confirmation view
+        view = DeleteConfirmView(self.db, fixture["id"], fixture["week_number"])
+
+        lines = [f"**⚠️ Delete Week {fixture['week_number']}?**\n"]
+        for i, game in enumerate(fixture["games"], 1):
+            lines.append(f"{i}. {game}")
+
+        await interaction.response.send_message(
+            "\n".join(lines)
+            + "\n\nThis will delete the fixture and all associated predictions. Are you sure?",
+            view=view,
+            ephemeral=True,
+        )
+
     async def _close_fixture(self, interaction: discord.Interaction):
         """Manually close current fixture."""
         fixture = await self.db.get_current_fixture()
@@ -502,6 +528,32 @@ class ResultsConfirmView(discord.ui.View):
         """Cancel results entry."""
         await interaction.response.edit_message(
             content="❌ Results entry cancelled. Use `/admin results` to try again.", view=None
+        )
+
+
+class DeleteConfirmView(discord.ui.View):
+    """View for confirming fixture deletion."""
+
+    def __init__(self, db: Database, fixture_id: int, week_number: int):
+        super().__init__(timeout=60)
+        self.db = db
+        self.fixture_id = fixture_id
+        self.week_number = week_number
+
+    @discord.ui.button(label="✅ Yes, Delete", style=discord.ButtonStyle.red)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Delete fixture from database."""
+        await self.db.delete_fixture(self.fixture_id)
+
+        await interaction.response.edit_message(
+            content=f"✅ **Week {self.week_number} Fixture Deleted!**", view=None
+        )
+
+    @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.gray)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Cancel deletion."""
+        await interaction.response.edit_message(
+            content="❌ Deletion cancelled. The fixture is still active.", view=None
         )
 
 
