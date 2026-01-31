@@ -49,10 +49,16 @@ A Discord bot for managing weekly football prediction games with friends.
 1. Fork this repo to your GitHub
 2. Go to [Railway](https://railway.app)
 3. New Project > Deploy from GitHub repo
-4. Add environment variables in Railway dashboard:
+4. **IMPORTANT**: Add a persistent volume:
+   - Go to "Volumes" tab in your Railway project
+   - Click "New Volume"
+   - Mount path: `/app/data`
+   - This ensures database persists between restarts
+5. Add environment variables in Railway dashboard:
    - `DISCORD_TOKEN`: Your bot token
    - `REMINDER_CHANNEL_ID`: Channel ID for reminders (optional)
-5. Deploy!
+   - `DB_PATH`: `/app/data/typer.db` (critical for persistence)
+6. Deploy!
 
 **Option B: Railway CLI**
 ```bash
