@@ -31,11 +31,18 @@ class AdminCommands(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Listen for DMs from admins."""
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         # Ignore bot messages and non-DMs
         if message.author.bot or message.guild is not None:
             return
 
         user_id = str(message.author.id)
+        logger.info(
+            f"[ADMIN] on_message from user {user_id}, pending_fixtures={user_id in pending_fixtures}, pending_results={user_id in pending_results}"
+        )
 
         # Check for pending fixture request
         if user_id in pending_fixtures:

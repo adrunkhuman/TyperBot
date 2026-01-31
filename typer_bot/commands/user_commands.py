@@ -24,12 +24,19 @@ class UserCommands(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Listen for DMs with predictions."""
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         # Ignore bot messages and non-DMs
         if message.author.bot or message.guild is not None:
             return
 
         # Check if this user has a pending prediction
         user_id = str(message.author.id)
+        logger.info(
+            f"[USER] on_message from user {user_id}, pending_predictions={user_id in pending_predictions}"
+        )
         if user_id not in pending_predictions:
             return
 
