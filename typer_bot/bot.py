@@ -10,10 +10,15 @@ from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 from typer_bot.database import Database
-from typer_bot.utils.logger import set_trace_id
+from typer_bot.utils.logger import _hijack_logger, set_trace_id
 
-# Logging is configured in __main__.py before this module is imported.
-# We assume it's already set up to stdout.
+# discord.py attaches its own stderr handler on import.
+# Clear it and force propagation to our root stdout handler.
+_hijack_logger("discord")
+_hijack_logger("discord.client")
+_hijack_logger("discord.gateway")
+_hijack_logger("discord.http")
+
 logger = logging.getLogger(__name__)
 
 load_dotenv()
