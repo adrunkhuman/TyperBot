@@ -2,8 +2,11 @@
 
 import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import aiosqlite
+
+from typer_bot.utils import parse_iso
 
 
 class Database:
@@ -72,6 +75,11 @@ class Database:
 
     async def create_fixture(self, week_number: int, games: list[str], deadline: datetime) -> int:
         """Create a new fixture and return its ID."""
+        # Ensure deadline has timezone info before storing
+        if deadline.tzinfo is None:
+            from typer_bot.utils import APP_TZ
+
+            deadline = deadline.replace(tzinfo=APP_TZ)
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
                 "INSERT INTO fixtures (week_number, games, deadline) VALUES (?, ?, ?)",
@@ -93,7 +101,7 @@ class Database:
                         "id": row["id"],
                         "week_number": row["week_number"],
                         "games": row["games"].split("\n"),
-                        "deadline": datetime.fromisoformat(row["deadline"]),
+                        "deadline": parse_iso(row["deadline"]),
                         "status": row["status"],
                     }
                 return None
@@ -109,7 +117,7 @@ class Database:
                         "id": row["id"],
                         "week_number": row["week_number"],
                         "games": row["games"].split("\n"),
-                        "deadline": datetime.fromisoformat(row["deadline"]),
+                        "deadline": parse_iso(row["deadline"]),
                         "status": row["status"],
                     }
                 return None
@@ -149,7 +157,7 @@ class Database:
                         "user_id": row["user_id"],
                         "user_name": row["user_name"],
                         "predictions": row["predictions"].split("\n"),
-                        "submitted_at": datetime.fromisoformat(row["submitted_at"]),
+                        "submitted_at": parse_iso(row["submitted_at"]),
                         "is_late": row["is_late"],
                     }
                 return None
@@ -167,7 +175,7 @@ class Database:
                         "user_id": row["user_id"],
                         "user_name": row["user_name"],
                         "predictions": row["predictions"].split("\n"),
-                        "submitted_at": datetime.fromisoformat(row["submitted_at"]),
+                        "submitted_at": parse_iso(row["submitted_at"]),
                         "is_late": row["is_late"],
                     }
                     for row in rows

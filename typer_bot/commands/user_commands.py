@@ -7,7 +7,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from typer_bot.database import Database
-from typer_bot.utils import format_standings, parse_line_predictions
+from typer_bot.utils import format_standings, parse_line_predictions, now, APP_TZ
 
 # user_id -> (fixture_id, games)
 pending_predictions = {}
@@ -54,8 +54,8 @@ class UserCommands(commands.Cog):
         processing_msg = await message.author.send("⏳ Processing your predictions...")
 
         try:
-            now = datetime.now()
-            is_late = now > fixture["deadline"]
+            current_time = now()
+            is_late = current_time > fixture["deadline"]
 
             lines = message.content.strip().split("\n")
             predictions, errors = parse_line_predictions(lines, games)
@@ -75,7 +75,7 @@ class UserCommands(commands.Cog):
                 preview_lines.append(f"{i}. {game} **{pred}**")
 
             deadline_str = fixture["deadline"].strftime("%A, %B %d at %H:%M")
-            preview_lines.append(f"\n**Deadline:** {deadline_str}")
+            preview_lines.append(f"\n**Deadline:** {deadline_str} ({APP_TZ})")
 
             late_warning = ""
             if is_late:
@@ -150,7 +150,7 @@ class UserCommands(commands.Cog):
                 "```",
                 "",
                 "Add your score (e.g., 2:0 or 2-1) at the end of each line.",
-                f"\n**Deadline:** {fixture['deadline'].strftime('%A, %B %d at %H:%M')}",
+                f"\n**Deadline:** {fixture['deadline'].strftime('%A, %B %d at %H:%M')} ({APP_TZ})",
             ]
         )
 
@@ -259,7 +259,7 @@ class UserCommands(commands.Cog):
             lines.append(f"{i}. {game}")
 
         deadline_str = fixture["deadline"].strftime("%A, %B %d at %H:%M")
-        lines.append(f"\n**Deadline:** {deadline_str}")
+        lines.append(f"\n**Deadline:** {deadline_str} ({APP_TZ})")
 
         await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
@@ -306,7 +306,7 @@ class UserCommands(commands.Cog):
 
         lines.extend(
             [
-                f"\n**Deadline:** {deadline_str}",
+                f"\n**Deadline:** {deadline_str} ({APP_TZ})",
                 f"**Status:** {late_status}",
                 f"**Submitted:** {submitted}",
             ]
