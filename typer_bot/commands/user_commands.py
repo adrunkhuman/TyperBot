@@ -1,13 +1,12 @@
 """User-facing Discord commands."""
 
-from datetime import datetime
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from typer_bot.database import Database
-from typer_bot.utils import format_standings, parse_line_predictions, now, APP_TZ
+from typer_bot.utils import APP_TZ, format_standings, now, parse_line_predictions
 
 # user_id -> (fixture_id, games)
 pending_predictions = {}
