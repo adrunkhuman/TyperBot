@@ -1,6 +1,9 @@
 """Prediction parsing utilities."""
 
+import logging
 import re
+
+logger = logging.getLogger(__name__)
 
 
 def parse_predictions(input_text: str, expected_count: int = 9) -> tuple[list[str], list[str]]:
@@ -9,6 +12,8 @@ def parse_predictions(input_text: str, expected_count: int = 9) -> tuple[list[st
     Format agnostic: "2-1 1-0", "2:1, 1:0", "2 - 1".
     Returns: (valid_predictions, errors)
     """
+    logger.debug(f"Parsing predictions: expected={expected_count}, input_length={len(input_text)}")
+
     normalized = input_text.replace(",", " ")
     pattern = r"\s*(\d+)\s*[-:]\s*(\d+)\s*"
 
@@ -16,6 +21,7 @@ def parse_predictions(input_text: str, expected_count: int = 9) -> tuple[list[st
     errors = []
 
     matches = list(re.finditer(pattern, normalized))
+    logger.debug(f"Found {len(matches)} score matches in input")
 
     for match in matches:
         home = match.group(1)
@@ -23,7 +29,11 @@ def parse_predictions(input_text: str, expected_count: int = 9) -> tuple[list[st
         predictions.append(f"{home}-{away}")
 
     if len(predictions) != expected_count:
-        errors.append(f"Expected {expected_count} scores, found {len(predictions)}")
+        error_msg = f"Expected {expected_count} scores, found {len(predictions)}"
+        logger.warning(f"Prediction count mismatch: {error_msg}")
+        errors.append(error_msg)
+    else:
+        logger.debug(f"Successfully parsed {len(predictions)} predictions")
 
     return predictions, errors
 
@@ -39,11 +49,15 @@ def parse_line_predictions(lines: list[str], games: list[str]) -> tuple[list[str
 
     Returns: (valid_predictions, errors)
     """
+    logger.debug(f"Parsing line predictions: {len(lines)} lines, {len(games)} games")
+
     predictions = []
     errors = []
 
     if len(lines) != len(games):
-        errors.append(f"Expected {len(games)} lines, got {len(lines)}")
+        error_msg = f"Expected {len(games)} lines, got {len(lines)}"
+        logger.warning(f"Line count mismatch: {error_msg}")
+        errors.append(error_msg)
         return predictions, errors
 
     for i, line in enumerate(lines):
@@ -52,8 +66,14 @@ def parse_line_predictions(lines: list[str], games: list[str]) -> tuple[list[str
             home_score = match.group(1)
             away_score = match.group(2)
             predictions.append(f"{home_score}-{away_score}")
+            logger.debug(f"Line {i + 1}: Parsed {home_score}-{away_score}")
         else:
-            errors.append(f"Line {i + 1}: Could not find score (expected format: '2:0' or '2-1')")
+            error_msg = f"Line {i + 1}: Could not find score (expected format: '2:0' or '2-1')"
+            logger.warning(f"Parse error on line {i + 1}: '{line[:50]}...'")
+            errors.append(error_msg)
+
+    if not errors:
+        logger.debug(f"Successfully parsed all {len(predictions)} line predictions")
 
     return predictions, errors
 

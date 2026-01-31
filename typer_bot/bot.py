@@ -3,7 +3,6 @@
 import logging
 import os
 import sys
-import traceback
 from datetime import datetime
 
 import discord
@@ -11,15 +10,14 @@ from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 from typer_bot.database import Database
+from typer_bot.utils.logger import setup_logging
+
+# Logging MUST be configured before any other imports to prevent
+# discord.py from attaching its own default handlers
+setup_logging()
+logger = logging.getLogger(__name__)
 
 load_dotenv()
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
-logger = logging.getLogger(__name__)
 
 logger.info("=" * 50)
 logger.info("STARTING TYPER BOT")
@@ -46,9 +44,8 @@ class TyperBot(commands.Bot):
         try:
             await self.db.initialize()
             logger.info("Database initialized successfully")
-        except Exception as e:
-            logger.error(f"Database initialization failed: {e}")
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("Database initialization failed")
             raise
 
         await self._run_archive_imports()
@@ -57,36 +54,30 @@ class TyperBot(commands.Bot):
         try:
             await self.load_extension("typer_bot.commands.user_commands")
             logger.info("Loaded user_commands")
-        except Exception as e:
-            logger.error(f"Failed to load user_commands: {e}")
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("Failed to load user_commands")
             raise
 
         try:
             await self.load_extension("typer_bot.commands.admin_commands")
             logger.info("Loaded admin_commands")
-        except Exception as e:
-            logger.error(f"Failed to load admin_commands: {e}")
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("Failed to load admin_commands")
             raise
 
         logger.info("Syncing slash commands...")
         try:
             synced = await self.tree.sync()
             logger.info(f"Synced {len(synced)} commands")
-        except Exception as e:
-            logger.error(f"Failed to sync commands: {e}")
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("Failed to sync commands")
 
         logger.info("Starting reminder task...")
         self.reminder_task.start()
         logger.info("Setup hook complete")
 
     def _validate_archive_sql(self, sql_content: str) -> bool:
-        """Validate that SQL only contains safe INSERT statements.
-
-        Blocks any statements that could modify schema or delete data.
-        """
+        """Validate archive SQL - only INSERTs allowed. Blocks DDL/DML that could corrupt the db."""
         import re
 
         normalized = re.sub(r"--.*?$", "", sql_content, flags=re.MULTILINE)
@@ -111,11 +102,7 @@ class TyperBot(commands.Bot):
                 return False
 
         statements = [s.strip() for s in normalized.split(";") if s.strip()]
-        for stmt in statements:
-            if not stmt.startswith("INSERT"):
-                return False
-
-        return True
+        return all(stmt.startswith("INSERT") for stmt in statements)
 
     async def _run_archive_imports(self):
         """Run SQL files from archive folder if database is empty."""
@@ -171,15 +158,13 @@ class TyperBot(commands.Bot):
                         f"   👥 Imported {prediction_count} predictions from {prediction_count // games_count if games_count else 0} users"
                     )
 
-                except Exception as e:
-                    logger.error(f"❌ Failed to import {sql_file}: {e}")
-                    logger.error(traceback.format_exc())
+                except Exception:
+                    logger.exception(f"❌ Failed to import {sql_file}")
 
             logger.info("Archive import complete")
 
-        except Exception as e:
-            logger.error(f"Error during archive import: {e}")
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("Error during archive import")
 
     async def on_ready(self):
         """Called when bot is ready."""
@@ -190,8 +175,7 @@ class TyperBot(commands.Bot):
 
     async def on_error(self, event_method, *args, **kwargs):
         """Handle uncaught errors."""
-        logger.error(f"Error in {event_method}:")
-        logger.error(traceback.format_exc())
+        logger.exception(f"Error in {event_method}")
 
     def cog_unload(self):
         """Clean up when bot shuts down."""
@@ -235,9 +219,8 @@ class TyperBot(commands.Bot):
                     logger.warning("No active fixture for reminder")
             else:
                 logger.error(f"Could not find channel {channel_id}")
-        except Exception as e:
-            logger.error(f"Failed to send reminder: {e}")
-            logger.error(traceback.format_exc())
+        except Exception:
+            logger.exception("Failed to send reminder")
 
     def is_admin(self, user: discord.Member) -> bool:
         """Check if user has admin role (case-insensitive)."""
@@ -267,13 +250,11 @@ def main():
         bot = TyperBot()
         logger.info("Starting bot.run()...")
         bot.run(token)
-    except discord.LoginFailure as e:
-        logger.error(f"❌ Discord login failed: {e}")
-        logger.error("Check if your DISCORD_TOKEN is valid and not expired")
+    except discord.LoginFailure:
+        logger.exception("❌ Discord login failed - check if DISCORD_TOKEN is valid")
         sys.exit(1)
-    except Exception as e:
-        logger.error(f"❌ Unexpected error: {e}")
-        logger.error(traceback.format_exc())
+    except Exception:
+        logger.exception("❌ Unexpected error")
         sys.exit(1)
 
 
