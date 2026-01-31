@@ -38,3 +38,6 @@ data.txt
 archive/*
 !archive/example_import.sql
 !archive/README.md
+
+# AI Assistant
+.opencode/
