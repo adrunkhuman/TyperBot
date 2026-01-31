@@ -14,6 +14,7 @@ You are working on `matchday-typer`, a Discord bot for football prediction leagu
 - **Async:** All database ops must be async (`aiosqlite`).
 - **Parsing:** Use `utils.prediction_parser.parse_line_predictions` for all score parsing. Do NOT write ad-hoc regex.
 - **Logging:** Use `typer_bot.utils.logger.setup_logging()` early. Do not use `print()`.
+- **Timezones:** All datetime operations use timezone-aware objects. Use `utils.timezone.now()` instead of `datetime.now()`. Configure via `TZ` env var (default: Europe/Warsaw).
 
 ## 3. Database Schema
 SQLite. Tables are initialized in `database.py`.
