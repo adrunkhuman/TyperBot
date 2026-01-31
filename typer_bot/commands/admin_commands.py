@@ -168,7 +168,7 @@ class AdminCommands(commands.Cog):
 
         # Send preview with confirmation buttons
         view = FixtureConfirmView(
-            self.db, week_number, games, deadline, channel, preview_text + warning
+            self.db, user_id, week_number, games, deadline, channel, preview_text + warning
         )
 
         await user.send(f"{preview_text}{warning}\n\nCreate this fixture?", view=view)
@@ -242,7 +242,7 @@ class AdminCommands(commands.Cog):
             preview_text = "\n".join(preview_lines)
 
             logger.info("Results parsed successfully, showing preview")
-            view = ResultsConfirmView(self.db, fixture_id, results, preview_text)
+            view = ResultsConfirmView(self.db, user_id, fixture_id, results, preview_text)
             await processing_msg.edit(content=f"{preview_text}\n\nSave these results?", view=view)
 
         except Exception as e:
@@ -489,6 +489,7 @@ class FixtureConfirmView(discord.ui.View):
     def __init__(
         self,
         db: Database,
+        user_id: str,
         week_number: int,
         games: list[str],
         deadline: datetime,
@@ -497,6 +498,7 @@ class FixtureConfirmView(discord.ui.View):
     ):
         super().__init__(timeout=120)
         self.db = db
+        self.user_id = user_id
         self.week_number = week_number
         self.games = games
         self.deadline = deadline
@@ -506,6 +508,9 @@ class FixtureConfirmView(discord.ui.View):
     @discord.ui.button(label="✅ Create Fixture", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Save fixture to database and announce."""
+        # Clear pending fixture state
+        pending_fixtures.pop(self.user_id, None)
+
         await self.db.create_fixture(self.week_number, self.games, self.deadline)
 
         await interaction.response.edit_message(
@@ -527,6 +532,9 @@ class FixtureConfirmView(discord.ui.View):
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Cancel fixture creation."""
+        # Clear pending fixture state
+        pending_fixtures.pop(self.user_id, None)
+
         await interaction.response.edit_message(content="❌ Fixture creation cancelled.", view=None)
 
 
@@ -536,12 +544,14 @@ class ResultsConfirmView(discord.ui.View):
     def __init__(
         self,
         db: Database,
+        user_id: str,
         fixture_id: int,
         results: list[str],
         preview: str,
     ):
         super().__init__(timeout=120)
         self.db = db
+        self.user_id = user_id
         self.fixture_id = fixture_id
         self.results = results
         self.preview = preview
@@ -549,6 +559,9 @@ class ResultsConfirmView(discord.ui.View):
     @discord.ui.button(label="✅ Save Results", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Save results to database."""
+        # Clear pending results state
+        pending_results.pop(self.user_id, None)
+
         await self.db.save_results(self.fixture_id, self.results)
 
         await interaction.response.edit_message(
@@ -559,6 +572,9 @@ class ResultsConfirmView(discord.ui.View):
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Cancel results entry."""
+        # Clear pending results state
+        pending_results.pop(self.user_id, None)
+
         await interaction.response.edit_message(
             content="❌ Results entry cancelled. Use `/admin results` to try again.", view=None
         )

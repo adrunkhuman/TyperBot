@@ -291,6 +291,9 @@ class PredictionConfirmView(discord.ui.View):
     @discord.ui.button(label="✅ Submit Predictions", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Save predictions."""
+        # Clear pending predictions state
+        pending_predictions.pop(str(self.user_id), None)
+
         await self.db.save_prediction(
             self.fixture_id, str(self.user_id), self.user_name, self.predictions, self.is_late
         )
@@ -303,6 +306,9 @@ class PredictionConfirmView(discord.ui.View):
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Cancel predictions."""
+        # Clear pending predictions state
+        pending_predictions.pop(str(self.user_id), None)
+
         await interaction.response.edit_message(
             content="❌ Predictions cancelled. Use `/predict` to try again.", view=None
         )
