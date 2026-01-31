@@ -54,6 +54,9 @@ class TyperBot(commands.Bot):
             logger.error(traceback.format_exc())
             raise
 
+        # Check for and run archive SQL files if database is empty
+        await self._run_archive_imports()
+
         # Load command cogs
         logger.info("Loading command cogs...")
         try:
@@ -85,6 +88,54 @@ class TyperBot(commands.Bot):
         logger.info("Starting reminder task...")
         self.reminder_task.start()
         logger.info("Setup hook complete")
+
+    async def _run_archive_imports(self):
+        """Run SQL files from archive folder if database is empty."""
+        import glob
+
+        import aiosqlite
+
+        try:
+            # Check if database has any fixtures
+            async with (
+                aiosqlite.connect(self.db.db_path) as db,
+                db.execute("SELECT COUNT(*) FROM fixtures") as cursor,
+            ):
+                count = await cursor.fetchone()
+                if count and count[0] > 0:
+                    logger.info("Database already has fixtures, skipping archive import")
+                    return
+
+            # Look for SQL files in archive folder
+            archive_files = sorted(glob.glob("archive/*.sql"))
+            if not archive_files:
+                logger.info("No archive SQL files found")
+                return
+
+            logger.info(f"Found {len(archive_files)} archive file(s) to import")
+
+            for sql_file in archive_files:
+                logger.info(f"Importing {sql_file}...")
+                try:
+                    with open(sql_file, encoding="utf-8") as f:
+                        sql_content = f.read()
+
+                    async with aiosqlite.connect(self.db.db_path) as db:
+                        # Execute SQL statements
+                        await db.executescript(sql_content)
+                        await db.commit()
+
+                    logger.info(f"✅ Successfully imported {sql_file}")
+
+                except Exception as e:
+                    logger.error(f"❌ Failed to import {sql_file}: {e}")
+                    logger.error(traceback.format_exc())
+
+            logger.info("Archive import complete")
+
+        except Exception as e:
+            logger.error(f"Error during archive import: {e}")
+            logger.error(traceback.format_exc())
 
     async def on_ready(self):
         """Called when bot is ready."""
