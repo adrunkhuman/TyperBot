@@ -39,6 +39,7 @@ I recommend **Railway** because it's cheap/free and supports persistent storage 
    - `DISCORD_TOKEN`: Get this from Discord Developer Portal.
    - `DB_PATH`: `/app/data/typer.db`
    - `REMINDER_CHANNEL_ID`: (Optional) ID of channel to spam reminders in.
+   - `LOG_LEVEL`: (Optional) Set to `DEBUG` for verbose logs. Default `INFO`.
 
 ## Running Locally
 

@@ -10,7 +10,7 @@ from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 from typer_bot.database import Database
-from typer_bot.utils.logger import setup_logging
+from typer_bot.utils.logger import set_trace_id, setup_logging
 
 # Logging MUST be configured before any other imports to prevent
 # discord.py from attaching its own default handlers
@@ -36,6 +36,22 @@ class TyperBot(commands.Bot):
 
         self.db = Database()
         logger.info("Database instance created")
+
+    async def on_interaction(self, interaction: discord.Interaction):
+        """Set trace ID for every interaction before processing."""
+        # Use request ID format: req-<interaction_id>
+        # This context is preserved for all async calls within this interaction
+        set_trace_id(f"req-{interaction.id}")
+        await super().on_interaction(interaction)
+
+    async def on_message(self, message: discord.Message):
+        """Set trace ID for every message before processing."""
+        # Use message ID format: msg-<message_id>
+        if message.author.bot:
+            return
+
+        set_trace_id(f"msg-{message.id}")
+        await super().on_message(message)
 
     async def setup_hook(self):
         """Initialize database and load cogs."""

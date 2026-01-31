@@ -13,6 +13,7 @@ You are working on `matchday-typer`, a Discord bot for football prediction leagu
 - **DM Workflow:** All complex inputs (predictions, fixture creation) happen in DMs to keep channel clean.
 - **Async:** All database ops must be async (`aiosqlite`).
 - **Parsing:** Use `utils.prediction_parser.parse_line_predictions` for all score parsing. Do NOT write ad-hoc regex.
+- **Logging:** Use `typer_bot.utils.logger.setup_logging()` early. Do not use `print()`.
 
 ## 3. Database Schema
 SQLite. Tables are initialized in `database.py`.
@@ -56,11 +57,13 @@ scores (
 - `typer_bot/commands/admin_commands.py`: `/admin` hub (Protected).
 - `typer_bot/utils/prediction_parser.py`: Central logic for parsing "2-1" or "2:1" strings.
 - `typer_bot/utils/scoring.py`: Point calculation rules.
+- `typer_bot/utils/logger.py`: structured logging configuration for Railway.
 
 ## 5. Common Tasks
 - **Fixing Parsing:** Edit `prediction_parser.py`.
 - **New Commands:** Add Cog to `commands/` folder, load in `bot.py`.
 - **Database Changes:** Edit `database.py` `initialize()` (Handle migrations manually if needed).
+- **Debugging:** Check `utils/logger.py` for config. Set `LOG_LEVEL=DEBUG` in env.
 
 ## 6. Known Quirks
 - **Double Digits:** Scores like `10-0` are allowed.
