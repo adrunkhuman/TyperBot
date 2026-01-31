@@ -3,9 +3,10 @@
 import logging
 import sys
 
+# Logging FIRST - discord.py hijacks the root logger on import.
+# We need stdout configured before they grab stderr.
 from typer_bot.utils.logger import setup_logging
 
-# Logging first - prevents discord.py from hijacking the root logger
 setup_logging()
 logger = logging.getLogger(__name__)
 

@@ -10,11 +10,10 @@ from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 from typer_bot.database import Database
-from typer_bot.utils.logger import set_trace_id, setup_logging
+from typer_bot.utils.logger import set_trace_id
 
-# Logging MUST be configured before any other imports to prevent
-# discord.py from attaching its own default handlers
-setup_logging()
+# Logging is configured in __main__.py before this module is imported.
+# We assume it's already set up to stdout.
 logger = logging.getLogger(__name__)
 
 load_dotenv()
