@@ -9,6 +9,9 @@ from discord.ext import commands
 from typer_bot.database import Database
 from typer_bot.utils import calculate_points
 
+# Store pending fixture creation requests: user_id -> channel_id
+pending_fixtures = {}
+
 
 class AdminCommands(commands.Cog):
     """Commands for admins."""
@@ -21,6 +24,70 @@ class AdminCommands(commands.Cog):
         """Check if member has admin role."""
         admin_roles = {"Admin", "typer-admin"}
         return any(role.name in admin_roles for role in member.roles)
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """Listen for DMs from admins creating fixtures."""
+        # Ignore bot messages and non-DMs
+        if message.author.bot or message.guild is not None:
+            return
+
+        # Check if this admin has a pending fixture request
+        if str(message.author.id) not in pending_fixtures:
+            return
+
+        # Get the channel where the command was originally sent
+        channel_id = pending_fixtures.pop(str(message.author.id))
+        channel = self.bot.get_channel(channel_id)
+
+        if not channel:
+            await message.author.send(
+                "❌ Error: Could not find the original channel. Please try again in the server."
+            )
+            return
+
+        # Parse games from DM (supports multiline!)
+        games = [line.strip() for line in message.content.strip().split("\n") if line.strip()]
+
+        if len(games) < 1:
+            await message.author.send("❌ No games provided! Please send the fixture list again.")
+            # Put back in pending so they can retry
+            pending_fixtures[str(message.author.id)] = channel_id
+            return
+
+        # Get next week number
+        current = await self.db.get_current_fixture()
+        week_number = 1 if not current else current["week_number"] + 1
+
+        # Default deadline: next Friday 18:00
+        now = datetime.now()
+        days_until_friday = (4 - now.weekday()) % 7
+        if days_until_friday == 0 and now.hour >= 18:
+            days_until_friday = 7
+        deadline = now + timedelta(days=days_until_friday)
+        deadline = deadline.replace(hour=18, minute=0, second=0, microsecond=0)
+
+        # Build preview
+        lines = [f"**Week {week_number} Fixture Preview**\n"]
+        for i, game in enumerate(games, 1):
+            lines.append(f"{i}. {game}")
+
+        deadline_str = deadline.strftime("%A, %B %d at %H:%M")
+        lines.append(f"\n**Deadline:** {deadline_str}")
+
+        # Validation warning
+        warning = ""
+        if len(games) != 9:
+            warning = f"\n\n⚠️ **Warning:** Expected 9 games, got {len(games)}"
+
+        preview_text = "\n".join(lines)
+
+        # Send preview to DM for confirmation
+        view = FixtureConfirmView(
+            self.db, week_number, games, deadline, channel, preview_text + warning
+        )
+
+        await message.author.send(f"{preview_text}{warning}\n\nCreate this fixture?", view=view)
 
     @app_commands.command(name="admin", description="Admin commands for managing fixtures")
     @app_commands.describe(action="Action to perform", data="Game data or results")
@@ -43,7 +110,7 @@ class AdminCommands(commands.Cog):
             return
 
         if action.value == "fixture":
-            await self._create_fixture(interaction, data)
+            await self._create_fixture(interaction)
         elif action.value == "results":
             await self._enter_results(interaction, data)
         elif action.value == "calculate":
@@ -51,56 +118,37 @@ class AdminCommands(commands.Cog):
         elif action.value == "close":
             await self._close_fixture(interaction)
 
-    async def _create_fixture(self, interaction: discord.Interaction, data: str):
-        """Create a new fixture with validation and preview."""
-        if not data:
-            await interaction.response.send_message(
-                "❌ Please provide fixture data. Format:\n"
-                "```\n/admin fixture Lech - Legia, Pogoń - Arka, Wisła - Cracovia...```",
-                ephemeral=True,
-            )
-            return
-
-        # Parse games (comma-separated)
-        games = [game.strip() for game in data.strip().split(",") if game.strip()]
-
-        if len(games) < 1:
-            await interaction.response.send_message("❌ No games provided!", ephemeral=True)
-            return
-
-        # Get next week number
-        current = await self.db.get_current_fixture()
-        week_number = 1 if not current else current["week_number"] + 1
-
-        # Default deadline: next Friday 18:00
-        now = datetime.now()
-        days_until_friday = (4 - now.weekday()) % 7
-        if days_until_friday == 0 and now.hour >= 18:
-            days_until_friday = 7
-        deadline = now + timedelta(days=days_until_friday)
-        deadline = deadline.replace(hour=18, minute=0, second=0, microsecond=0)
-
-        # Build preview
-        lines = [f"### Week {week_number} Fixture Preview\n"]
-        for i, game in enumerate(games, 1):
-            lines.append(f"{i}. {game}")
-
-        deadline_str = deadline.strftime("%A, %B %d at %H:%M")
-        lines.append(f"\n**Deadline:** {deadline_str}")
-
-        # Validation warning
-        warning = ""
-        if len(games) != 9:
-            warning = f"\n\n⚠️ **Warning:** Expected 9 games, got {len(games)}"
-
-        preview_text = "\n".join(lines)
-
-        # Create confirmation view
-        view = FixtureConfirmView(self.db, week_number, games, deadline, preview_text + warning)
+    async def _create_fixture(self, interaction: discord.Interaction):
+        """Initiate fixture creation via DM."""
+        # Store pending request
+        pending_fixtures[str(interaction.user.id)] = interaction.channel_id
 
         await interaction.response.send_message(
-            f"{preview_text}{warning}\n\nCreate this fixture?", view=view, ephemeral=True
+            "📩 Check your DMs! I've sent you instructions for creating the fixture.",
+            ephemeral=True,
         )
+
+        # Send DM with instructions
+        try:
+            await interaction.user.send(
+                "**Create New Fixture**\n\n"
+                "Please send me the list of games in this format:\n"
+                "```\n"
+                "Team A - Team B\n"
+                "Team C - Team D\n"
+                "Team E - Team F\n"
+                "...\n"
+                "```\n"
+                "One game per line. You can use either `-` or `–` as separators.\n\n"
+                "I'll show you a preview before creating it."
+            )
+        except discord.Forbidden:
+            # Can't DM user
+            pending_fixtures.pop(str(interaction.user.id), None)
+            await interaction.followup.send(
+                "❌ I can't send you DMs. Please enable DMs from server members and try again.",
+                ephemeral=True,
+            )
 
     async def _enter_results(self, interaction: discord.Interaction, data: str):
         """Enter results for current fixture."""
@@ -228,24 +276,40 @@ class FixtureConfirmView(discord.ui.View):
         week_number: int,
         games: list[str],
         deadline: datetime,
+        channel: discord.TextChannel,
         preview: str,
     ):
-        super().__init__(timeout=60)
+        super().__init__(timeout=120)
         self.db = db
         self.week_number = week_number
         self.games = games
         self.deadline = deadline
+        self.channel = channel
         self.preview = preview
 
     @discord.ui.button(label="✅ Create Fixture", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Save fixture to database."""
+        """Save fixture to database and announce."""
         await self.db.create_fixture(self.week_number, self.games, self.deadline)
 
+        # Update DM
         await interaction.response.edit_message(
             content=f"✅ **Week {self.week_number} Fixture Created!**\n\n{self.preview}",
             view=None,
         )
+
+        # Announce in channel
+        try:
+            await self.channel.send(
+                f"📢 **Week {self.week_number} Fixture is now open!**\n\n{self.preview}"
+            )
+        except Exception:
+            # If announcement fails, DM the admin
+            await interaction.followup.send(
+                "⚠️ Fixture created but I couldn't announce it in the channel. "
+                "Please announce it manually.",
+                ephemeral=True,
+            )
 
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
