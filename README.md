@@ -13,6 +13,8 @@ A Discord bot for managing weekly football prediction games with friends.
 - **Leaderboards**: View overall standings and last week's results
 - **Late Penalty**: Predictions after deadline get -100% penalty
 - **Delete Fixtures**: Remove fixtures and clean database
+- **Historical Archive**: Auto-import historical data from SQL files
+- **Persistent Storage**: Database survives restarts and deployments
 
 ## Commands
 
@@ -53,12 +55,14 @@ A Discord bot for managing weekly football prediction games with friends.
    - Go to "Volumes" tab in your Railway project
    - Click "New Volume"
    - Mount path: `/app/data`
-   - This ensures database persists between restarts
+   - This ensures database persists between restarts and deployments
 5. Add environment variables in Railway dashboard:
    - `DISCORD_TOKEN`: Your bot token
    - `REMINDER_CHANNEL_ID`: Channel ID for reminders (optional)
    - `DB_PATH`: `/app/data/typer.db` (critical for persistence)
 6. Deploy!
+
+**⚠️ Important**: The volume persists through code pushes. Only delete the volume if you want to wipe ALL data.
 
 **Option B: Railway CLI**
 ```bash
@@ -192,6 +196,15 @@ When creating a fixture, you can:
   - `15.02.2024 18:00`
   - `15/02/2024 18:00`
 
+### Historical Data / Archive
+
+The `archive/` folder contains SQL files for importing historical fixtures. On first startup (empty database), the bot automatically imports any `.sql` files found there.
+
+**To add historical data:**
+1. Create SQL file with fixture and predictions (see `archive/week1_import.sql` for example)
+2. Add to `archive/` folder
+3. Only works on fresh/empty database
+
 ### Deleting Fixtures
 
 To remove a test fixture or start over:
@@ -199,6 +212,8 @@ To remove a test fixture or start over:
 - Bot shows current fixture
 - Confirm deletion
 - **Warning**: This deletes the fixture, all predictions, results, and scores
+
+**⚠️ NEVER delete the Railway volume unless you want to lose ALL data!**
 
 ## Database
 
