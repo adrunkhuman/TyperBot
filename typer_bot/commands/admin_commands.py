@@ -1,5 +1,6 @@
 """Admin Discord commands."""
 
+import re
 from datetime import datetime, timedelta
 
 import discord
@@ -11,6 +12,8 @@ from typer_bot.utils import calculate_points
 
 # Store pending fixture creation requests: user_id -> channel_id
 pending_fixtures = {}
+# Store pending results entry: user_id -> fixture_id
+pending_results = {}
 
 
 class AdminCommands(commands.Cog):
@@ -27,17 +30,27 @@ class AdminCommands(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        """Listen for DMs from admins creating fixtures."""
+        """Listen for DMs from admins."""
         # Ignore bot messages and non-DMs
         if message.author.bot or message.guild is not None:
             return
 
-        # Check if this admin has a pending fixture request
-        if str(message.author.id) not in pending_fixtures:
+        user_id = str(message.author.id)
+
+        # Check for pending fixture request
+        if user_id in pending_fixtures:
+            await self._handle_fixture_dm(message, user_id)
             return
 
+        # Check for pending results request
+        if user_id in pending_results:
+            await self._handle_results_dm(message, user_id)
+            return
+
+    async def _handle_fixture_dm(self, message: discord.Message, user_id: str):
+        """Handle fixture creation DM."""
         # Get the channel where the command was originally sent
-        channel_id = pending_fixtures.pop(str(message.author.id))
+        channel_id = pending_fixtures.pop(user_id)
         channel = self.bot.get_channel(channel_id)
 
         if not channel:
@@ -52,7 +65,7 @@ class AdminCommands(commands.Cog):
         if len(games) < 1:
             await message.author.send("❌ No games provided! Please send the fixture list again.")
             # Put back in pending so they can retry
-            pending_fixtures[str(message.author.id)] = channel_id
+            pending_fixtures[user_id] = channel_id
             return
 
         # Get next week number
@@ -89,8 +102,67 @@ class AdminCommands(commands.Cog):
 
         await message.author.send(f"{preview_text}{warning}\n\nCreate this fixture?", view=view)
 
+    async def _handle_results_dm(self, message: discord.Message, user_id: str):
+        """Handle results entry DM."""
+        fixture_id = pending_results.pop(user_id)
+        fixture = await self.db.get_fixture_by_id(fixture_id)
+
+        if not fixture:
+            await message.author.send("❌ Error: Fixture no longer exists.")
+            return
+
+        # Parse results from DM
+        # Expected format: "Team A - Team B 2:0" or "Team A - Team B 2-1"
+        lines = message.content.strip().split("\n")
+        results = []
+        errors = []
+
+        if len(lines) != len(fixture["games"]):
+            errors.append(f"Expected {len(fixture['games'])} lines, got {len(lines)}")
+        else:
+            for i, line in enumerate(lines):
+                # Try to extract score at the end of the line
+                match = re.search(r"\s*(\d+)\s*[-:]\s*(\d+)\s*$", line)
+                if match:
+                    home_score = match.group(1)
+                    away_score = match.group(2)
+                    # Validate single digits
+                    if len(home_score) > 1 or len(away_score) > 1:
+                        errors.append(
+                            f"Line {i + 1}: Double-digit scores not allowed ({home_score}-{away_score})"
+                        )
+                    else:
+                        results.append(f"{home_score}-{away_score}")
+                else:
+                    errors.append(
+                        f"Line {i + 1}: Could not find score (expected format: '2:0' or '2-1')"
+                    )
+
+        if errors:
+            error_msg = "\n".join(errors)
+            await message.author.send(
+                f"❌ **Invalid results:**\n```{error_msg}```\n\n"
+                f"Please send the results again in this format:\n"
+                f"```\n{fixture['games'][0]} 2:0\n{fixture['games'][1]} 1:1\n...\n```"
+            )
+            # Put back in pending so they can retry
+            pending_results[user_id] = fixture_id
+            return
+
+        # Build preview
+        lines = [f"**Week {fixture['week_number']} Results Preview**\n"]
+        for i, (game, result) in enumerate(zip(fixture["games"], results, strict=False), 1):
+            lines.append(f"{i}. {game} **{result}**")
+
+        preview_text = "\n".join(lines)
+
+        # Show confirmation with buttons
+        view = ResultsConfirmView(self.db, fixture_id, results, preview_text)
+
+        await message.author.send(f"{preview_text}\n\nSave these results?", view=view)
+
     @app_commands.command(name="admin", description="Admin commands for managing fixtures")
-    @app_commands.describe(action="Action to perform", data="Game data or results")
+    @app_commands.describe(action="Action to perform")
     @app_commands.choices(
         action=[
             app_commands.Choice(name="fixture", value="fixture"),
@@ -99,9 +171,7 @@ class AdminCommands(commands.Cog):
             app_commands.Choice(name="close", value="close"),
         ]
     )
-    async def admin(
-        self, interaction: discord.Interaction, action: app_commands.Choice[str], data: str = None
-    ):
+    async def admin(self, interaction: discord.Interaction, action: app_commands.Choice[str]):
         """Admin command hub."""
         if not self.is_admin(interaction.user):
             await interaction.response.send_message(
@@ -112,7 +182,7 @@ class AdminCommands(commands.Cog):
         if action.value == "fixture":
             await self._create_fixture(interaction)
         elif action.value == "results":
-            await self._enter_results(interaction, data)
+            await self._enter_results(interaction)
         elif action.value == "calculate":
             await self._calculate_scores(interaction)
         elif action.value == "close":
@@ -150,53 +220,57 @@ class AdminCommands(commands.Cog):
                 ephemeral=True,
             )
 
-    async def _enter_results(self, interaction: discord.Interaction, data: str):
-        """Enter results for current fixture."""
-        if not data:
-            await interaction.response.send_message(
-                "❌ Please provide results. Format:\n```\n/admin results 2-1, 1-0, 3-3...```\n"
-                "Or with spaces:```\n/admin results 2-1 1-0 3-3...```",
-                ephemeral=True,
-            )
-            return
-
+    async def _enter_results(self, interaction: discord.Interaction):
+        """Initiate results entry via DM."""
         fixture = await self.db.get_current_fixture()
         if not fixture:
             await interaction.response.send_message("❌ No active fixture found!", ephemeral=True)
             return
 
-        # Parse results (comma or space-separated)
-        results = [r.strip() for r in data.replace(",", " ").split() if r.strip()]
-        expected_count = len(fixture["games"])
-
-        if len(results) != expected_count:
+        # Check if results already entered
+        existing_results = await self.db.get_results(fixture["id"])
+        if existing_results:
             await interaction.response.send_message(
-                f"❌ Expected {expected_count} results, got {len(results)}", ephemeral=True
+                "⚠️ Results already entered for this fixture!\n"
+                "Use `/admin calculate` to calculate scores.",
+                ephemeral=True,
             )
             return
 
-        # Validate format
-        from typer_bot.utils import parse_predictions
+        # Store pending request
+        pending_results[str(interaction.user.id)] = fixture["id"]
 
-        parsed, errors = parse_predictions(" ".join(results), expected_count)
+        await interaction.response.send_message(
+            "📩 Check your DMs! I've sent you instructions for entering results.",
+            ephemeral=True,
+        )
 
-        if errors:
-            await interaction.response.send_message(
-                f"❌ Invalid results format:\n```\n{chr(10).join(errors)}```", ephemeral=True
+        # Build fixture list for DM
+        lines = [
+            f"**Week {fixture['week_number']} - Enter Results**",
+            "",
+            "Reply with the actual results in this format:",
+            "```",
+        ]
+        for game in fixture["games"]:
+            lines.append(f"{game} 2:0")
+        lines.extend(
+            [
+                "```",
+                "",
+                "Add the actual score (e.g., 2:0 or 2-1) at the end of each line.",
+            ]
+        )
+
+        # Send DM
+        try:
+            await interaction.user.send("\n".join(lines))
+        except discord.Forbidden:
+            pending_results.pop(str(interaction.user.id), None)
+            await interaction.followup.send(
+                "❌ I can't send you DMs. Please enable DMs from server members and try again.",
+                ephemeral=True,
             )
-            return
-
-        # Save results
-        await self.db.save_results(fixture["id"], parsed)
-
-        # Build display
-        lines = [f"✅ **Results saved for Week {fixture['week_number']}**\n"]
-        for i, (game, result) in enumerate(zip(fixture["games"], parsed, strict=False), 1):
-            lines.append(f"{i}. {game}: **{result}**")
-
-        lines.append("\nUse `/admin calculate` to calculate scores.")
-
-        await interaction.response.send_message("\n".join(lines))
 
     async def _calculate_scores(self, interaction: discord.Interaction):
         """Calculate scores for current fixture."""
@@ -315,6 +389,40 @@ class FixtureConfirmView(discord.ui.View):
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Cancel fixture creation."""
         await interaction.response.edit_message(content="❌ Fixture creation cancelled.", view=None)
+
+
+class ResultsConfirmView(discord.ui.View):
+    """View for confirming results entry."""
+
+    def __init__(
+        self,
+        db: Database,
+        fixture_id: int,
+        results: list[str],
+        preview: str,
+    ):
+        super().__init__(timeout=120)
+        self.db = db
+        self.fixture_id = fixture_id
+        self.results = results
+        self.preview = preview
+
+    @discord.ui.button(label="✅ Save Results", style=discord.ButtonStyle.green)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Save results to database."""
+        await self.db.save_results(self.fixture_id, self.results)
+
+        await interaction.response.edit_message(
+            content=f"✅ **Results Saved!**\n\n{self.preview}\n\nUse `/admin calculate` to calculate scores.",
+            view=None,
+        )
+
+    @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Cancel results entry."""
+        await interaction.response.edit_message(
+            content="❌ Results entry cancelled. Use `/admin results` to try again.", view=None
+        )
 
 
 async def setup(bot: commands.Bot):

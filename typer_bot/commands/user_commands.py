@@ -1,5 +1,6 @@
 """User-facing Discord commands."""
 
+import re
 from datetime import datetime
 
 import discord
@@ -7,7 +8,10 @@ from discord import app_commands
 from discord.ext import commands
 
 from typer_bot.database import Database
-from typer_bot.utils import format_standings, parse_predictions
+from typer_bot.utils import format_standings
+
+# Store pending predictions: user_id -> (fixture_id, games)
+pending_predictions = {}
 
 
 class UserCommands(commands.Cog):
@@ -17,14 +21,102 @@ class UserCommands(commands.Cog):
         self.bot = bot
         self.db: Database = bot.db
 
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """Listen for DMs with predictions."""
+        # Ignore bot messages and non-DMs
+        if message.author.bot or message.guild is not None:
+            return
+
+        # Check if this user has a pending prediction
+        user_id = str(message.author.id)
+        if user_id not in pending_predictions:
+            return
+
+        fixture_id, games = pending_predictions.pop(user_id)
+        fixture = await self.db.get_fixture_by_id(fixture_id)
+
+        if not fixture:
+            await message.author.send("❌ Error: Fixture no longer exists.")
+            return
+
+        # Check deadline
+        now = datetime.now()
+        is_late = now > fixture["deadline"]
+
+        # Parse predictions from user's message
+        # Expected format: "Team A - Team B 2:0" or "Team A - Team B 2-1"
+        lines = message.content.strip().split("\n")
+        predictions = []
+        errors = []
+
+        if len(lines) != len(games):
+            errors.append(f"Expected {len(games)} lines, got {len(lines)}")
+        else:
+            for i, (line, _game) in enumerate(zip(lines, games, strict=False)):
+                # Try to extract score at the end of the line
+                # Pattern: anything followed by score like "2:0" or "2-1"
+                match = re.search(r"\s*(\d+)\s*[-:]\s*(\d+)\s*$", line)
+                if match:
+                    home_score = match.group(1)
+                    away_score = match.group(2)
+                    # Validate single digits
+                    if len(home_score) > 1 or len(away_score) > 1:
+                        errors.append(
+                            f"Line {i + 1}: Double-digit scores not allowed ({home_score}-{away_score})"
+                        )
+                    else:
+                        predictions.append(f"{home_score}-{away_score}")
+                else:
+                    errors.append(
+                        f"Line {i + 1}: Could not find score (expected format: '2:0' or '2-1')"
+                    )
+
+        if errors:
+            error_msg = "\n".join(errors)
+            await message.author.send(
+                f"❌ **Invalid predictions:**\n```{error_msg}```\n\n"
+                f"Please send your predictions again in this format:\n"
+                f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
+            )
+            # Put back in pending so they can retry
+            pending_predictions[user_id] = (fixture_id, games)
+            return
+
+        # Build preview
+        preview_lines = ["**Your Predictions:**\n"]
+        for i, (game, pred) in enumerate(zip(games, predictions, strict=False), 1):
+            preview_lines.append(f"{i}. {game} **{pred}**")
+
+        deadline_str = fixture["deadline"].strftime("%A, %B %d at %H:%M")
+        preview_lines.append(f"\n**Deadline:** {deadline_str}")
+
+        late_warning = ""
+        if is_late:
+            late_warning = "\n\n⚠️ **Late prediction!** You will receive 0 points for this round."
+
+        preview_text = "\n".join(preview_lines)
+
+        # Show confirmation with buttons
+        view = PredictionConfirmView(
+            self.db,
+            fixture_id,
+            message.author.id,
+            message.author.display_name,
+            predictions,
+            is_late,
+            preview_text,
+        )
+
+        await message.author.send(
+            f"{preview_text}{late_warning}\n\nSubmit these predictions?", view=view
+        )
+
     @app_commands.command(
         name="predict", description="Submit your predictions for this week's fixtures"
     )
-    @app_commands.describe(
-        scores="Your predictions (e.g., '2-1 1-0 3-3...'). Leave empty to see fixtures first."
-    )
-    async def predict(self, interaction: discord.Interaction, scores: str = None):
-        """Submit predictions for the current fixture."""
+    async def predict(self, interaction: discord.Interaction):
+        """Initiate prediction submission via DM."""
         # Get current fixture
         fixture = await self.db.get_current_fixture()
         if not fixture:
@@ -33,66 +125,50 @@ class UserCommands(commands.Cog):
             )
             return
 
-        # If no scores provided, show fixtures with instructions
-        if scores is None:
-            lines = [
-                f"### Week {fixture['week_number']} Fixtures",
-                "",
-                "Predict these games in order:",
-                "",
-            ]
-            for i, game in enumerate(fixture["games"], 1):
-                lines.append(f"{i}. {game}")
-
-            deadline_str = fixture["deadline"].strftime("%A, %B %d at %H:%M")
-            lines.append(f"\n**Deadline:** {deadline_str}")
-            lines.append("\n**Next step:** Use `/predict 2-1 1-0 3-3...` to submit your scores")
-
-            await interaction.response.send_message("\n".join(lines), ephemeral=True)
-            return
-
-        # Check deadline
-        now = datetime.now()
-        is_late = now > fixture["deadline"]
-
-        # Parse predictions
-        expected_count = len(fixture["games"])
-        predictions, errors = parse_predictions(scores, expected_count)
-
-        if errors:
-            error_msg = "\n".join(errors)
+        # Check if user already submitted
+        existing = await self.db.get_prediction(fixture["id"], str(interaction.user.id))
+        if existing:
             await interaction.response.send_message(
-                f"❌ **Invalid predictions:**\n```{error_msg}```\n\n"
-                f"Expected {expected_count} scores. Example: `2-1 1-0 3-3...`",
+                "You already submitted predictions for this week!\n"
+                "Use `/mypredictions` to view them.",
                 ephemeral=True,
             )
             return
 
-        # Show preview
-        from typer_bot.utils.prediction_parser import format_predictions_preview
-
-        preview = format_predictions_preview(fixture["games"], predictions)
-
-        late_warning = (
-            "\n\n⚠️ **Late prediction!** You will receive 0 points for this round."
-            if is_late
-            else ""
-        )
-
-        # Create confirmation view
-        view = PredictionConfirmView(
-            self.db,
-            fixture["id"],
-            interaction.user.id,
-            interaction.user.display_name,
-            predictions,
-            is_late,
-            preview + late_warning,
-        )
+        # Store pending request
+        pending_predictions[str(interaction.user.id)] = (fixture["id"], fixture["games"])
 
         await interaction.response.send_message(
-            f"{preview}{late_warning}\n\nConfirm your predictions?", view=view, ephemeral=True
+            "📩 Check your DMs! I've sent you the fixture list to predict.", ephemeral=True
         )
+
+        # Build fixture list for DM
+        lines = [
+            f"**Week {fixture['week_number']} - Submit Your Predictions**",
+            "",
+            "Reply with your predictions in this format:",
+            "```",
+        ]
+        for game in fixture["games"]:
+            lines.append(f"{game} 2:0")
+        lines.extend(
+            [
+                "```",
+                "",
+                "Add your score (e.g., 2:0 or 2-1) at the end of each line.",
+                f"\n**Deadline:** {fixture['deadline'].strftime('%A, %B %d at %H:%M')}",
+            ]
+        )
+
+        # Send DM
+        try:
+            await interaction.user.send("\n".join(lines))
+        except discord.Forbidden:
+            pending_predictions.pop(str(interaction.user.id), None)
+            await interaction.followup.send(
+                "❌ I can't send you DMs. Please enable DMs from server members and try again.",
+                ephemeral=True,
+            )
 
     @app_commands.command(name="fixtures", description="View this week's fixtures")
     async def fixtures(self, interaction: discord.Interaction):
@@ -145,16 +221,26 @@ class UserCommands(commands.Cog):
             )
             return
 
-        from typer_bot.utils.prediction_parser import format_predictions_preview
-
-        preview = format_predictions_preview(fixture["games"], prediction["predictions"])
+        # Build display
+        lines = ["**Your Predictions:**\n"]
+        for i, (game, pred) in enumerate(
+            zip(fixture["games"], prediction["predictions"], strict=False), 1
+        ):
+            lines.append(f"{i}. {game} **{pred}**")
 
         late_status = "⚠️ **LATE**" if prediction["is_late"] else "✅ On time"
         submitted = prediction["submitted_at"].strftime("%Y-%m-%d %H:%M")
+        deadline_str = fixture["deadline"].strftime("%A, %B %d at %H:%M")
 
-        await interaction.response.send_message(
-            f"{preview}\n\nStatus: {late_status}\nSubmitted: {submitted}", ephemeral=True
+        lines.extend(
+            [
+                f"\n**Deadline:** {deadline_str}",
+                f"**Status:** {late_status}",
+                f"**Submitted:** {submitted}",
+            ]
         )
+
+        await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
 
 class PredictionConfirmView(discord.ui.View):
@@ -170,7 +256,7 @@ class PredictionConfirmView(discord.ui.View):
         is_late: bool,
         preview: str,
     ):
-        super().__init__(timeout=60)
+        super().__init__(timeout=120)
         self.db = db
         self.fixture_id = fixture_id
         self.user_id = user_id
@@ -179,14 +265,14 @@ class PredictionConfirmView(discord.ui.View):
         self.is_late = is_late
         self.preview = preview
 
-    @discord.ui.button(label="✅ Confirm", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="✅ Submit Predictions", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Save predictions."""
         await self.db.save_prediction(
             self.fixture_id, str(self.user_id), self.user_name, self.predictions, self.is_late
         )
 
-        status = " with late penalty" if self.is_late else ""
+        status = " (late penalty applied)" if self.is_late else ""
         await interaction.response.edit_message(
             content=f"✅ **Predictions saved{status}!**\n\n{self.preview}", view=None
         )
@@ -194,7 +280,9 @@ class PredictionConfirmView(discord.ui.View):
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Cancel predictions."""
-        await interaction.response.edit_message(content="❌ Predictions cancelled.", view=None)
+        await interaction.response.edit_message(
+            content="❌ Predictions cancelled. Use `/predict` to try again.", view=None
+        )
 
 
 async def setup(bot: commands.Bot):
