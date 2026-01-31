@@ -131,7 +131,7 @@ class AdminCommands(commands.Cog):
             return
 
         # Validate format
-        from ..utils import parse_predictions
+        from typer_bot.utils import parse_predictions
         parsed, errors = parse_predictions(" ".join(results), expected_count)
         
         if errors:
