@@ -100,6 +100,13 @@ def is_railway_environment() -> bool:
     )
 
 
+def _hijack_logger(name: str) -> None:
+    """Force a named logger to use root handler instead of its own."""
+    logger = logging.getLogger(name)
+    logger.handlers.clear()
+    logger.propagate = True  # Use root handler
+
+
 def setup_logging(level: int = logging.INFO) -> None:
     """Configure root logger for Railway or local environment.
 
@@ -120,10 +127,16 @@ def setup_logging(level: int = logging.INFO) -> None:
 
     root_logger.addHandler(handler)
 
-    # discord.py is chatty at INFO level
+    # discord.py attaches its own stderr handler - hijack it
+    _hijack_logger("discord")
+    _hijack_logger("discord.client")
+    _hijack_logger("discord.gateway")
+    _hijack_logger("discord.http")
+    _hijack_logger("aiosqlite")
+
+    # Still keep discord quiet at WARNING level
     logging.getLogger("discord").setLevel(logging.WARNING)
     logging.getLogger("discord.http").setLevel(logging.WARNING)
-    logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 
     logger = logging.getLogger(__name__)
     env_type = "Railway" if is_railway_environment() else "local"
