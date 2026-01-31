@@ -3,8 +3,8 @@
 import logging
 import sys
 
-# Logging FIRST - discord.py hijacks the root logger on import.
-# We need stdout configured before they grab stderr.
+# Logging FIRST - configure logging early in the application lifecycle.
+# Discord's stderr handler is prevented by passing log_handler=None to bot.run().
 from typer_bot.utils.logger import setup_logging
 
 setup_logging()
