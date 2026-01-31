@@ -8,7 +8,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from typer_bot.database import Database
-from typer_bot.utils import calculate_points, parse_line_predictions
+from typer_bot.utils import calculate_points, parse_line_predictions, now, parse_deadline, APP_TZ
 from typer_bot.utils.db_backup import create_backup, cleanup_old_backups
 
 # user_id -> {"channel_id": int, "guild_id": int, "games": list, "deadline": datetime, "step": str}
@@ -95,21 +95,23 @@ class AdminCommands(commands.Cog):
             state["games"] = games
             state["step"] = "deadline"
 
-            now = datetime.now()
-            days_until_friday = (4 - now.weekday()) % 7
-            if days_until_friday == 0 and now.hour >= 18:
+            current_time = now()
+            days_until_friday = (4 - current_time.weekday()) % 7
+            if days_until_friday == 0 and current_time.hour >= 18:
                 days_until_friday = 7
-            default_deadline = now + timedelta(days=days_until_friday)
+            default_deadline = current_time + timedelta(days=days_until_friday)
             default_deadline = default_deadline.replace(hour=18, minute=0, second=0, microsecond=0)
             state["default_deadline"] = default_deadline
 
             default_str = default_deadline.strftime("%A, %B %d at %H:%M")
             view = DeadlineChoiceView(self.db, user_id)
+            tz_name = str(APP_TZ)
             await message.author.send(
                 f"**Choose Deadline**\n\n"
                 f"Default: **{default_str}** (next Friday 18:00)\n\n"
                 f"Or type a custom deadline in format: `YYYY-MM-DD HH:MM`\n"
-                f"Example: `{now.strftime('%Y-%m-%d')} 20:00` for today at 8 PM",
+                f"Example: `{current_time.strftime('%Y-%m-%d')} 20:00` for today at 8 PM\n"
+                f"\n⚠️ All times are in **{tz_name}** timezone",
                 view=view,
             )
 
@@ -124,7 +126,8 @@ class AdminCommands(commands.Cog):
 
                 for fmt in formats:
                     try:
-                        deadline = datetime.strptime(message.content.strip(), fmt)
+                        naive_deadline = datetime.strptime(message.content.strip(), fmt)
+                        deadline = naive_deadline.replace(tzinfo=APP_TZ)
                         break
                     except ValueError:
                         continue
@@ -169,7 +172,7 @@ class AdminCommands(commands.Cog):
             lines.append(f"{i}. {game}")
 
         deadline_str = deadline.strftime("%A, %B %d at %H:%M")
-        lines.append(f"\n**Deadline:** {deadline_str}")
+        lines.append(f"\n**Deadline:** {deadline_str} ({APP_TZ})")
 
         warning = ""
         if len(games) != 9:
@@ -368,19 +371,19 @@ class AdminCommands(commands.Cog):
     async def _calculate_scores(self, interaction: discord.Interaction):
         """Calculate scores for current fixture."""
         user_id = str(interaction.user.id)
-        now = datetime.now().timestamp()
+        current_time = now().timestamp()
 
         if user_id in _calculate_cooldowns:
             last_used = _calculate_cooldowns[user_id]
-            if now - last_used < CALCULATE_COOLDOWN:
-                remaining = CALCULATE_COOLDOWN - (now - last_used)
+            if current_time - last_used < CALCULATE_COOLDOWN:
+                remaining = CALCULATE_COOLDOWN - (current_time - last_used)
                 await interaction.response.send_message(
                     f"⏳ Please wait {remaining:.1f}s before calculating again.",
                     ephemeral=True,
                 )
                 return
 
-        _calculate_cooldowns[user_id] = now
+        _calculate_cooldowns[user_id] = current_time
 
         fixture = await self.db.get_current_fixture()
         if not fixture:

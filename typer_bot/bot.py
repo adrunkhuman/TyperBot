@@ -10,6 +10,7 @@ from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 from typer_bot.database import Database
+from typer_bot.utils import now, APP_TZ
 from typer_bot.utils.logger import set_trace_id
 
 logger = logging.getLogger(__name__)
@@ -197,13 +198,13 @@ class TyperBot(commands.Bot):
     @tasks.loop(minutes=1)
     async def reminder_task(self):
         """Check for reminders to send."""
-        now = datetime.now()
+        current_time = now()
 
-        if now.weekday() == 3 and now.hour == 19 and now.minute == 0:
+        if current_time.weekday() == 3 and current_time.hour == 19 and current_time.minute == 0:
             logger.info("Sending Thursday reminder...")
             await self.send_reminder("Thursday evening")
 
-        if now.weekday() == 4 and now.hour == 17 and now.minute == 0:
+        if current_time.weekday() == 4 and current_time.hour == 17 and current_time.minute == 0:
             logger.info("Sending Friday reminder...")
             await self.send_reminder("Friday evening")
 
@@ -223,7 +224,7 @@ class TyperBot(commands.Bot):
                     await channel.send(
                         f"📢 **{time_description} reminder!**\n\n"
                         f"Don't forget to submit your predictions for this week!\n"
-                        f"Deadline: **{deadline}**\n"
+                        f"Deadline: **{deadline} ({APP_TZ})**\n"
                         f"Use `/predict` to enter your scores."
                     )
                     logger.info(f"Reminder sent to channel {channel_id}")
