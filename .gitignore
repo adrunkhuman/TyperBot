@@ -32,3 +32,9 @@ Thumbs.db
 
 # Railway
 .railway/
+
+# Private Data
+data.txt
+archive/
+!archive/example_import.sql
+!archive/README.md
