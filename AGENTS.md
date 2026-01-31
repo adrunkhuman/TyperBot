@@ -66,6 +66,7 @@ scores (
 - **New Commands:** Add Cog to `commands/` folder, load in `bot.py`.
 - **Database Changes:** Edit `database.py` `initialize()` (Handle migrations manually if needed).
 - **Debugging:** Check `utils/logger.py` for config. Set `LOG_LEVEL=DEBUG` in env.
+- **Archive Import:** Set `IMPORT_ARCHIVE=true` to enable automatic import of historical data on fresh database.
 - **Database Restore:** Use `scripts/restore_db.py` from Railway console for manual database restoration from backups.
 
 ## 6. Known Quirks

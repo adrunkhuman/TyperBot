@@ -119,8 +119,14 @@ class TyperBot(commands.Bot):
     async def _run_archive_imports(self):
         """Run SQL files from archive folder if database is empty."""
         import glob
+        import os
 
         import aiosqlite
+
+        auto_import = os.getenv("IMPORT_ARCHIVE", "").lower() in ("true", "1", "yes")
+        if not auto_import:
+            logger.info("Archive import disabled (set IMPORT_ARCHIVE=true to enable)")
+            return
 
         try:
             async with (
