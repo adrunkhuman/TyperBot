@@ -52,7 +52,7 @@ class AdminCommands(commands.Cog):
             await self._close_fixture(interaction)
 
     async def _create_fixture(self, interaction: discord.Interaction, data: str):
-        """Create a new fixture."""
+        """Create a new fixture with validation and preview."""
         if not data:
             await interaction.response.send_message(
                 "❌ Please provide fixture data. Format:\n"
@@ -80,18 +80,27 @@ class AdminCommands(commands.Cog):
         deadline = now + timedelta(days=days_until_friday)
         deadline = deadline.replace(hour=18, minute=0, second=0, microsecond=0)
 
-        fixture_id = await self.db.create_fixture(week_number, games, deadline)
-
-        # Build display
-        lines = [f"✅ **Week {week_number} Fixture Created**\n"]
+        # Build preview
+        lines = [f"### Week {week_number} Fixture Preview\n"]
         for i, game in enumerate(games, 1):
             lines.append(f"{i}. {game}")
 
         deadline_str = deadline.strftime("%A, %B %d at %H:%M")
         lines.append(f"\n**Deadline:** {deadline_str}")
-        lines.append(f"**Fixture ID:** {fixture_id}")
 
-        await interaction.response.send_message("\n".join(lines))
+        # Validation warning
+        warning = ""
+        if len(games) != 9:
+            warning = f"\n\n⚠️ **Warning:** Expected 9 games, got {len(games)}"
+
+        preview_text = "\n".join(lines)
+
+        # Create confirmation view
+        view = FixtureConfirmView(self.db, week_number, games, deadline, preview_text + warning)
+
+        await interaction.response.send_message(
+            f"{preview_text}{warning}\n\nCreate this fixture?", view=view, ephemeral=True
+        )
 
     async def _enter_results(self, interaction: discord.Interaction, data: str):
         """Enter results for current fixture."""
@@ -207,6 +216,40 @@ class AdminCommands(commands.Cog):
             f"⚠️ Week {fixture['week_number']} will be closed when you run `/admin calculate`.",
             ephemeral=True,
         )
+
+
+class FixtureConfirmView(discord.ui.View):
+    """View for confirming fixture creation."""
+
+    def __init__(
+        self,
+        db: Database,
+        week_number: int,
+        games: list[str],
+        deadline: datetime,
+        preview: str,
+    ):
+        super().__init__(timeout=60)
+        self.db = db
+        self.week_number = week_number
+        self.games = games
+        self.deadline = deadline
+        self.preview = preview
+
+    @discord.ui.button(label="✅ Create Fixture", style=discord.ButtonStyle.green)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Save fixture to database."""
+        await self.db.create_fixture(self.week_number, self.games, self.deadline)
+
+        await interaction.response.edit_message(
+            content=f"✅ **Week {self.week_number} Fixture Created!**\n\n{self.preview}",
+            view=None,
+        )
+
+    @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Cancel fixture creation."""
+        await interaction.response.edit_message(content="❌ Fixture creation cancelled.", view=None)
 
 
 async def setup(bot: commands.Bot):
