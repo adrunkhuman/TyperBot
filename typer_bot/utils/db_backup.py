@@ -1,8 +1,8 @@
 """Automatic database backup utilities."""
 
+import logging
 import re
 import sqlite3
-import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -35,9 +35,8 @@ def validate_backup_sql(sql_content: str) -> bool:
     lines = normalized.split("\n")
     for line in lines:
         line = line.strip()
-        if line.startswith("CREATE"):
-            if "TABLE" not in line or "IF NOT EXISTS" not in line:
-                return False
+        if line.startswith("CREATE") and ("TABLE" not in line or "IF NOT EXISTS" not in line):
+            return False
 
     return True
 

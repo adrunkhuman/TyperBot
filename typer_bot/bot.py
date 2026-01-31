@@ -3,14 +3,13 @@
 import logging
 import os
 import sys
-from datetime import datetime
 
 import discord
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 from typer_bot.database import Database
-from typer_bot.utils import now, APP_TZ
+from typer_bot.utils import APP_TZ, now
 from typer_bot.utils.logger import set_trace_id
 
 logger = logging.getLogger(__name__)

@@ -8,8 +8,8 @@ from discord import app_commands
 from discord.ext import commands
 
 from typer_bot.database import Database
-from typer_bot.utils import calculate_points, parse_line_predictions, now, parse_deadline, APP_TZ
-from typer_bot.utils.db_backup import create_backup, cleanup_old_backups
+from typer_bot.utils import APP_TZ, calculate_points, now, parse_line_predictions
+from typer_bot.utils.db_backup import cleanup_old_backups, create_backup
 
 # user_id -> {"channel_id": int, "guild_id": int, "games": list, "deadline": datetime, "step": str}
 pending_fixtures = {}
