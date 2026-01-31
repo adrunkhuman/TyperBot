@@ -193,6 +193,87 @@ class UserCommands(commands.Cog):
                 ephemeral=True,
             )
 
+    @app_commands.command(name="help", description="Show help information")
+    async def help(self, interaction: discord.Interaction):
+        """Display help for users and admins."""
+        is_admin_user = self._is_admin(interaction.user)
+
+        user_help = """## 📖 User Commands
+
+**For Players:**
+• `/predict` - Submit your predictions (bot will DM you)
+• `/fixtures` - View this week's games
+• `/standings` - See overall leaderboard
+• `/mypredictions` - Check your submitted predictions
+
+**How to Predict:**
+1. Type `/predict` in the channel
+2. Bot sends you a DM with the fixture list
+3. Reply with your predictions:
+   ```
+   Team A - Team B 2:0
+   Team C - Team D 1:1
+   ...
+   ```
+4. Confirm to save your predictions
+
+**Scoring:**
+• Exact score: 3 points
+• Correct result (win/loss/draw): 1 point
+• Wrong: 0 points
+• Late predictions: 0 points (submit before deadline!)
+
+**Input formats:** Use `2:0`, `2-0`, or `2 : 0`"""
+
+        admin_help = """\n\n## 🔧 Admin Commands
+
+**For Admins:**
+• `/admin fixture` - Create new fixture (DM workflow)
+• `/admin results` - Enter actual scores (DM workflow)
+• `/admin calculate` - Calculate and post scores
+• `/admin delete` - Delete current fixture (use with caution!)
+
+**Admin Workflow:**
+1. **Create Fixture:**
+   - `/admin` → "fixture"
+   - Bot DMs you
+   - Send game list (one per line)
+   - Choose deadline (default or custom)
+   - Confirm
+
+2. **Enter Results:**
+   - `/admin` → "results"
+   - Bot DMs you
+   - Send actual scores:
+     ```
+     Team A - Team B 1:0
+     Team C - Team D 2:2
+     ...
+     ```
+   - Confirm
+
+3. **Calculate Scores:**
+   - `/admin` → "calculate"
+   - Bot posts results automatically
+
+**Custom Deadline Format:**
+• `2024-02-15 18:00`
+• `15.02.2024 18:00`
+• `15/02/2024 18:00`
+
+⚠️ Make sure your Discord allows DMs from server members!"""
+
+        help_text = user_help
+        if is_admin_user:
+            help_text += admin_help
+
+        await interaction.response.send_message(help_text, ephemeral=True)
+
+    def _is_admin(self, member: discord.Member) -> bool:
+        """Check if member has admin role."""
+        admin_roles = {"Admin", "typer-admin"}
+        return any(role.name in admin_roles for role in member.roles)
+
     @app_commands.command(name="fixtures", description="View this week's fixtures")
     async def fixtures(self, interaction: discord.Interaction):
         """Display current fixtures."""

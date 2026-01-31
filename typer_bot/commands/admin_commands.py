@@ -260,7 +260,6 @@ class AdminCommands(commands.Cog):
             app_commands.Choice(name="results", value="results"),
             app_commands.Choice(name="calculate", value="calculate"),
             app_commands.Choice(name="delete", value="delete"),
-            app_commands.Choice(name="close", value="close"),
         ]
     )
     async def admin(self, interaction: discord.Interaction, action: app_commands.Choice[str]):
@@ -279,8 +278,6 @@ class AdminCommands(commands.Cog):
             await self._calculate_scores(interaction)
         elif action.value == "delete":
             await self._delete_fixture(interaction)
-        elif action.value == "close":
-            await self._close_fixture(interaction)
 
     async def _create_fixture(self, interaction: discord.Interaction):
         """Initiate fixture creation via DM."""
@@ -429,18 +426,6 @@ class AdminCommands(commands.Cog):
             "\n".join(lines)
             + "\n\nThis will delete the fixture and all associated predictions. Are you sure?",
             view=view,
-            ephemeral=True,
-        )
-
-    async def _close_fixture(self, interaction: discord.Interaction):
-        """Manually close current fixture."""
-        fixture = await self.db.get_current_fixture()
-        if not fixture:
-            await interaction.response.send_message("❌ No active fixture found!", ephemeral=True)
-            return
-
-        await interaction.response.send_message(
-            f"⚠️ Week {fixture['week_number']} will be closed when you run `/admin calculate`.",
             ephemeral=True,
         )
 
