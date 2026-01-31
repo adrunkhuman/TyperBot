@@ -35,6 +35,6 @@ Thumbs.db
 
 # Private Data
 data.txt
-archive/
+archive/*
 !archive/example_import.sql
 !archive/README.md
