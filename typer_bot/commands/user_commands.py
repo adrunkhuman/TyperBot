@@ -20,8 +20,10 @@ class UserCommands(commands.Cog):
     @app_commands.command(
         name="predict", description="Submit your predictions for this week's fixtures"
     )
-    @app_commands.describe(scores="Your predictions (e.g., '2-1 1-0 3-3...')")
-    async def predict(self, interaction: discord.Interaction, scores: str):
+    @app_commands.describe(
+        scores="Your predictions (e.g., '2-1 1-0 3-3...'). Leave empty to see fixtures first."
+    )
+    async def predict(self, interaction: discord.Interaction, scores: str = None):
         """Submit predictions for the current fixture."""
         # Get current fixture
         fixture = await self.db.get_current_fixture()
@@ -29,6 +31,24 @@ class UserCommands(commands.Cog):
             await interaction.response.send_message(
                 "❌ No active fixture found! Ask an admin to create one.", ephemeral=True
             )
+            return
+
+        # If no scores provided, show fixtures with instructions
+        if scores is None:
+            lines = [
+                f"### Week {fixture['week_number']} Fixtures",
+                "",
+                "Predict these games in order:",
+                "",
+            ]
+            for i, game in enumerate(fixture["games"], 1):
+                lines.append(f"{i}. {game}")
+
+            deadline_str = fixture["deadline"].strftime("%A, %B %d at %H:%M")
+            lines.append(f"\n**Deadline:** {deadline_str}")
+            lines.append("\n**Next step:** Use `/predict 2-1 1-0 3-3...` to submit your scores")
+
+            await interaction.response.send_message("\n".join(lines), ephemeral=True)
             return
 
         # Check deadline
