@@ -1,9 +1,8 @@
 """SQLite database operations for the prediction bot."""
 
-import aiosqlite
-import os
 from datetime import datetime
-from typing import Optional
+
+import aiosqlite
 
 
 class Database:
@@ -25,7 +24,7 @@ class Database:
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            
+
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS predictions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,7 +38,7 @@ class Database:
                     UNIQUE(fixture_id, user_id)
                 )
             """)
-            
+
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS results (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,7 +48,7 @@ class Database:
                     FOREIGN KEY (fixture_id) REFERENCES fixtures(id)
                 )
             """)
-            
+
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS scores (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,7 +62,7 @@ class Database:
                     UNIQUE(fixture_id, user_id)
                 )
             """)
-            
+
             await db.commit()
 
     async def create_fixture(self, week_number: int, games: list[str], deadline: datetime) -> int:
@@ -71,12 +70,12 @@ class Database:
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
                 "INSERT INTO fixtures (week_number, games, deadline) VALUES (?, ?, ?)",
-                (week_number, "\n".join(games), deadline.isoformat())
+                (week_number, "\n".join(games), deadline.isoformat()),
             )
             await db.commit()
             return cursor.lastrowid
 
-    async def get_current_fixture(self) -> Optional[dict]:
+    async def get_current_fixture(self) -> dict | None:
         """Get the current open fixture."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -90,17 +89,15 @@ class Database:
                         "week_number": row["week_number"],
                         "games": row["games"].split("\n"),
                         "deadline": datetime.fromisoformat(row["deadline"]),
-                        "status": row["status"]
+                        "status": row["status"],
                     }
                 return None
 
-    async def get_fixture_by_id(self, fixture_id: int) -> Optional[dict]:
+    async def get_fixture_by_id(self, fixture_id: int) -> dict | None:
         """Get a specific fixture by ID."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM fixtures WHERE id = ?", (fixture_id,)
-            ) as cursor:
+            async with db.execute("SELECT * FROM fixtures WHERE id = ?", (fixture_id,)) as cursor:
                 row = await cursor.fetchone()
                 if row:
                     return {
@@ -108,17 +105,17 @@ class Database:
                         "week_number": row["week_number"],
                         "games": row["games"].split("\n"),
                         "deadline": datetime.fromisoformat(row["deadline"]),
-                        "status": row["status"]
+                        "status": row["status"],
                     }
                 return None
 
     async def save_prediction(
-        self, 
-        fixture_id: int, 
-        user_id: str, 
-        user_name: str, 
+        self,
+        fixture_id: int,
+        user_id: str,
+        user_name: str,
         predictions: list[str],
-        is_late: bool = False
+        is_late: bool = False,
     ):
         """Save or update a user's predictions."""
         async with aiosqlite.connect(self.db_path) as db:
@@ -129,17 +126,17 @@ class Database:
                    DO UPDATE SET predictions = excluded.predictions, 
                                  is_late = excluded.is_late,
                                  submitted_at = CURRENT_TIMESTAMP""",
-                (fixture_id, user_id, user_name, "\n".join(predictions), is_late)
+                (fixture_id, user_id, user_name, "\n".join(predictions), is_late),
             )
             await db.commit()
 
-    async def get_prediction(self, fixture_id: int, user_id: str) -> Optional[dict]:
+    async def get_prediction(self, fixture_id: int, user_id: str) -> dict | None:
         """Get a user's predictions for a fixture."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT * FROM predictions WHERE fixture_id = ? AND user_id = ?",
-                (fixture_id, user_id)
+                (fixture_id, user_id),
             ) as cursor:
                 row = await cursor.fetchone()
                 if row:
@@ -148,7 +145,7 @@ class Database:
                         "user_name": row["user_name"],
                         "predictions": row["predictions"].split("\n"),
                         "submitted_at": datetime.fromisoformat(row["submitted_at"]),
-                        "is_late": row["is_late"]
+                        "is_late": row["is_late"],
                     }
                 return None
 
@@ -157,8 +154,7 @@ class Database:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT * FROM predictions WHERE fixture_id = ?",
-                (fixture_id,)
+                "SELECT * FROM predictions WHERE fixture_id = ?", (fixture_id,)
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [
@@ -167,7 +163,7 @@ class Database:
                         "user_name": row["user_name"],
                         "predictions": row["predictions"].split("\n"),
                         "submitted_at": datetime.fromisoformat(row["submitted_at"]),
-                        "is_late": row["is_late"]
+                        "is_late": row["is_late"],
                     }
                     for row in rows
                 ]
@@ -177,27 +173,22 @@ class Database:
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute(
                 "INSERT OR REPLACE INTO results (fixture_id, results) VALUES (?, ?)",
-                (fixture_id, "\n".join(results))
+                (fixture_id, "\n".join(results)),
             )
             await db.commit()
 
-    async def get_results(self, fixture_id: int) -> Optional[list[str]]:
+    async def get_results(self, fixture_id: int) -> list[str] | None:
         """Get results for a fixture."""
-        async with aiosqlite.connect(self.db_path) as db:
-            async with db.execute(
-                "SELECT results FROM results WHERE fixture_id = ?",
-                (fixture_id,)
-            ) as cursor:
-                row = await cursor.fetchone()
-                if row:
-                    return row[0].split("\n")
-                return None
+        async with (
+            aiosqlite.connect(self.db_path) as db,
+            db.execute("SELECT results FROM results WHERE fixture_id = ?", (fixture_id,)) as cursor,
+        ):
+            row = await cursor.fetchone()
+            if row:
+                return row[0].split("\n")
+            return None
 
-    async def save_scores(
-        self, 
-        fixture_id: int, 
-        scores: list[dict]
-    ):
+    async def save_scores(self, fixture_id: int, scores: list[dict]):
         """Save calculated scores for a fixture."""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("DELETE FROM scores WHERE fixture_id = ?", (fixture_id,))
@@ -206,13 +197,16 @@ class Database:
                     """INSERT INTO scores (fixture_id, user_id, user_name, points, 
                                           exact_scores, correct_results)
                        VALUES (?, ?, ?, ?, ?, ?)""",
-                    (fixture_id, score["user_id"], score["user_name"], 
-                     score["points"], score["exact_scores"], score["correct_results"])
+                    (
+                        fixture_id,
+                        score["user_id"],
+                        score["user_name"],
+                        score["points"],
+                        score["exact_scores"],
+                        score["correct_results"],
+                    ),
                 )
-            await db.execute(
-                "UPDATE fixtures SET status = 'closed' WHERE id = ?",
-                (fixture_id,)
-            )
+            await db.execute("UPDATE fixtures SET status = 'closed' WHERE id = ?", (fixture_id,))
             await db.commit()
 
     async def get_standings(self) -> list[dict]:
@@ -237,12 +231,12 @@ class Database:
                         "total_points": row["total_points"],
                         "total_exact": row["total_exact"],
                         "total_correct": row["total_correct"],
-                        "weeks_played": row["weeks_played"]
+                        "weeks_played": row["weeks_played"],
                     }
                     for row in rows
                 ]
 
-    async def get_last_fixture_scores(self) -> Optional[dict]:
+    async def get_last_fixture_scores(self) -> dict | None:
         """Get scores from the most recently closed fixture."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -259,7 +253,7 @@ class Database:
                     fixture_id = row["fixture_id"]
                     async with db.execute(
                         "SELECT * FROM scores WHERE fixture_id = ? ORDER BY points DESC",
-                        (fixture_id,)
+                        (fixture_id,),
                     ) as cursor2:
                         scores = await cursor2.fetchall()
                         return {
@@ -269,9 +263,9 @@ class Database:
                                     "user_name": s["user_name"],
                                     "points": s["points"],
                                     "exact_scores": s["exact_scores"],
-                                    "correct_results": s["correct_results"]
+                                    "correct_results": s["correct_results"],
                                 }
                                 for s in scores
-                            ]
+                            ],
                         }
                 return None

@@ -5,14 +5,13 @@ import sys
 import traceback
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 try:
     from typer_bot.bot import main
-    
+
     if __name__ == "__main__":
         main()
 except ImportError as e:

@@ -1,6 +1,6 @@
 """Commands module for Discord bot commands."""
 
-from .user_commands import UserCommands
 from .admin_commands import AdminCommands
+from .user_commands import UserCommands
 
 __all__ = ["UserCommands", "AdminCommands"]

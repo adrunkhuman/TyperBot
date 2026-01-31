@@ -23,27 +23,22 @@ class AdminCommands(commands.Cog):
         return any(role.name in admin_roles for role in member.roles)
 
     @app_commands.command(name="admin", description="Admin commands for managing fixtures")
-    @app_commands.describe(
-        action="Action to perform",
-        data="Game data or results"
+    @app_commands.describe(action="Action to perform", data="Game data or results")
+    @app_commands.choices(
+        action=[
+            app_commands.Choice(name="fixture", value="fixture"),
+            app_commands.Choice(name="results", value="results"),
+            app_commands.Choice(name="calculate", value="calculate"),
+            app_commands.Choice(name="close", value="close"),
+        ]
     )
-    @app_commands.choices(action=[
-        app_commands.Choice(name="fixture", value="fixture"),
-        app_commands.Choice(name="results", value="results"),
-        app_commands.Choice(name="calculate", value="calculate"),
-        app_commands.Choice(name="close", value="close"),
-    ])
     async def admin(
-        self, 
-        interaction: discord.Interaction, 
-        action: app_commands.Choice[str],
-        data: str = None
+        self, interaction: discord.Interaction, action: app_commands.Choice[str], data: str = None
     ):
         """Admin command hub."""
         if not self.is_admin(interaction.user):
             await interaction.response.send_message(
-                "❌ You don't have permission to use admin commands.",
-                ephemeral=True
+                "❌ You don't have permission to use admin commands.", ephemeral=True
             )
             return
 
@@ -62,18 +57,15 @@ class AdminCommands(commands.Cog):
             await interaction.response.send_message(
                 "❌ Please provide fixture data. Format:\n"
                 "```\n/admin fixture Lech - Legia\nPogoń - Arka\n...```",
-                ephemeral=True
+                ephemeral=True,
             )
             return
 
         # Parse games (one per line)
         games = [line.strip() for line in data.strip().split("\n") if line.strip()]
-        
+
         if len(games) < 1:
-            await interaction.response.send_message(
-                "❌ No games provided!",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ No games provided!", ephemeral=True)
             return
 
         # Get next week number
@@ -94,7 +86,7 @@ class AdminCommands(commands.Cog):
         lines = [f"✅ **Week {week_number} Fixture Created**\n"]
         for i, game in enumerate(games, 1):
             lines.append(f"{i}. {game}")
-        
+
         deadline_str = deadline.strftime("%A, %B %d at %H:%M")
         lines.append(f"\n**Deadline:** {deadline_str}")
         lines.append(f"**Fixture ID:** {fixture_id}")
@@ -105,18 +97,14 @@ class AdminCommands(commands.Cog):
         """Enter results for current fixture."""
         if not data:
             await interaction.response.send_message(
-                "❌ Please provide results. Format:\n"
-                "```\n/admin results 2-1\n1-0\n3-3\n...```",
-                ephemeral=True
+                "❌ Please provide results. Format:\n```\n/admin results 2-1\n1-0\n3-3\n...```",
+                ephemeral=True,
             )
             return
 
         fixture = await self.db.get_current_fixture()
         if not fixture:
-            await interaction.response.send_message(
-                "❌ No active fixture found!",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ No active fixture found!", ephemeral=True)
             return
 
         # Parse results (one per line)
@@ -125,19 +113,18 @@ class AdminCommands(commands.Cog):
 
         if len(results) != expected_count:
             await interaction.response.send_message(
-                f"❌ Expected {expected_count} results, got {len(results)}",
-                ephemeral=True
+                f"❌ Expected {expected_count} results, got {len(results)}", ephemeral=True
             )
             return
 
         # Validate format
         from typer_bot.utils import parse_predictions
+
         parsed, errors = parse_predictions(" ".join(results), expected_count)
-        
+
         if errors:
             await interaction.response.send_message(
-                f"❌ Invalid results format:\n```\n{chr(10).join(errors)}```",
-                ephemeral=True
+                f"❌ Invalid results format:\n```\n{chr(10).join(errors)}```", ephemeral=True
             )
             return
 
@@ -157,45 +144,38 @@ class AdminCommands(commands.Cog):
         """Calculate scores for current fixture."""
         fixture = await self.db.get_current_fixture()
         if not fixture:
-            await interaction.response.send_message(
-                "❌ No active fixture found!",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ No active fixture found!", ephemeral=True)
             return
 
         results = await self.db.get_results(fixture["id"])
         if not results:
             await interaction.response.send_message(
-                "❌ No results entered for this fixture!\n"
-                "Use `/admin results` first.",
-                ephemeral=True
+                "❌ No results entered for this fixture!\nUse `/admin results` first.",
+                ephemeral=True,
             )
             return
 
         predictions = await self.db.get_all_predictions(fixture["id"])
-        
+
         if not predictions:
             await interaction.response.send_message(
-                "❌ No predictions found for this fixture!",
-                ephemeral=True
+                "❌ No predictions found for this fixture!", ephemeral=True
             )
             return
 
         # Calculate scores
         scores = []
         for pred in predictions:
-            score_data = calculate_points(
-                pred["predictions"],
-                results,
-                pred["is_late"]
+            score_data = calculate_points(pred["predictions"], results, pred["is_late"])
+            scores.append(
+                {
+                    "user_id": pred["user_id"],
+                    "user_name": pred["user_name"],
+                    "points": score_data["points"],
+                    "exact_scores": score_data["exact_scores"],
+                    "correct_results": score_data["correct_results"],
+                }
             )
-            scores.append({
-                "user_id": pred["user_id"],
-                "user_name": pred["user_name"],
-                "points": score_data["points"],
-                "exact_scores": score_data["exact_scores"],
-                "correct_results": score_data["correct_results"]
-            })
 
         # Sort by points
         scores.sort(key=lambda x: x["points"], reverse=True)
@@ -205,7 +185,7 @@ class AdminCommands(commands.Cog):
 
         # Build announcement
         lines = [f"🏆 **Week {fixture['week_number']} Results**\n"]
-        
+
         for i, score in enumerate(scores, 1):
             lines.append(
                 f"{i}. **{score['user_name']}**: {score['points']} pts "
@@ -218,17 +198,14 @@ class AdminCommands(commands.Cog):
         """Manually close current fixture."""
         fixture = await self.db.get_current_fixture()
         if not fixture:
-            await interaction.response.send_message(
-                "❌ No active fixture found!",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ No active fixture found!", ephemeral=True)
             return
 
         # This is handled automatically when calculating scores
         # But admins can force close if needed
         await interaction.response.send_message(
             f"⚠️ Week {fixture['week_number']} will be closed when you run `/admin calculate`.",
-            ephemeral=True
+            ephemeral=True,
         )
 
 

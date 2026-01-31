@@ -1,18 +1,16 @@
 """Main Discord bot implementation."""
 
+import logging
 import os
 import sys
-import logging
 import traceback
 from datetime import datetime
 
 import discord
-from discord import app_commands
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 from typer_bot.database import Database
-from typer_bot.utils import parse_predictions, format_standings, calculate_points
 
 # Load environment variables
 load_dotenv()
@@ -20,10 +18,8 @@ load_dotenv()
 # Configure logging with more detail
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
 
@@ -40,20 +36,16 @@ class TyperBot(commands.Bot):
         logger.info("Initializing TyperBot...")
         intents = discord.Intents.default()
         intents.message_content = True
-        
-        super().__init__(
-            command_prefix="!",
-            intents=intents,
-            help_command=None
-        )
-        
+
+        super().__init__(command_prefix="!", intents=intents, help_command=None)
+
         self.db = Database()
         logger.info("Database instance created")
 
     async def setup_hook(self):
         """Initialize database and load cogs."""
         logger.info("Running setup_hook...")
-        
+
         try:
             await self.db.initialize()
             logger.info("Database initialized successfully")
@@ -61,7 +53,7 @@ class TyperBot(commands.Bot):
             logger.error(f"Database initialization failed: {e}")
             logger.error(traceback.format_exc())
             raise
-        
+
         # Load command cogs
         logger.info("Loading command cogs...")
         try:
@@ -71,7 +63,7 @@ class TyperBot(commands.Bot):
             logger.error(f"Failed to load user_commands: {e}")
             logger.error(traceback.format_exc())
             raise
-            
+
         try:
             await self.load_extension("typer_bot.commands.admin_commands")
             logger.info("Loaded admin_commands")
@@ -79,7 +71,7 @@ class TyperBot(commands.Bot):
             logger.error(f"Failed to load admin_commands: {e}")
             logger.error(traceback.format_exc())
             raise
-        
+
         # Sync commands
         logger.info("Syncing slash commands...")
         try:
@@ -88,7 +80,7 @@ class TyperBot(commands.Bot):
         except Exception as e:
             logger.error(f"Failed to sync commands: {e}")
             logger.error(traceback.format_exc())
-        
+
         # Start scheduled tasks
         logger.info("Starting reminder task...")
         self.reminder_task.start()
@@ -115,12 +107,12 @@ class TyperBot(commands.Bot):
     async def reminder_task(self):
         """Check for reminders to send."""
         now = datetime.now()
-        
+
         # Thursday 19:00 reminder
         if now.weekday() == 3 and now.hour == 19 and now.minute == 0:
             logger.info("Sending Thursday reminder...")
             await self.send_reminder("Thursday evening")
-        
+
         # Friday 17:00 reminder
         if now.weekday() == 4 and now.hour == 17 and now.minute == 0:
             logger.info("Sending Friday reminder...")
@@ -132,7 +124,7 @@ class TyperBot(commands.Bot):
         if not channel_id:
             logger.warning("REMINDER_CHANNEL_ID not set, skipping reminder")
             return
-        
+
         try:
             channel = self.get_channel(int(channel_id))
             if channel:
@@ -163,21 +155,21 @@ class TyperBot(commands.Bot):
 def main():
     """Run the bot."""
     logger.info("Starting main()...")
-    
+
     token = os.getenv("DISCORD_TOKEN")
     if not token:
         logger.error("❌ DISCORD_TOKEN environment variable not set!")
         logger.error("Please set DISCORD_TOKEN in Railway variables")
         sys.exit(1)
-    
+
     if token == "your_bot_token_here":
         logger.error("❌ DISCORD_TOKEN is set to placeholder value!")
         logger.error("Please update it with your actual bot token")
         sys.exit(1)
-    
+
     logger.info(f"Token check: Token starts with '{token[:20]}...'")
     logger.info("Creating TyperBot instance...")
-    
+
     try:
         bot = TyperBot()
         logger.info("Starting bot.run()...")
