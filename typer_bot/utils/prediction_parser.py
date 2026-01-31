@@ -29,15 +29,41 @@ def parse_predictions(input_text: str, expected_count: int = 9) -> tuple[list[st
     for match in matches:
         home = match.group(1)
         away = match.group(2)
-        # Validate single digits only (no double-digit scores in football usually)
-        if len(home) > 1 or len(away) > 1:
-            errors.append(f"Invalid score: {home}-{away} (double digits not allowed)")
-            continue
         predictions.append(f"{home}-{away}")
 
     # Check count
     if len(predictions) != expected_count:
         errors.append(f"Expected {expected_count} scores, found {len(predictions)}")
+
+    return predictions, errors
+
+
+def parse_line_predictions(lines: list[str], games: list[str]) -> tuple[list[str], list[str]]:
+    """Parse predictions line-by-line with game context.
+
+    Each line should contain a score at the end in format like "2:0" or "2-1".
+
+    Args:
+        lines: List of text lines, one per game
+        games: List of game names for context
+
+    Returns: (valid_predictions, errors)
+    """
+    predictions = []
+    errors = []
+
+    if len(lines) != len(games):
+        errors.append(f"Expected {len(games)} lines, got {len(lines)}")
+        return predictions, errors
+
+    for i, line in enumerate(lines):
+        match = re.search(r"(\d+)\s*[-:]\s*(\d+)\s*$", line.strip())
+        if match:
+            home_score = match.group(1)
+            away_score = match.group(2)
+            predictions.append(f"{home_score}-{away_score}")
+        else:
+            errors.append(f"Line {i + 1}: Could not find score (expected format: '2:0' or '2-1')")
 
     return predictions, errors
 
