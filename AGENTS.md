@@ -58,12 +58,15 @@ scores (
 - `typer_bot/utils/prediction_parser.py`: Central logic for parsing "2-1" or "2:1" strings.
 - `typer_bot/utils/scoring.py`: Point calculation rules.
 - `typer_bot/utils/logger.py`: structured logging configuration for Railway.
+- `typer_bot/utils/db_backup.py`: Automatic database backup after fixture completion.
+- `scripts/restore_db.py`: Manual database restore via Railway console.
 
 ## 5. Common Tasks
 - **Fixing Parsing:** Edit `prediction_parser.py`.
 - **New Commands:** Add Cog to `commands/` folder, load in `bot.py`.
 - **Database Changes:** Edit `database.py` `initialize()` (Handle migrations manually if needed).
 - **Debugging:** Check `utils/logger.py` for config. Set `LOG_LEVEL=DEBUG` in env.
+- **Database Restore:** Use `scripts/restore_db.py` from Railway console for manual database restoration from backups.
 
 ## 6. Known Quirks
 - **Double Digits:** Scores like `10-0` are allowed.

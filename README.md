@@ -60,9 +60,20 @@ python -m typer_bot
 
 ## Importing History
 If you have a bunch of old scores you want to keep:
-1. Put `.sql` files in the `archive/` folder (check `example_import.sql` for the format).
-2. Start the bot with a fresh database.
+1. Put `.sql` files in `archive/` folder (check `example_import.sql` for format).
+2. Start bot with a fresh database.
 3. It'll import them automatically.
+
+## Backup and Restore
+
+**Automatic:** Database backed up automatically after each `/admin calculate`. Stored in `/app/data/backups/`, last 10 kept.
+
+**Manual Restore:** Run from Railway console (requires shell access):
+```bash
+ls /app/data/backups/
+python scripts/restore_db.py /app/data/backups/backup_*.sql
+```
+Type "YES" to confirm. Current DB backed up to `.bak` file before restore.
 
 ## License
 MIT. Do whatever you want with it.

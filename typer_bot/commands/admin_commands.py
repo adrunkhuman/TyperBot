@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from typer_bot.database import Database
 from typer_bot.utils import calculate_points, parse_line_predictions
+from typer_bot.utils.db_backup import create_backup, cleanup_old_backups
 
 # user_id -> {"channel_id": int, "guild_id": int, "games": list, "deadline": datetime, "step": str}
 pending_fixtures = {}
@@ -417,7 +418,15 @@ class AdminCommands(commands.Cog):
 
         scores.sort(key=lambda x: x["points"], reverse=True)
         await self.db.save_scores(fixture["id"], scores)
-
+        try:
+            await self.bot.loop.run_in_executor(
+                None, lambda: create_backup(self.db.db_path, "/app/data/backups")
+            )
+            await self.bot.loop.run_in_executor(
+                None, lambda: cleanup_old_backups("/app/data/backups", keep=10)
+            )
+        except Exception as e:
+            logger.warning(f"Backup failed but calculation succeeded: {e}")
         lines = [f"🏆 **Week {fixture['week_number']} Results**\n"]
         for i, score in enumerate(scores, 1):
             lines.append(
