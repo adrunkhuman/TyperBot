@@ -4,25 +4,29 @@ A Discord bot for managing weekly football prediction games with friends.
 
 ## Features
 
-- **Easy Predictions**: Users submit predictions via simple `/predict 2-1 1-0 3-3...` command
-- **Flexible Input**: Accepts `2-1`, `2:1`, `2 - 1`, `2- 1` formats
-- **Admin Controls**: Create fixtures, enter results, calculate scores
+- **DM-Based Predictions**: Interactive workflow via DMs for entering predictions
+- **Inline Format**: Users see fixtures while predicting (`Team A - Team B 2:0`)
+- **Admin DM Workflow**: Create fixtures and enter results through DMs
+- **Custom Deadlines**: Admins can set custom deadlines when creating fixtures
+- **Flexible Input**: Accepts `2-1`, `2:1`, `2 - 1` for scores
 - **Automatic Reminders**: Posts reminders Thursday 19:00 and Friday 17:00
 - **Leaderboards**: View overall standings and last week's results
 - **Late Penalty**: Predictions after deadline get -100% penalty
+- **Delete Fixtures**: Remove fixtures and clean database
 
 ## Commands
 
 ### User Commands
-- `/predict <scores>` - Submit predictions (e.g., `/predict 2-1 1-0 3-3...`)
+- `/predict` - Start prediction submission (bot DMs you with fixture list)
 - `/fixtures` - View current week's games
 - `/standings` - View overall leaderboard
 - `/mypredictions` - View your current predictions
 
 ### Admin Commands
-- `/admin fixture <games>` - Create new fixture (paste 9-12 games, one per line)
-- `/admin results <scores>` - Enter actual results
+- `/admin fixture` - Create new fixture via DM workflow
+- `/admin results` - Enter results via DM workflow
 - `/admin calculate` - Calculate and post scores
+- `/admin delete` - Delete current fixture and clean database
 
 ## Setup
 
@@ -96,37 +100,75 @@ python -m typer_bot
 1. Create a Discord role called `typer-admin` (or use existing `Admin` role)
 2. Assign this role to prediction admins
 3. Admins can now use `/admin` commands
+4. **Important**: Admins must allow DMs from server members for the bot to work
 
 ## How It Works
 
 ### Weekly Flow
 
-1. **Tuesday**: Admin creates fixture with `/admin fixture`
-   ```
-   /admin fixture Lech - Legia
-   Pogoń - Arka
-   Wisła - Cracovia
-   ...
-   ```
+1. **Tuesday**: Admin creates fixture
+   - Type `/admin` → select "fixture"
+   - Bot DMs admin asking for fixture list
+   - Send games (one per line):
+     ```
+     Lech - Legia
+     Pogoń - Arka
+     Wisła - Cracovia
+     ...
+     ```
+   - Choose deadline (default: next Friday 18:00, or custom date)
+   - Preview and confirm
 
 2. **Wednesday-Thursday**: Users submit predictions
-   ```
-   /predict 2-1 1-0 3-3 0-2 1-1 2-0 1-2 0-1 2-2
-   ```
+   - Type `/predict`
+   - Bot DMs user with fixture list
+   - Reply with predictions in format:
+     ```
+     Lech - Legia 2:1
+     Pogoń - Arka 0:0
+     Wisła - Cracovia 1:2
+     ...
+     ```
+   - Preview and confirm
 
 3. **Thursday 19:00**: Bot posts reminder
 
 4. **Friday 17:00**: Bot posts final reminder
 
 5. **After games**: Admin enters results
-   ```
-   /admin results 2-1 0-0 3-1 1-2 1-1 2-0 0-0 2-1 1-0
-   ```
+   - Type `/admin` → select "results"
+   - Bot DMs admin with fixture list
+   - Reply with actual scores:
+     ```
+     Lech - Legia 1:0
+     Pogoń - Arka 2:2
+     Wisła - Cracovia 0:1
+     ...
+     ```
+   - Preview and confirm
 
-6. **Admin calculates**: `/admin calculate`
+6. **Admin calculates**: `/admin` → "calculate"
    - Bot calculates points
    - Posts results to channel
    - Updates leaderboard
+
+### Input Formats
+
+**Predictions/Results (in DMs):**
+```
+Team A - Team B 2:0
+Team C - Team D 1:1
+Team E - Team F 0:2
+```
+
+Score separators: `2:0`, `2-0`, `2 : 0`, `2 - 0` all work
+
+**Fixtures (in DMs):**
+```
+Lech Poznań - Legia Warszawa
+Pogoń Szczecin - Arka Gdynia
+...
+```
 
 ### Scoring
 
@@ -135,13 +177,44 @@ python -m typer_bot
 - **Wrong**: 0 points
 - **Late prediction**: -100% penalty (0 points)
 
+### Custom Deadlines
+
+When creating a fixture, you can:
+- Use default (next Friday 18:00)
+- Set custom deadline with formats:
+  - `2024-02-15 18:00`
+  - `15.02.2024 18:00`
+  - `15/02/2024 18:00`
+
+### Deleting Fixtures
+
+To remove a test fixture or start over:
+- Type `/admin` → "delete"
+- Bot shows current fixture
+- Confirm deletion
+- **Warning**: This deletes the fixture, all predictions, results, and scores
+
 ## Database
 
 Uses SQLite with persistent storage on Railway. Tables:
 - `fixtures`: Weekly game fixtures
-- `predictions`: User predictions
+- `predictions`: User predictions  
 - `results`: Actual game results
 - `scores`: Calculated points per user per week
+
+## Troubleshooting
+
+**"I can't send you DMs" error:**
+- User needs to enable DMs from server members
+- Server Settings > Privacy Settings > Allow DMs from server members
+
+**Commands not showing:**
+- Bot needs "Use Slash Commands" permission
+- May take up to 1 hour for commands to sync globally
+
+**Bot not responding to DMs:**
+- Make sure you're not blocking the bot
+- Check that `message_content` intent is enabled in Discord Developer Portal
 
 ## Project Structure
 
