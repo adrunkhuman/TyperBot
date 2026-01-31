@@ -1,6 +1,5 @@
 """User-facing Discord commands."""
 
-import re
 from datetime import datetime
 
 import discord
@@ -8,7 +7,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from typer_bot.database import Database
-from typer_bot.utils import format_standings
+from typer_bot.utils import format_standings, parse_line_predictions
 
 # Store pending predictions: user_id -> (fixture_id, games)
 pending_predictions = {}
@@ -56,32 +55,8 @@ class UserCommands(commands.Cog):
             is_late = now > fixture["deadline"]
 
             # Parse predictions from user's message
-            # Expected format: "Team A - Team B 2:0" or "Team A - Team B 2-1"
             lines = message.content.strip().split("\n")
-            predictions = []
-            errors = []
-
-            if len(lines) != len(games):
-                errors.append(f"Expected {len(games)} lines, got {len(lines)}")
-            else:
-                for i, (line, _game) in enumerate(zip(lines, games, strict=False)):
-                    # Try to extract score at the end of the line
-                    # Pattern: anything followed by score like "2:0" or "2-1"
-                    match = re.search(r"(\d+)\s*[-:]\s*(\d+)\s*$", line.strip())
-                    if match:
-                        home_score = match.group(1)
-                        away_score = match.group(2)
-                        # Validate single digits
-                        if len(home_score) > 1 or len(away_score) > 1:
-                            errors.append(
-                                f"Line {i + 1}: Double-digit scores not allowed ({home_score}-{away_score})"
-                            )
-                        else:
-                            predictions.append(f"{home_score}-{away_score}")
-                    else:
-                        errors.append(
-                            f"Line {i + 1}: Could not find score (expected format: '2:0' or '2-1')"
-                        )
+            predictions, errors = parse_line_predictions(lines, games)
 
             if errors:
                 error_msg = "\n".join(errors)
