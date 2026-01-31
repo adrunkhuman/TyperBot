@@ -1,5 +1,6 @@
 """Admin Discord commands."""
 
+import logging
 from datetime import datetime, timedelta
 
 import discord
@@ -9,10 +10,16 @@ from discord.ext import commands
 from typer_bot.database import Database
 from typer_bot.utils import calculate_points, parse_line_predictions
 
-# Store pending fixture creation requests: user_id -> {"channel_id": int, "games": list, "deadline": datetime, "step": str}
+# user_id -> {"channel_id": int, "guild_id": int, "games": list, "deadline": datetime, "step": str}
 pending_fixtures = {}
-# Store pending results entry: user_id -> fixture_id
+
+# user_id -> {"fixture_id": int, "guild_id": int}
 pending_results = {}
+
+# Rate limiting: user_id -> timestamp
+_calculate_cooldowns = {}
+
+logger = logging.getLogger(__name__)
 
 
 class AdminCommands(commands.Cog):
@@ -23,17 +30,13 @@ class AdminCommands(commands.Cog):
         self.db: Database = bot.db
 
     def is_admin(self, member: discord.Member) -> bool:
-        """Check if member has admin role."""
-        admin_roles = {"Admin", "typer-admin"}
-        return any(role.name in admin_roles for role in member.roles)
+        """Check if member has admin role (case-insensitive)."""
+        admin_roles = {"admin", "typer-admin"}
+        return any(role.name.lower() in admin_roles for role in member.roles)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Listen for DMs from admins."""
-        import logging
-
-        logger = logging.getLogger(__name__)
-
         if message.author.bot or message.guild is not None:
             return
 
@@ -52,11 +55,33 @@ class AdminCommands(commands.Cog):
 
     async def _handle_fixture_dm(self, message: discord.Message, user_id: str):
         """Handle fixture creation DM."""
+        MAX_MESSAGE_LENGTH = 5000
+        MAX_GAMES = 100
+
+        if len(message.content) > MAX_MESSAGE_LENGTH:
+            await message.author.send(f"❌ Message too long! (max {MAX_MESSAGE_LENGTH} characters)")
+            return
+
+        # Re-verify admin status before processing
         state = pending_fixtures[user_id]
+        guild_id = state.get("guild_id")
+        if guild_id:
+            guild = self.bot.get_guild(guild_id)
+            if guild:
+                member = guild.get_member(int(user_id))
+                if not member or not self.is_admin(member):
+                    pending_fixtures.pop(user_id, None)
+                    await message.author.send("❌ Permission denied or session expired.")
+                    return
+
         step = state.get("step", "games")
 
         if step == "games":
             games = [line.strip() for line in message.content.strip().split("\n") if line.strip()]
+
+            if len(games) > MAX_GAMES:
+                await message.author.send(f"❌ Too many games! (max {MAX_GAMES})")
+                return
 
             if len(games) < 1:
                 await message.author.send(
@@ -117,7 +142,8 @@ class AdminCommands(commands.Cog):
                 await self._show_fixture_preview(message.author, user_id)
 
             except Exception as e:
-                await message.author.send(f"❌ Error parsing date: {e}\nPlease try again.")
+                logger.error(f"Error parsing date: {e}", exc_info=True)
+                await message.author.send("❌ Error parsing date. Please try again.")
 
     async def _show_fixture_preview(self, user: discord.User, user_id: str):
         """Show fixture preview with confirmation."""
@@ -163,9 +189,27 @@ class AdminCommands(commands.Cog):
 
         logger = logging.getLogger(__name__)
 
+        MAX_MESSAGE_LENGTH = 5000
+
+        if len(message.content) > MAX_MESSAGE_LENGTH:
+            await message.author.send(f"❌ Message too long! (max {MAX_MESSAGE_LENGTH} characters)")
+            return
+
         logger.info(f"Processing results DM from user {user_id}")
 
-        fixture_id = pending_results.pop(user_id)
+        result_data = pending_results.pop(user_id)
+        fixture_id = result_data["fixture_id"]
+        guild_id = result_data.get("guild_id")
+
+        # Re-verify admin status
+        if guild_id:
+            guild = self.bot.get_guild(guild_id)
+            if guild:
+                member = guild.get_member(int(user_id))
+                if not member or not self.is_admin(member):
+                    pending_results[user_id] = result_data
+                    await message.author.send("❌ Permission denied or session expired.")
+                    return
         fixture = await self.db.get_fixture_by_id(fixture_id)
 
         if not fixture:
@@ -193,7 +237,7 @@ class AdminCommands(commands.Cog):
                     f"Please send the results again in this format:\n"
                     f"```\n{fixture['games'][0]} 2:0\n{fixture['games'][1]} 1:1\n...\n```"
                 )
-                pending_results[user_id] = fixture_id
+                pending_results[user_id] = result_data
                 return
 
             preview_lines = [f"**Week {fixture['week_number']} Results Preview**\n"]
@@ -208,10 +252,8 @@ class AdminCommands(commands.Cog):
 
         except Exception as e:
             logger.error(f"Error processing results: {e}", exc_info=True)
-            await processing_msg.edit(
-                content=f"❌ Error processing results: {e}\n\nPlease try again."
-            )
-            pending_results[user_id] = fixture_id
+            await processing_msg.edit(content=f"❌ Error processing results. Please try again.")
+            pending_results[user_id] = result_data
 
     @app_commands.command(name="admin", description="Admin commands for managing fixtures")
     @app_commands.describe(action="Action to perform")
@@ -244,6 +286,7 @@ class AdminCommands(commands.Cog):
         """Initiate fixture creation via DM."""
         pending_fixtures[str(interaction.user.id)] = {
             "channel_id": interaction.channel_id,
+            "guild_id": interaction.guild_id,
             "step": "games",
         }
 
@@ -287,7 +330,10 @@ class AdminCommands(commands.Cog):
             )
             return
 
-        pending_results[str(interaction.user.id)] = fixture["id"]
+        pending_results[str(interaction.user.id)] = {
+            "fixture_id": fixture["id"],
+            "guild_id": interaction.guild_id,
+        }
 
         await interaction.response.send_message(
             "📩 Check your DMs! I've sent you instructions for entering results.",
@@ -320,6 +366,23 @@ class AdminCommands(commands.Cog):
 
     async def _calculate_scores(self, interaction: discord.Interaction):
         """Calculate scores for current fixture."""
+        # Rate limiting: 1 use per 30 seconds per user
+        CALCULATE_COOLDOWN = 30.0
+        user_id = str(interaction.user.id)
+        now = datetime.now().timestamp()
+
+        if user_id in _calculate_cooldowns:
+            last_used = _calculate_cooldowns[user_id]
+            if now - last_used < CALCULATE_COOLDOWN:
+                remaining = CALCULATE_COOLDOWN - (now - last_used)
+                await interaction.response.send_message(
+                    f"⏳ Please wait {remaining:.1f}s before calculating again.",
+                    ephemeral=True,
+                )
+                return
+
+        _calculate_cooldowns[user_id] = now
+
         fixture = await self.db.get_current_fixture()
         if not fixture:
             await interaction.response.send_message("❌ No active fixture found!", ephemeral=True)
@@ -368,6 +431,12 @@ class AdminCommands(commands.Cog):
 
     async def _delete_fixture(self, interaction: discord.Interaction):
         """Delete current fixture."""
+        if not self.is_admin(interaction.user):
+            await interaction.response.send_message(
+                "❌ You don't have permission to use this command.", ephemeral=True
+            )
+            return
+
         fixture = await self.db.get_current_fixture()
         if not fixture:
             await interaction.response.send_message(
@@ -375,7 +444,9 @@ class AdminCommands(commands.Cog):
             )
             return
 
-        view = DeleteConfirmView(self.db, fixture["id"], fixture["week_number"])
+        view = DeleteConfirmView(
+            self.db, str(interaction.user.id), fixture["id"], fixture["week_number"]
+        )
 
         lines = [f"**⚠️ Delete Week {fixture['week_number']}?**\n"]
         for i, game in enumerate(fixture["games"], 1):
@@ -396,6 +467,9 @@ class DeadlineChoiceView(discord.ui.View):
         super().__init__(timeout=120)
         self.db = db
         self.user_id = user_id
+
+    async def on_timeout(self):
+        pending_fixtures.pop(self.user_id, None)
 
     @discord.ui.button(label="✅ Use Default (Friday 18:00)", style=discord.ButtonStyle.primary)
     async def use_default(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -446,6 +520,9 @@ class FixtureConfirmView(discord.ui.View):
         self.channel = channel
         self.preview = preview
 
+    async def on_timeout(self):
+        pending_fixtures.pop(self.user_id, None)
+
     @discord.ui.button(label="✅ Create Fixture", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Save fixture to database and announce."""
@@ -495,6 +572,9 @@ class ResultsConfirmView(discord.ui.View):
         self.results = results
         self.preview = preview
 
+    async def on_timeout(self):
+        pending_results.pop(self.user_id, None)
+
     @discord.ui.button(label="✅ Save Results", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Save results to database."""
@@ -520,15 +600,26 @@ class ResultsConfirmView(discord.ui.View):
 class DeleteConfirmView(discord.ui.View):
     """View for confirming fixture deletion."""
 
-    def __init__(self, db: Database, fixture_id: int, week_number: int):
+    def __init__(self, db: Database, user_id: str, fixture_id: int, week_number: int):
         super().__init__(timeout=60)
         self.db = db
+        self.user_id = user_id
         self.fixture_id = fixture_id
         self.week_number = week_number
+
+    async def on_timeout(self):
+        pass
 
     @discord.ui.button(label="✅ Yes, Delete", style=discord.ButtonStyle.red)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Delete fixture from database."""
+        cog = interaction.client.get_cog("AdminCommands")
+        if not cog or not cog.is_admin(interaction.user):
+            await interaction.response.send_message(
+                "❌ You don't have permission to do this!", ephemeral=True
+            )
+            return
+
         await self.db.delete_fixture(self.fixture_id)
 
         await interaction.response.edit_message(
@@ -538,6 +629,13 @@ class DeleteConfirmView(discord.ui.View):
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.gray)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Cancel deletion."""
+        cog = interaction.client.get_cog("AdminCommands")
+        if not cog or not cog.is_admin(interaction.user):
+            await interaction.response.send_message(
+                "❌ You don't have permission to do this!", ephemeral=True
+            )
+            return
+
         await interaction.response.edit_message(
             content="❌ Deletion cancelled. The fixture is still active.", view=None
         )

@@ -7,7 +7,6 @@ from datetime import datetime
 
 import aiohttp
 
-# Database path - update this for Railway
 DB_PATH = os.getenv("DB_PATH", "/app/data/typer.db")
 
 
@@ -37,17 +36,17 @@ def parse_prediction_line(line: str) -> tuple[str, str] | None:
     if not line:
         return None
 
-    # Pattern 1: Standard format "Team A – Team B 2:0"
+    # Standard format: "Team A – Team B 2:0"
     match = re.search(r"(\d+)\s*[-:]\s*(\d+)\s*$", line)
     if match:
         return match.group(1), match.group(2)
 
-    # Pattern 2: Reversed "Team A 2:0 Team B"
+    # Reversed: "Team A 2:0 Team B"
     match = re.search(r"(\d+)\s*[-:]\s*(\d+)\s+\w", line)
     if match:
         return match.group(1), match.group(2)
 
-    # Pattern 3: En-dash format "Team A 2 – 2 Team B"
+    # En-dash format: "Team A 2 – 2 Team B"
     match = re.search(r"(\d+)\s*–\s*(\d+)", line)
     if match:
         return match.group(1), match.group(2)
@@ -60,14 +59,11 @@ def parse_data_file(filepath: str) -> tuple[list[str], dict]:
     with open(filepath, encoding="utf-8") as f:
         content = f.read()
 
-    # Split into sections
     sections = content.split("\n\n")
 
-    # Parse games (first section after "Games:")
     games_section = sections[0].replace("Games:\n", "").strip()
     games = [line.strip() for line in games_section.split("\n") if line.strip()]
 
-    # Parse predictions
     predictions = {}
     current_user = None
     current_predictions = []
@@ -77,19 +73,15 @@ def parse_data_file(filepath: str) -> tuple[list[str], dict]:
         if not lines:
             continue
 
-        # Check if first line is a user ID (all digits)
         first_line = lines[0].strip()
         if first_line.isdigit():
-            # Save previous user's predictions
             if current_user and current_predictions:
                 predictions[current_user] = current_predictions
 
-            # Start new user
             current_user = first_line
             current_predictions = []
-            lines = lines[1:]  # Remove user ID from lines
+            lines = lines[1:]
 
-        # Parse prediction lines for current user
         for line in lines:
             line = line.strip()
             if not line or line.startswith("Predictions:"):
@@ -99,7 +91,6 @@ def parse_data_file(filepath: str) -> tuple[list[str], dict]:
             if score:
                 current_predictions.append(f"{score[0]}-{score[1]}")
 
-    # Save last user
     if current_user and current_predictions:
         predictions[current_user] = current_predictions
 
@@ -110,31 +101,25 @@ async def import_data(bot_token: str):
     """Import historical data into database."""
     from typer_bot.database.database import Database
 
-    # Parse data file
     games, predictions = parse_data_file("data.txt")
 
     print(f"Found {len(games)} games")
     print(f"Found {len(predictions)} users with predictions")
 
-    # Initialize database
     db = Database(DB_PATH)
     await db.initialize()
 
-    # Create fixture
     deadline = datetime(2026, 1, 29, 18, 0, 0)
     fixture_id = await db.create_fixture(1, games, deadline)
     print(f"Created fixture with ID: {fixture_id}")
 
-    # Fetch usernames and insert predictions
     for user_id, user_predictions in predictions.items():
-        # Ensure we have exactly 10 predictions
+        # Backfill missing predictions with 0-0
         while len(user_predictions) < 10:
-            user_predictions.append("0-0")  # Default for missing
+            user_predictions.append("0-0")
 
-        # Fetch username
         username = await fetch_discord_username(user_id, bot_token)
 
-        # Insert prediction
         await db.save_prediction(
             fixture_id=fixture_id,
             user_id=user_id,
@@ -153,13 +138,13 @@ async def import_data(bot_token: str):
 if __name__ == "__main__":
     import sys
 
-    if len(sys.argv) < 2:
-        print("Usage: python import_historical.py <DISCORD_BOT_TOKEN>")
+    bot_token = os.getenv("DISCORD_TOKEN")
+    if not bot_token:
+        print("Error: DISCORD_TOKEN environment variable not set!")
+        print("\nTo run locally:")
+        print("  DISCORD_TOKEN=your_token python import_historical.py")
         print("\nTo run on Railway:")
-        print("1. railway login")
-        print("2. railway connect")
-        print("3. python import_historical.py $DISCORD_TOKEN")
+        print("  railway run python import_historical.py")
         sys.exit(1)
 
-    bot_token = sys.argv[1]
     asyncio.run(import_data(bot_token))

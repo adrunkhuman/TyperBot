@@ -82,6 +82,41 @@ class TyperBot(commands.Bot):
         self.reminder_task.start()
         logger.info("Setup hook complete")
 
+    def _validate_archive_sql(self, sql_content: str) -> bool:
+        """Validate that SQL only contains safe INSERT statements.
+
+        Blocks any statements that could modify schema or delete data.
+        """
+        import re
+
+        normalized = re.sub(r"--.*?$", "", sql_content, flags=re.MULTILINE)
+        normalized = re.sub(r"/\*.*?\*/", "", normalized, flags=re.DOTALL)
+        normalized = normalized.upper()
+
+        dangerous = [
+            "DROP",
+            "DELETE",
+            "UPDATE",
+            "ALTER",
+            "CREATE",
+            "TRUNCATE",
+            "REPLACE",
+            "ATTACH",
+            "DETACH",
+            "PRAGMA",
+        ]
+
+        for keyword in dangerous:
+            if re.search(rf"\b{keyword}\b", normalized):
+                return False
+
+        statements = [s.strip() for s in normalized.split(";") if s.strip()]
+        for stmt in statements:
+            if not stmt.startswith("INSERT"):
+                return False
+
+        return True
+
     async def _run_archive_imports(self):
         """Run SQL files from archive folder if database is empty."""
         import glob
@@ -110,6 +145,10 @@ class TyperBot(commands.Bot):
                 try:
                     with open(sql_file, encoding="utf-8") as f:
                         sql_content = f.read()
+
+                    if not self._validate_archive_sql(sql_content):
+                        logger.error(f"❌ Rejected {sql_file}: contains non-INSERT statements")
+                        continue
 
                     async with aiosqlite.connect(self.db.db_path) as db:
                         await db.executescript(sql_content)
@@ -201,9 +240,9 @@ class TyperBot(commands.Bot):
             logger.error(traceback.format_exc())
 
     def is_admin(self, user: discord.Member) -> bool:
-        """Check if user has admin role."""
-        admin_roles = {"Admin", "typer-admin"}
-        return any(role.name in admin_roles for role in user.roles)
+        """Check if user has admin role (case-insensitive)."""
+        admin_roles = {"admin", "typer-admin"}
+        return any(role.name.lower() in admin_roles for role in user.roles)
 
 
 def main():

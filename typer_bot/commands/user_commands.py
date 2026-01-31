@@ -9,7 +9,7 @@ from discord.ext import commands
 from typer_bot.database import Database
 from typer_bot.utils import format_standings, parse_line_predictions
 
-# Store pending predictions: user_id -> (fixture_id, games)
+# user_id -> (fixture_id, games)
 pending_predictions = {}
 
 
@@ -35,6 +35,13 @@ class UserCommands(commands.Cog):
             f"[USER] on_message from user {user_id}, pending_predictions={user_id in pending_predictions}"
         )
         if user_id not in pending_predictions:
+            return
+
+        MAX_MESSAGE_LENGTH = 5000
+
+        if len(message.content) > MAX_MESSAGE_LENGTH:
+            await message.author.send(f"❌ Message too long! (max {MAX_MESSAGE_LENGTH} characters)")
+            pending_predictions.pop(user_id, None)
             return
 
         fixture_id, games = pending_predictions.pop(user_id)
@@ -105,6 +112,7 @@ class UserCommands(commands.Cog):
     @app_commands.command(
         name="predict", description="Submit your predictions for this week's fixtures"
     )
+    @app_commands.checks.cooldown(1, 1.0)
     async def predict(self, interaction: discord.Interaction):
         """Initiate prediction submission via DM."""
         fixture = await self.db.get_current_fixture()
@@ -232,9 +240,9 @@ class UserCommands(commands.Cog):
         await interaction.response.send_message(help_text, ephemeral=True)
 
     def _is_admin(self, member: discord.Member) -> bool:
-        """Check if member has admin role."""
-        admin_roles = {"Admin", "typer-admin"}
-        return any(role.name in admin_roles for role in member.roles)
+        """Check if member has admin role (case-insensitive)."""
+        admin_roles = {"admin", "typer-admin"}
+        return any(role.name.lower() in admin_roles for role in member.roles)
 
     @app_commands.command(name="fixtures", description="View this week's fixtures")
     async def fixtures(self, interaction: discord.Interaction):
@@ -328,6 +336,9 @@ class PredictionConfirmView(discord.ui.View):
         self.predictions = predictions
         self.is_late = is_late
         self.preview = preview
+
+    async def on_timeout(self):
+        pending_predictions.pop(str(self.user_id), None)
 
     @discord.ui.button(label="✅ Submit Predictions", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
