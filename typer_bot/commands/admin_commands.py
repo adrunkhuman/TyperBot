@@ -1,6 +1,5 @@
 """Admin Discord commands."""
 
-import re
 from datetime import datetime, timedelta
 
 import discord
@@ -8,7 +7,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from typer_bot.database import Database
-from typer_bot.utils import calculate_points
+from typer_bot.utils import calculate_points, parse_line_predictions
 
 # Store pending fixture creation requests: user_id -> {"channel_id": int, "games": list, "deadline": datetime, "step": str}
 pending_fixtures = {}
@@ -195,33 +194,13 @@ class AdminCommands(commands.Cog):
             # Parse results from DM
             content = message.content.strip()
             lines = content.split("\n")
-            results = []
-            errors = []
 
             logger.info(f"Received {len(lines)} lines, expected {len(fixture['games'])}")
 
-            if len(lines) != len(fixture["games"]):
-                errors.append(f"Expected {len(fixture['games'])} lines, got {len(lines)}")
-            else:
-                for i, line in enumerate(lines):
-                    logger.info(f"Processing line {i + 1}: '{line}'")
-                    # More flexible regex to handle various formats
-                    match = re.search(r"(\d+)\s*[-:]\s*(\d+)\s*$", line.strip())
-                    if match:
-                        home_score = match.group(1)
-                        away_score = match.group(2)
-                        if len(home_score) > 1 or len(away_score) > 1:
-                            errors.append(
-                                f"Line {i + 1}: Double-digit scores not allowed ({home_score}-{away_score})"
-                            )
-                        else:
-                            results.append(f"{home_score}-{away_score}")
-                            logger.info(f"Parsed score: {home_score}-{away_score}")
-                    else:
-                        errors.append(
-                            f"Line {i + 1}: Could not find score (expected format: '2:0' or '2-1')"
-                        )
-                        logger.warning(f"No score found in line {i + 1}: '{line}'")
+            results, errors = parse_line_predictions(lines, fixture["games"])
+
+            if results:
+                logger.info(f"Successfully parsed {len(results)} scores")
 
             if errors:
                 error_msg = "\n".join(errors)
