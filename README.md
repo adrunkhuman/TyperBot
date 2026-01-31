@@ -36,10 +36,11 @@ I recommend **Railway** because it's cheap/free and supports persistent storage 
    - Mount path: `/app/data`
    - If you skip this, your database will vanish every time you deploy.
 4. Set Variables:
-   - `DISCORD_TOKEN`: Get this from Discord Developer Portal.
-   - `DB_PATH`: `/app/data/typer.db`
-   - `REMINDER_CHANNEL_ID`: (Optional) ID of channel to spam reminders in.
-   - `LOG_LEVEL`: (Optional) Set to `DEBUG` for verbose logs. Default `INFO`.
+    - `DISCORD_TOKEN`: Get this from Discord Developer Portal.
+    - `DB_PATH`: `/app/data/typer.db`
+    - `REMINDER_CHANNEL_ID`: (Optional) ID of channel to spam reminders in.
+    - `LOG_LEVEL`: (Optional) Set to `DEBUG` for verbose logs. Default `INFO`.
+    - `IMPORT_ARCHIVE`: (Optional) Set to `true` to import `.sql` files from `archive/` on first run. Default: disabled.
 
 ## Running Locally
 
