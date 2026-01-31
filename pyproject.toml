@@ -2,7 +2,7 @@
 name = "typer-bot"
 version = "0.1.0"
 description = "Discord bot for football predictions"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 authors = [
     {name = "Typer Team"}
 ]
@@ -30,7 +30,7 @@ packages = ["typer_bot"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
