@@ -12,6 +12,8 @@ from typer_bot.utils import format_standings, parse_line_predictions
 # user_id -> (fixture_id, games)
 pending_predictions = {}
 
+MAX_MESSAGE_LENGTH = 5000
+
 
 class UserCommands(commands.Cog):
     """Commands for regular users."""
@@ -36,8 +38,6 @@ class UserCommands(commands.Cog):
         )
         if user_id not in pending_predictions:
             return
-
-        MAX_MESSAGE_LENGTH = 5000
 
         if len(message.content) > MAX_MESSAGE_LENGTH:
             await message.author.send(f"❌ Message too long! (max {MAX_MESSAGE_LENGTH} characters)")

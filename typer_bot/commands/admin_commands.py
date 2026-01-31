@@ -19,6 +19,11 @@ pending_results = {}
 # Rate limiting: user_id -> timestamp
 _calculate_cooldowns = {}
 
+# Security limits
+MAX_MESSAGE_LENGTH = 5000
+MAX_GAMES = 100
+CALCULATE_COOLDOWN = 30.0
+
 logger = logging.getLogger(__name__)
 
 
@@ -55,9 +60,6 @@ class AdminCommands(commands.Cog):
 
     async def _handle_fixture_dm(self, message: discord.Message, user_id: str):
         """Handle fixture creation DM."""
-        MAX_MESSAGE_LENGTH = 5000
-        MAX_GAMES = 100
-
         if len(message.content) > MAX_MESSAGE_LENGTH:
             await message.author.send(f"❌ Message too long! (max {MAX_MESSAGE_LENGTH} characters)")
             return
@@ -189,8 +191,6 @@ class AdminCommands(commands.Cog):
 
         logger = logging.getLogger(__name__)
 
-        MAX_MESSAGE_LENGTH = 5000
-
         if len(message.content) > MAX_MESSAGE_LENGTH:
             await message.author.send(f"❌ Message too long! (max {MAX_MESSAGE_LENGTH} characters)")
             return
@@ -252,7 +252,7 @@ class AdminCommands(commands.Cog):
 
         except Exception as e:
             logger.error(f"Error processing results: {e}", exc_info=True)
-            await processing_msg.edit(content=f"❌ Error processing results. Please try again.")
+            await processing_msg.edit(content="❌ Error processing results. Please try again.")
             pending_results[user_id] = result_data
 
     @app_commands.command(name="admin", description="Admin commands for managing fixtures")
@@ -366,8 +366,6 @@ class AdminCommands(commands.Cog):
 
     async def _calculate_scores(self, interaction: discord.Interaction):
         """Calculate scores for current fixture."""
-        # Rate limiting: 1 use per 30 seconds per user
-        CALCULATE_COOLDOWN = 30.0
         user_id = str(interaction.user.id)
         now = datetime.now().timestamp()
 
