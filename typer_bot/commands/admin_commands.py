@@ -56,13 +56,13 @@ class AdminCommands(commands.Cog):
         if not data:
             await interaction.response.send_message(
                 "❌ Please provide fixture data. Format:\n"
-                "```\n/admin fixture Lech - Legia\nPogoń - Arka\n...```",
+                "```\n/admin fixture Lech - Legia, Pogoń - Arka, Wisła - Cracovia...```",
                 ephemeral=True,
             )
             return
 
-        # Parse games (one per line)
-        games = [line.strip() for line in data.strip().split("\n") if line.strip()]
+        # Parse games (comma-separated)
+        games = [game.strip() for game in data.strip().split(",") if game.strip()]
 
         if len(games) < 1:
             await interaction.response.send_message("❌ No games provided!", ephemeral=True)
@@ -106,7 +106,8 @@ class AdminCommands(commands.Cog):
         """Enter results for current fixture."""
         if not data:
             await interaction.response.send_message(
-                "❌ Please provide results. Format:\n```\n/admin results 2-1\n1-0\n3-3\n...```",
+                "❌ Please provide results. Format:\n```\n/admin results 2-1, 1-0, 3-3...```\n"
+                "Or with spaces:```\n/admin results 2-1 1-0 3-3...```",
                 ephemeral=True,
             )
             return
@@ -116,8 +117,8 @@ class AdminCommands(commands.Cog):
             await interaction.response.send_message("❌ No active fixture found!", ephemeral=True)
             return
 
-        # Parse results (one per line)
-        results = [line.strip() for line in data.strip().split("\n") if line.strip()]
+        # Parse results (comma or space-separated)
+        results = [r.strip() for r in data.replace(",", " ").split() if r.strip()]
         expected_count = len(fixture["games"])
 
         if len(results) != expected_count:
