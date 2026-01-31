@@ -16,13 +16,12 @@ async def fetch_discord_username(user_id: str, bot_token: str) -> str:
     url = f"https://discord.com/api/v10/users/{user_id}"
     headers = {"Authorization": f"Bot {bot_token}"}
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers) as response:
-            if response.status == 200:
-                data = await response.json()
-                return data.get("username", f"User_{user_id[:8]}")
-            else:
-                return f"User_{user_id[:8]}"
+    async with aiohttp.ClientSession() as session, session.get(url, headers=headers) as response:
+        if response.status == 200:
+            data = await response.json()
+            return data.get("username", f"User_{user_id[:8]}")
+        else:
+            return f"User_{user_id[:8]}"
 
 
 def parse_prediction_line(line: str) -> tuple[str, str] | None:
@@ -58,7 +57,7 @@ def parse_prediction_line(line: str) -> tuple[str, str] | None:
 
 def parse_data_file(filepath: str) -> tuple[list[str], dict]:
     """Parse data.txt and extract games and predictions."""
-    with open(filepath, "r", encoding="utf-8") as f:
+    with open(filepath, encoding="utf-8") as f:
         content = f.read()
 
     # Split into sections
@@ -127,8 +126,6 @@ async def import_data(bot_token: str):
     print(f"Created fixture with ID: {fixture_id}")
 
     # Fetch usernames and insert predictions
-    submitted_at = datetime(2026, 1, 29, 17, 0, 0)
-
     for user_id, user_predictions in predictions.items():
         # Ensure we have exactly 10 predictions
         while len(user_predictions) < 10:

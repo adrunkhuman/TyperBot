@@ -30,7 +30,7 @@ def parse_prediction_line(line: str) -> tuple[str, str] | None:
 
 def parse_data_file(filepath: str) -> tuple[list[str], dict]:
     """Parse data.txt and extract games and predictions."""
-    with open(filepath, "r", encoding="utf-8") as f:
+    with open(filepath, encoding="utf-8") as f:
         content = f.read()
 
     # Split into sections
@@ -89,11 +89,11 @@ def generate_sql():
 
     sql_lines = []
     sql_lines.append("-- Historical data import for Week 1")
-    sql_lines.append("-- Generated: {}".format(datetime.now().isoformat()))
+    sql_lines.append(f"-- Generated: {datetime.now().isoformat()}")
     sql_lines.append("")
     sql_lines.append("-- Games list:")
     for i, game in enumerate(games, 1):
-        sql_lines.append("-- {}. {}".format(i, game))
+        sql_lines.append(f"-- {i}. {game}")
     sql_lines.append("")
 
     # Create fixture
@@ -127,14 +127,12 @@ def generate_sql():
             "INSERT INTO predictions (fixture_id, user_id, user_name, predictions, submitted_at, is_late)"
         )
         sql_lines.append(
-            "VALUES (1, '{}', 'User_{}', '{}', '{}', 0);".format(
-                user_id, user_id[:8], pred_str, submitted_at
-            )
+            f"VALUES (1, '{user_id}', 'User_{user_id[:8]}', '{pred_str}', '{submitted_at}', 0);"
         )
         sql_lines.append("")
 
     sql_lines.append("-- Import complete")
-    sql_lines.append("-- Total users imported: {}".format(len(predictions)))
+    sql_lines.append(f"-- Total users imported: {len(predictions)}")
 
     return "\n".join(sql_lines)
 
