@@ -9,8 +9,8 @@ from discord import app_commands
 from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
-from ..database import Database
-from ..utils import parse_predictions, format_standings, calculate_points
+from typer_bot.database import Database
+from typer_bot.utils import parse_predictions, format_standings, calculate_points
 
 load_dotenv()
 

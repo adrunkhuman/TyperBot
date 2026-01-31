@@ -6,8 +6,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from ..database import Database
-from ..utils import parse_predictions, format_standings
+from typer_bot.database import Database
+from typer_bot.utils import parse_predictions, format_standings
 
 
 class UserCommands(commands.Cog):
@@ -48,7 +48,7 @@ class UserCommands(commands.Cog):
             return
 
         # Show preview
-        from ..utils.prediction_parser import format_predictions_preview
+        from typer_bot.utils.prediction_parser import format_predictions_preview
         preview = format_predictions_preview(fixture["games"], predictions)
         
         late_warning = "\n\n⚠️ **Late prediction!** You will receive 0 points for this round." if is_late else ""
@@ -121,7 +121,7 @@ class UserCommands(commands.Cog):
             )
             return
 
-        from ..utils.prediction_parser import format_predictions_preview
+        from typer_bot.utils.prediction_parser import format_predictions_preview
         preview = format_predictions_preview(fixture["games"], prediction["predictions"])
         
         late_status = "⚠️ **LATE**" if prediction["is_late"] else "✅ On time"
