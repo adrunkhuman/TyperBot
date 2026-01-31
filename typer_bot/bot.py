@@ -125,7 +125,24 @@ class TyperBot(commands.Bot):
                         await db.executescript(sql_content)
                         await db.commit()
 
+                        # Count what was imported
+                        async with db.execute("SELECT COUNT(*) FROM fixtures") as cursor:
+                            fixture_count = (await cursor.fetchone())[0]
+                        async with db.execute("SELECT COUNT(*) FROM predictions") as cursor:
+                            prediction_count = (await cursor.fetchone())[0]
+
+                        # Get games count from first fixture
+                        async with db.execute("SELECT games FROM fixtures LIMIT 1") as cursor:
+                            row = await cursor.fetchone()
+                            games_count = len(row[0].split("\n")) if row else 0
+
                     logger.info(f"✅ Successfully imported {sql_file}")
+                    logger.info(
+                        f"   📊 Imported {fixture_count} fixture(s) with {games_count} games"
+                    )
+                    logger.info(
+                        f"   👥 Imported {prediction_count} predictions from {prediction_count // games_count if games_count else 0} users"
+                    )
 
                 except Exception as e:
                     logger.error(f"❌ Failed to import {sql_file}: {e}")
