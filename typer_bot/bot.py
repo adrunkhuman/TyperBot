@@ -10,14 +10,7 @@ from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 from typer_bot.database import Database
-from typer_bot.utils.logger import _hijack_logger, set_trace_id
-
-# discord.py attaches its own stderr handler on import.
-# Clear it and force propagation to our root stdout handler.
-_hijack_logger("discord")
-_hijack_logger("discord.client")
-_hijack_logger("discord.gateway")
-_hijack_logger("discord.http")
+from typer_bot.utils.logger import set_trace_id
 
 logger = logging.getLogger(__name__)
 
@@ -269,7 +262,7 @@ def main():
     try:
         bot = TyperBot()
         logger.info("Starting bot.run()...")
-        bot.run(token)
+        bot.run(token, log_handler=None)
     except discord.LoginFailure:
         logger.exception("❌ Discord login failed - check if DISCORD_TOKEN is valid")
         sys.exit(1)

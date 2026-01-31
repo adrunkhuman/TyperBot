@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 # Global context for request trace IDs
@@ -73,7 +73,7 @@ class RailwayJSONFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         # Railway expects ISO8601 with timezone for proper log ordering
-        timestamp = datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat()
+        timestamp = datetime.fromtimestamp(record.created, tz=UTC).isoformat()
 
         log_entry = {
             "level": record.levelname.lower(),
@@ -135,13 +135,6 @@ def is_railway_environment() -> bool:
     )
 
 
-def _hijack_logger(name: str) -> None:
-    """Force a named logger to use root handler instead of its own."""
-    logger = logging.getLogger(name)
-    logger.handlers.clear()
-    logger.propagate = True  # Use root handler
-
-
 def setup_logging(level: int | None = None) -> None:
     """Configure root logger for Railway or local environment.
 
@@ -165,13 +158,6 @@ def setup_logging(level: int | None = None) -> None:
         handler.setFormatter(LocalFormatter())
 
     root_logger.addHandler(handler)
-
-    # discord.py attaches its own stderr handler - hijack it
-    _hijack_logger("discord")
-    _hijack_logger("discord.client")
-    _hijack_logger("discord.gateway")
-    _hijack_logger("discord.http")
-    _hijack_logger("aiosqlite")
 
     logging.getLogger("discord").setLevel(logging.WARNING)
     logging.getLogger("discord.http").setLevel(logging.WARNING)
