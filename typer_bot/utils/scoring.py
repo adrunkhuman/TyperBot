@@ -25,6 +25,10 @@ def calculate_points(
     correct_count = 0
 
     for pred, actual in zip(predictions, actual_results, strict=False):
+        # Skip nullified games (marked with 'x')
+        if actual == "x":
+            continue
+
         pred_home, pred_away = map(int, pred.split("-"))
         actual_home, actual_away = map(int, actual.split("-"))
 

@@ -152,6 +152,38 @@ class TestParseLinePredictions:
         assert predictions == ["2-1", "1-0"]
         assert not errors
 
+    def test_nullified_game_lowercase_x(self):
+        """Parse 'x' as nullified game marker."""
+        lines = ["Team A 2-1", "Team B x"]
+        games = ["Team A", "Team B"]
+        predictions, errors = parse_line_predictions(lines, games)
+        assert predictions == ["2-1", "x"]
+        assert not errors
+
+    def test_nullified_game_uppercase_x(self):
+        """Parse 'X' as nullified game marker (case insensitive)."""
+        lines = ["Team A 2-1", "Team B X"]
+        games = ["Team A", "Team B"]
+        predictions, errors = parse_line_predictions(lines, games)
+        assert predictions == ["2-1", "x"]
+        assert not errors
+
+    def test_mixed_scores_and_nullified(self):
+        """Mix of regular scores and nullified games."""
+        lines = ["Team A 2-1", "Team B x", "Team C 0-0", "Team D X"]
+        games = ["Team A", "Team B", "Team C", "Team D"]
+        predictions, errors = parse_line_predictions(lines, games)
+        assert predictions == ["2-1", "x", "0-0", "x"]
+        assert not errors
+
+    def test_nullified_with_whitespace(self):
+        """Nullified marker with trailing whitespace."""
+        lines = ["Team A x   ", "Team B X   "]
+        games = ["Team A", "Team B"]
+        predictions, errors = parse_line_predictions(lines, games)
+        assert predictions == ["x", "x"]
+        assert not errors
+
 
 class TestFormatPredictionsPreview:
     """Test suite for format_predictions_preview function."""

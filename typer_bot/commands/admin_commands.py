@@ -366,6 +366,7 @@ class AdminCommands(commands.Cog):
                     "```",
                     "",
                     "Add the actual score (e.g., 2:0 or 2-1) at the end of each line.",
+                    "Type 'x' for cancelled or postponed games.",
                 ]
             )
             await interaction.user.send("\n".join(lines))

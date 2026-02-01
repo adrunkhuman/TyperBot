@@ -95,3 +95,47 @@ class TestCalculatePoints:
         # Raw colon format would raise ValueError (int("2:1") fails)
         with pytest.raises(ValueError):
             calculate_points(["2:1"], ["2:1"])
+
+    def test_nullified_game_excluded_from_scoring(self):
+        """Games marked with 'x' should be excluded from scoring calculations."""
+        predictions = ["2-1", "3-0", "1-1"]
+        actual = ["2-1", "x", "1-1"]
+        result = calculate_points(predictions, actual)
+
+        # Should only score 2 games (excluding the nullified middle one)
+        assert result["points"] == 6  # 3 (exact) + 3 (exact)
+        assert result["exact_scores"] == 2
+        assert result["correct_results"] == 0
+
+    def test_multiple_nullified_games(self):
+        """Multiple nullified games should all be excluded."""
+        predictions = ["2-1", "3-0", "1-1", "0-0", "2-2"]
+        actual = ["2-1", "x", "1-1", "x", "2-2"]
+        result = calculate_points(predictions, actual)
+
+        # Should only score 3 games (positions 0, 2, 4)
+        assert result["points"] == 9  # 3 + 3 + 3 (all exact)
+        assert result["exact_scores"] == 3
+        assert result["correct_results"] == 0
+
+    def test_all_games_nullified(self):
+        """When all games are nullified, everyone gets 0 points."""
+        predictions = ["2-1", "3-0", "1-1"]
+        actual = ["x", "x", "x"]
+        result = calculate_points(predictions, actual)
+
+        assert result["points"] == 0
+        assert result["exact_scores"] == 0
+        assert result["correct_results"] == 0
+
+    def test_nullified_with_mixed_outcomes(self):
+        """Nullified games mixed with exact, correct outcome, and wrong predictions."""
+        predictions = ["2-1", "3-0", "1-1", "0-2", "2-0"]
+        # Results: exact, nullified, exact, wrong (predicted draw, actual home win), correct outcome
+        actual = ["2-1", "x", "1-1", "1-0", "3-1"]
+        result = calculate_points(predictions, actual)
+
+        # Points: 3 (exact) + 0 (nullified) + 3 (exact) + 0 (wrong) + 1 (correct outcome)
+        assert result["points"] == 7
+        assert result["exact_scores"] == 2
+        assert result["correct_results"] == 1
