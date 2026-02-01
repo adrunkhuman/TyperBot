@@ -61,14 +61,23 @@ def parse_line_predictions(lines: list[str], games: list[str]) -> tuple[list[str
         return predictions, errors
 
     for i, line in enumerate(lines):
-        match = re.search(r"(\d+)\s*[-:]\s*(\d+)\s*$", line.strip())
+        stripped = line.strip()
+
+        # Check for nullified game marker (x or X)
+        if re.search(r"[xX]\s*$", stripped):
+            predictions.append("x")
+            logger.debug(f"Line {i + 1}: Parsed nullified game (x)")
+            continue
+
+        # Check for score pattern
+        match = re.search(r"(\d+)\s*[-:]\s*(\d+)\s*$", stripped)
         if match:
             home_score = match.group(1)
             away_score = match.group(2)
             predictions.append(f"{home_score}-{away_score}")
             logger.debug(f"Line {i + 1}: Parsed {home_score}-{away_score}")
         else:
-            error_msg = f"Line {i + 1}: Could not find score (expected format: '2:0' or '2-1')"
+            error_msg = f"Line {i + 1}: Could not find score (expected format: '2:0' or '2-1', or 'x' for cancelled games)"
             logger.warning(f"Parse error on line {i + 1}: '{line[:50]}...'")
             errors.append(error_msg)
 
