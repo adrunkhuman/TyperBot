@@ -25,12 +25,20 @@ def parse_deadline(date_str: str) -> datetime:
     return naive.replace(tzinfo=APP_TZ)
 
 
-def format_for_display(dt: datetime) -> str:
-    """Format datetime for user display, stripping timezone info.
+def format_for_discord(dt: datetime, format_code: str = "F") -> str:
+    """Format datetime as Discord timestamp (auto-converts to user's local time).
 
-    Shows time in APP_TZ without the +HH:00 offset.
+    Args:
+        dt: Timezone-aware datetime object
+        format_code: Discord format code - F/f/D/d/t/T/R
+
+    Returns:
+        Discord timestamp string like "<t:{unix}:F>"
     """
-    return dt.strftime("%A, %B %d at %H:%M")
+    if dt.tzinfo is None:
+        raise ValueError("datetime must be timezone-aware")
+    unix_timestamp = int(dt.timestamp())
+    return f"<t:{unix_timestamp}:{format_code}>"
 
 
 def parse_iso(iso_str: str) -> datetime:
