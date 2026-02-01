@@ -37,7 +37,9 @@ I recommend **Railway** because it's cheap/free and supports persistent storage 
    - If you skip this, your database will vanish every time you deploy.
 4. Set Variables:
    - `DISCORD_TOKEN`: Get this from Discord Developer Portal.
-   - `DB_PATH`: `/app/data/typer.db`
+   - `DATA_DIR`: (Optional) Base data directory. Default `/app/data`.
+   - `DB_PATH`: (Optional) Database path. Defaults to `{DATA_DIR}/typer.db`.
+   - `BACKUP_DIR`: (Optional) Backup storage. Defaults to `{DATA_DIR}/backups`.
    - `TZ`: (Optional) Timezone for deadlines. Default `Europe/Warsaw`. Examples: `America/New_York`, `Asia/Tokyo`.
    - `REMINDER_CHANNEL_ID`: (Optional) ID of channel to spam reminders in.
    - `LOG_LEVEL`: (Optional) Set to `DEBUG` for verbose logs. Default `INFO`.

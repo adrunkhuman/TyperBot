@@ -2,12 +2,14 @@
 """Manual database restore script - run from Railway console."""
 
 import argparse
-from datetime import datetime
-from pathlib import Path
 import re
 import shutil
 import sqlite3
 import sys
+from datetime import datetime
+from pathlib import Path
+
+from typer_bot.utils.config import DB_PATH
 
 
 def validate_backup_sql(sql_content: str) -> bool:
@@ -68,7 +70,7 @@ def main():
         print("Restore cancelled")
         sys.exit(0)
 
-    db_path = Path("/app/data/typer.db")
+    db_path = Path(DB_PATH)
 
     if db_path.exists():
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
