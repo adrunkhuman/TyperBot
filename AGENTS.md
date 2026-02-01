@@ -79,3 +79,11 @@ scores (
 - **Double Digits:** Scores like `10-0` are allowed.
 - **Format:** Users provide flexible separators (`-`, `:`, `–`).
 - **History:** `archive/` folder contains SQL files auto-imported on first run (empty DB).
+
+## 7. Deployment Environment
+- **Configuration:** The `ENVIRONMENT` variable controls bot behavior:
+  - `production`: Bot connects to Discord and runs normally
+  - Not set/`development`: Bot runs in "smoke test" mode - validates config then exits
+- **Purpose:** Prevents race conditions when multiple deployments (e.g., PR previews) share the same Discord token
+- **Railway:** Set `ENVIRONMENT=production` in Railway variables for production deployments
+- **Portability:** Works on any platform (Railway, Coolify, local, etc.) - just set the variable accordingly
