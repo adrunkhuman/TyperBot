@@ -3,6 +3,7 @@
 import logging
 import os
 import sys
+from datetime import timedelta
 
 import discord
 from discord.ext import commands, tasks
@@ -202,18 +203,30 @@ class TyperBot(commands.Bot):
 
     @tasks.loop(minutes=1)
     async def reminder_task(self):
-        """Check for reminders to send."""
+        """Send reminders 24h and 1h before fixture deadline."""
         current_time = now()
+        fixture = await self.db.get_current_fixture()
 
-        if current_time.weekday() == 3 and current_time.hour == 19 and current_time.minute == 0:
-            logger.info("Sending Thursday reminder...")
-            await self.send_reminder("Thursday evening")
+        if not fixture:
+            return
 
-        if current_time.weekday() == 4 and current_time.hour == 17 and current_time.minute == 0:
-            logger.info("Sending Friday reminder...")
-            await self.send_reminder("Friday evening")
+        deadline = fixture["deadline"]
 
-    async def send_reminder(self, time_description: str):
+        # Compare minute-level precision to avoid double-sending
+        def is_same_minute(t1, t2):
+            return t1.replace(second=0, microsecond=0) == t2.replace(second=0, microsecond=0)
+
+        reminder_24h = deadline - timedelta(hours=24)
+        if is_same_minute(current_time, reminder_24h):
+            logger.info("Sending 24h reminder...")
+            await self.send_reminder(fixture, "24 hours remaining")
+
+        reminder_1h = deadline - timedelta(hours=1)
+        if is_same_minute(current_time, reminder_1h):
+            logger.info("Sending 1h reminder...")
+            await self.send_reminder(fixture, "1 hour remaining")
+
+    async def send_reminder(self, fixture: dict, time_description: str):
         """Send prediction reminder to configured channel."""
         channel_id = os.getenv("REMINDER_CHANNEL_ID")
         if not channel_id:
@@ -223,19 +236,15 @@ class TyperBot(commands.Bot):
         try:
             channel = self.get_channel(int(channel_id))
             if channel:
-                fixture = await self.db.get_current_fixture()
-                if fixture:
-                    deadline = format_for_discord(fixture["deadline"], "F")
-                    relative = format_for_discord(fixture["deadline"], "R")
-                    await channel.send(
-                        f"📢 **{time_description} reminder!**\n\n"
-                        f"Don't forget to submit your predictions for this week!\n"
-                        f"Deadline: **{deadline}** ({relative})\n"
-                        f"Use `/predict` to enter your scores."
-                    )
-                    logger.info(f"Reminder sent to channel {channel_id}")
-                else:
-                    logger.warning("No active fixture for reminder")
+                deadline = format_for_discord(fixture["deadline"], "F")
+                relative = format_for_discord(fixture["deadline"], "R")
+                await channel.send(
+                    f"📢 **{time_description}!**\n\n"
+                    f"Don't forget to submit your predictions for this week!\n"
+                    f"Deadline: **{deadline}** ({relative})\n"
+                    f"Use `/predict` to enter your scores."
+                )
+                logger.info(f"Reminder sent to channel {channel_id}")
             else:
                 logger.error(f"Could not find channel {channel_id}")
         except Exception:
