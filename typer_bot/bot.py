@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from typer_bot.database import Database
 from typer_bot.utils import format_for_discord, now
+from typer_bot.utils.config import IS_PRODUCTION
 from typer_bot.utils.logger import set_trace_id
 
 logger = logging.getLogger(__name__)
@@ -272,6 +273,12 @@ def main():
         sys.exit(1)
 
     logger.info(f"Token check: Token starts with '{token[:20]}...'")
+
+    if not IS_PRODUCTION:
+        logger.info("⚠️  ENVIRONMENT is not 'production' - running in smoke test mode")
+        logger.info("✅ Smoke test successful - deployment validated, exiting")
+        sys.exit(0)
+
     logger.info("Creating TyperBot instance...")
 
     try:

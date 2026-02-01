@@ -5,3 +5,9 @@ builder = "railpack"
 startCommand = "python -m typer_bot"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
+
+# Environment Configuration:
+# Set ENVIRONMENT=production in Railway variables for production deployments.
+# PR deployments without ENVIRONMENT=production will run in smoke test mode
+# (bot starts, validates config, then exits successfully without connecting to Discord).
+# This prevents race conditions when multiple deployments share the same token.
