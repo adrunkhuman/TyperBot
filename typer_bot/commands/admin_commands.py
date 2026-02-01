@@ -9,7 +9,13 @@ from discord import app_commands
 from discord.ext import commands
 
 from typer_bot.database import Database
-from typer_bot.utils import APP_TZ, calculate_points, now, parse_line_predictions
+from typer_bot.utils import (
+    APP_TZ,
+    calculate_points,
+    format_for_discord,
+    now,
+    parse_line_predictions,
+)
 from typer_bot.utils.config import BACKUP_DIR
 from typer_bot.utils.db_backup import cleanup_old_backups, create_backup
 
@@ -105,15 +111,14 @@ class AdminCommands(commands.Cog):
             default_deadline = default_deadline.replace(hour=18, minute=0, second=0, microsecond=0)
             state["default_deadline"] = default_deadline
 
-            default_str = default_deadline.strftime("%A, %B %d at %H:%M")
+            default_str = format_for_discord(default_deadline, "F")
+            relative_str = format_for_discord(default_deadline, "R")
             view = DeadlineChoiceView(self.db, user_id)
-            tz_name = str(APP_TZ)
             await message.author.send(
                 f"**Choose Deadline**\n\n"
-                f"Default: **{default_str}** (next Friday 18:00)\n\n"
+                f"Default: **{default_str}** ({relative_str})\n\n"
                 f"Or type a custom deadline in format: `YYYY-MM-DD HH:MM`\n"
-                f"Example: `{current_time.strftime('%Y-%m-%d')} 20:00` for today at 8 PM\n"
-                f"\n⚠️ All times are in **{tz_name}** timezone",
+                f"Example: `{current_time.strftime('%Y-%m-%d')} 20:00` for today at 8 PM",
                 view=view,
             )
 
@@ -173,8 +178,9 @@ class AdminCommands(commands.Cog):
         for i, game in enumerate(games, 1):
             lines.append(f"{i}. {game}")
 
-        deadline_str = deadline.strftime("%A, %B %d at %H:%M")
-        lines.append(f"\n**Deadline:** {deadline_str} ({APP_TZ})")
+        deadline_str = format_for_discord(deadline, "F")
+        relative_str = format_for_discord(deadline, "R")
+        lines.append(f"\n**Deadline:** {deadline_str} ({relative_str})")
 
         warning = ""
         if len(games) != 9:

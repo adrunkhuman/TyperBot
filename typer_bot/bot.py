@@ -9,7 +9,7 @@ from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 from typer_bot.database import Database
-from typer_bot.utils import APP_TZ, now
+from typer_bot.utils import format_for_discord, now
 from typer_bot.utils.logger import set_trace_id
 
 logger = logging.getLogger(__name__)
@@ -225,11 +225,12 @@ class TyperBot(commands.Bot):
             if channel:
                 fixture = await self.db.get_current_fixture()
                 if fixture:
-                    deadline = fixture["deadline"].strftime("%A %H:%M")
+                    deadline = format_for_discord(fixture["deadline"], "F")
+                    relative = format_for_discord(fixture["deadline"], "R")
                     await channel.send(
                         f"📢 **{time_description} reminder!**\n\n"
                         f"Don't forget to submit your predictions for this week!\n"
-                        f"Deadline: **{deadline} ({APP_TZ})**\n"
+                        f"Deadline: **{deadline}** ({relative})\n"
                         f"Use `/predict` to enter your scores."
                     )
                     logger.info(f"Reminder sent to channel {channel_id}")

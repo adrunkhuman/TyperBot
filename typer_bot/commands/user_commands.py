@@ -1,12 +1,16 @@
 """User-facing Discord commands."""
 
-
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from typer_bot.database import Database
-from typer_bot.utils import APP_TZ, format_standings, now, parse_line_predictions
+from typer_bot.utils import (
+    format_for_discord,
+    format_standings,
+    now,
+    parse_line_predictions,
+)
 
 # user_id -> (fixture_id, games)
 pending_predictions = {}
@@ -73,8 +77,9 @@ class UserCommands(commands.Cog):
             for i, (game, pred) in enumerate(zip(games, predictions, strict=False), 1):
                 preview_lines.append(f"{i}. {game} **{pred}**")
 
-            deadline_str = fixture["deadline"].strftime("%A, %B %d at %H:%M")
-            preview_lines.append(f"\n**Deadline:** {deadline_str} ({APP_TZ})")
+            deadline_str = format_for_discord(fixture["deadline"], "F")
+            relative_str = format_for_discord(fixture["deadline"], "R")
+            preview_lines.append(f"\n**Deadline:** {deadline_str} ({relative_str})")
 
             late_warning = ""
             if is_late:
@@ -144,12 +149,14 @@ class UserCommands(commands.Cog):
         ]
         for game in fixture["games"]:
             lines.append(f"{game} 2:0")
+        deadline_str = format_for_discord(fixture["deadline"], "F")
+        relative_str = format_for_discord(fixture["deadline"], "R")
         lines.extend(
             [
                 "```",
                 "",
                 "Add your score (e.g., 2:0 or 2-1) at the end of each line.",
-                f"\n**Deadline:** {fixture['deadline'].strftime('%A, %B %d at %H:%M')} ({APP_TZ})",
+                f"\n**Deadline:** {deadline_str} ({relative_str})",
             ]
         )
 
@@ -257,8 +264,9 @@ class UserCommands(commands.Cog):
         for i, game in enumerate(fixture["games"], 1):
             lines.append(f"{i}. {game}")
 
-        deadline_str = fixture["deadline"].strftime("%A, %B %d at %H:%M")
-        lines.append(f"\n**Deadline:** {deadline_str} ({APP_TZ})")
+        deadline_str = format_for_discord(fixture["deadline"], "F")
+        relative_str = format_for_discord(fixture["deadline"], "R")
+        lines.append(f"\n**Deadline:** {deadline_str} ({relative_str})")
 
         await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
@@ -300,12 +308,13 @@ class UserCommands(commands.Cog):
             lines.append(f"{i}. {game} **{pred}**")
 
         late_status = "⚠️ **LATE**" if prediction["is_late"] else "✅ On time"
-        submitted = prediction["submitted_at"].strftime("%Y-%m-%d %H:%M")
-        deadline_str = fixture["deadline"].strftime("%A, %B %d at %H:%M")
+        submitted = format_for_discord(prediction["submitted_at"], "f")
+        deadline_str = format_for_discord(fixture["deadline"], "F")
+        relative_str = format_for_discord(fixture["deadline"], "R")
 
         lines.extend(
             [
-                f"\n**Deadline:** {deadline_str} ({APP_TZ})",
+                f"\n**Deadline:** {deadline_str} ({relative_str})",
                 f"**Status:** {late_status}",
                 f"**Submitted:** {submitted}",
             ]

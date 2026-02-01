@@ -66,26 +66,28 @@ class TestParseDeadline:
         assert result.tzinfo == tz_module.APP_TZ
 
 
-class TestFormatForDisplay:
-    """Test format_for_display() function."""
+class TestFormatForDiscord:
+    """Test format_for_discord() function."""
 
-    def test_formats_correctly(self):
-        """Format datetime without timezone offset."""
+    def test_formats_full_timestamp(self):
+        """Format datetime as Discord full timestamp."""
         dt = tz_module.parse_deadline("2024-03-15 14:30")
-        result = tz_module.format_for_display(dt)
-        assert result == "Friday, March 15 at 14:30"
+        result = tz_module.format_for_discord(dt, "F")
+        unix_ts = int(dt.timestamp())
+        assert result == f"<t:{unix_ts}:F>"
 
-    def test_handles_dst_time(self):
-        """Format DST datetime correctly."""
-        dt = tz_module.parse_deadline("2024-07-15 20:00")  # Summer/DST
-        result = tz_module.format_for_display(dt)
-        assert result == "Monday, July 15 at 20:00"
+    def test_formats_relative_timestamp(self):
+        """Format datetime as Discord relative timestamp."""
+        dt = tz_module.parse_deadline("2024-07-15 20:00")
+        result = tz_module.format_for_discord(dt, "R")
+        unix_ts = int(dt.timestamp())
+        assert result == f"<t:{unix_ts}:R>"
 
-    def test_midnight_formatting(self):
-        """Handle midnight correctly."""
-        dt = tz_module.parse_deadline("2024-01-01 00:00")
-        result = tz_module.format_for_display(dt)
-        assert result == "Monday, January 01 at 00:00"
+    def test_raises_on_naive_datetime(self):
+        """Must raise error on naive datetime."""
+        naive = datetime(2024, 3, 15, 14, 30)
+        with pytest.raises(ValueError, match="timezone-aware"):
+            tz_module.format_for_discord(naive)
 
 
 class TestParseIso:
