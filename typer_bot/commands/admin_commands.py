@@ -3,6 +3,7 @@
 import logging
 from datetime import datetime, timedelta
 
+import aiosqlite
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -439,6 +440,28 @@ class AdminCommands(commands.Cog):
             )
 
         await interaction.response.send_message("\n".join(lines))
+
+    @app_commands.command(name="health", description="Check bot health status")
+    async def health_check(self, interaction: discord.Interaction):
+        if not self.is_admin(interaction.user):
+            await interaction.response.send_message(
+                "❌ You don't have permission to use this command.", ephemeral=True
+            )
+            return
+
+        status = []
+
+        try:
+            async with aiosqlite.connect(self.db.db_path) as db:
+                await db.execute("SELECT 1")
+            status.append("✅ Database: Connected")
+        except Exception as e:
+            status.append(f"❌ Database: {e}")
+
+        latency = self.bot.latency * 1000
+        status.append(f"ℹ️ Discord API latency: {latency:.0f}ms")
+
+        await interaction.response.send_message("\n".join(status), ephemeral=True)
 
     async def _delete_fixture(self, interaction: discord.Interaction):
         """Delete current fixture."""
