@@ -1,22 +1,24 @@
 """SQLite database operations for the prediction bot."""
 
-import os
 from datetime import datetime
 
 import aiosqlite
 
 from typer_bot.utils import parse_iso
+from typer_bot.utils.config import DB_PATH
 
 
 class Database:
     """SQLite database wrapper for football predictions."""
 
     def __init__(self, db_path: str = None):
-        self.db_path = db_path or os.getenv("DB_PATH", "typer.db")
+        self.db_path = db_path or DB_PATH
 
-        db_dir = os.path.dirname(self.db_path)
-        if db_dir and not os.path.exists(db_dir):
-            os.makedirs(db_dir, exist_ok=True)
+        from pathlib import Path
+
+        db_dir = Path(self.db_path).parent
+        if db_dir and not db_dir.exists():
+            db_dir.mkdir(parents=True, exist_ok=True)
 
     async def initialize(self):
         """Create tables if they don't exist."""

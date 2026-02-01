@@ -10,6 +10,10 @@ You are working on `matchday-typer`, a Discord bot for football prediction leagu
 
 ## 2. Critical Constraints
 - **Persistence:** The database (`typer.db`) MUST live in `/app/data` on production (Railway volume).
+- **Configuration:** All data paths configurable via env vars in `utils/config.py`:
+  - `DATA_DIR`: Base directory (default: `/app/data`)
+  - `DB_PATH`: Full database path (default: `{DATA_DIR}/typer.db`)
+  - `BACKUP_DIR`: Backup storage (default: `{DATA_DIR}/backups`)
 - **DM Workflow:** All complex inputs (predictions, fixture creation) happen in DMs to keep channel clean.
 - **Async:** All database ops must be async (`aiosqlite`).
 - **Parsing:** Use `utils.prediction_parser.parse_line_predictions` for all score parsing. Do NOT write ad-hoc regex.
@@ -56,6 +60,7 @@ scores (
 - `typer_bot/bot.py`: Entry point, setup hook, archive import logic.
 - `typer_bot/commands/user_commands.py`: `/predict`, `/standings` (Public).
 - `typer_bot/commands/admin_commands.py`: `/admin` hub (Protected).
+- `typer_bot/utils/config.py`: Centralized configuration (data paths via env vars).
 - `typer_bot/utils/prediction_parser.py`: Central logic for parsing "2-1" or "2:1" strings.
 - `typer_bot/utils/scoring.py`: Point calculation rules.
 - `typer_bot/utils/logger.py`: structured logging configuration for Railway.

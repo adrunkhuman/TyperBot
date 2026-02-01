@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from typer_bot.database import Database
 from typer_bot.utils import APP_TZ, calculate_points, now, parse_line_predictions
+from typer_bot.utils.config import BACKUP_DIR
 from typer_bot.utils.db_backup import cleanup_old_backups, create_backup
 
 # user_id -> {"channel_id": int, "guild_id": int, "games": list, "deadline": datetime, "step": str}
@@ -423,10 +424,10 @@ class AdminCommands(commands.Cog):
         await self.db.save_scores(fixture["id"], scores)
         try:
             await self.bot.loop.run_in_executor(
-                None, lambda: create_backup(self.db.db_path, "/app/data/backups")
+                None, lambda: create_backup(self.db.db_path, BACKUP_DIR)
             )
             await self.bot.loop.run_in_executor(
-                None, lambda: cleanup_old_backups("/app/data/backups", keep=10)
+                None, lambda: cleanup_old_backups(BACKUP_DIR, keep=10)
             )
         except Exception as e:
             logger.warning(f"Backup failed but calculation succeeded: {e}")
