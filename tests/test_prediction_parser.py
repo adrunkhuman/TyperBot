@@ -206,9 +206,10 @@ class TestFormatStandings:
         assert "No standings yet!" in result
 
     def test_standings_with_data(self):
-        """Standings with data formatted as markdown table."""
+        """Standings with data formatted as code block table."""
         standings = [
             {
+                "user_id": "1",
                 "user_name": "User1",
                 "total_points": 10,
                 "total_exact": 2,
@@ -216,6 +217,7 @@ class TestFormatStandings:
                 "weeks_played": 3,
             },
             {
+                "user_id": "2",
                 "user_name": "User2",
                 "total_points": 8,
                 "total_exact": 1,
@@ -224,14 +226,17 @@ class TestFormatStandings:
             },
         ]
         result = format_standings(standings, None)
-        assert "| Rank | User | Points |" in result
-        assert "| 1 | User1 | 10 |" in result
-        assert "| 2 | User2 | 8 |" in result
+        assert "🏆 **Overall Standings**" in result
+        assert "Rank  User" in result
+        assert "User1" in result
+        assert "User2" in result
+        assert "```" in result
 
     def test_standings_with_last_fixture(self):
         """Standings including last fixture results."""
         standings = [
             {
+                "user_id": "1",
                 "user_name": "User1",
                 "total_points": 10,
                 "total_exact": 2,
@@ -242,9 +247,141 @@ class TestFormatStandings:
         last_fixture = {
             "week_number": 5,
             "scores": [
-                {"user_name": "User1", "points": 5, "exact_scores": 1, "correct_results": 2}
+                {
+                    "user_id": "1",
+                    "user_name": "User1",
+                    "points": 5,
+                    "exact_scores": 1,
+                    "correct_results": 2,
+                }
             ],
         }
         result = format_standings(standings, last_fixture)
-        assert "Last Week (Week 5)" in result
-        assert "| 1 | User1 | 5 |" in result
+        assert "📊 **Week 5 Results**" in result
+        assert "User1" in result
+        assert "```" in result
+
+    def test_standings_delta_calculation(self):
+        """Overall standings should show delta from last week."""
+        standings = [
+            {
+                "user_id": "1",
+                "user_name": "User1",
+                "total_points": 15,
+                "total_exact": 3,
+                "total_correct": 6,
+                "weeks_played": 3,
+            },
+            {
+                "user_id": "2",
+                "user_name": "User2",
+                "total_points": 12,
+                "total_exact": 2,
+                "total_correct": 6,
+                "weeks_played": 3,
+            },
+        ]
+        last_fixture = {
+            "week_number": 3,
+            "scores": [
+                {
+                    "user_id": "1",
+                    "user_name": "User1",
+                    "points": 5,
+                    "exact_scores": 1,
+                    "correct_results": 2,
+                },
+                {
+                    "user_id": "2",
+                    "user_name": "User2",
+                    "points": 3,
+                    "exact_scores": 0,
+                    "correct_results": 3,
+                },
+            ],
+        }
+        result = format_standings(standings, last_fixture)
+        assert "(+5)" in result  # User1 got 5 points last week
+        assert "(+3)" in result  # User2 got 3 points last week
+
+    def test_standings_column_order(self):
+        """Standings should have correct column order: Rank, User, Exact, Correct, Points."""
+        standings = [
+            {
+                "user_id": "1",
+                "user_name": "TestUser",
+                "total_points": 10,
+                "total_exact": 2,
+                "total_correct": 4,
+                "weeks_played": 2,
+            }
+        ]
+        result = format_standings(standings, None)
+        lines = result.split("\n")
+        # Find header line
+        header_line = None
+        for line in lines:
+            if "Rank" in line and "User" in line:
+                header_line = line
+                break
+        assert header_line is not None
+        # Check column order
+        rank_pos = header_line.find("Rank")
+        user_pos = header_line.find("User")
+        exact_pos = header_line.find("Exact")
+        correct_pos = header_line.find("Correct")
+        points_pos = header_line.find("Points")
+        assert rank_pos < user_pos < exact_pos < correct_pos < points_pos
+
+    def test_standings_code_block_formatting(self):
+        """Standings should be wrapped in code blocks for Discord."""
+        standings = [
+            {
+                "user_id": "1",
+                "user_name": "User1",
+                "total_points": 10,
+                "total_exact": 2,
+                "total_correct": 4,
+                "weeks_played": 2,
+            }
+        ]
+        result = format_standings(standings, None)
+        assert result.startswith("🏆 **Overall Standings**")
+        assert "```" in result
+        # Should have opening and closing code blocks
+        assert result.count("```") >= 2
+
+    def test_last_week_standings_column_order(self):
+        """Last week standings should have correct column order."""
+        standings = []
+        last_fixture = {
+            "week_number": 1,
+            "scores": [
+                {
+                    "user_id": "1",
+                    "user_name": "User1",
+                    "points": 7,
+                    "exact_scores": 2,
+                    "correct_results": 1,
+                }
+            ],
+        }
+        result = format_standings(standings, last_fixture)
+        lines = result.split("\n")
+        # Find header line in last week section
+        in_last_week = False
+        header_line = None
+        for line in lines:
+            if "📊 **Week 1 Results**" in line:
+                in_last_week = True
+            if in_last_week and "Rank" in line and "User" in line:
+                header_line = line
+                break
+        assert header_line is not None
+        # Check column order: Rank, User, Exact, Correct, Points
+        rank_pos = header_line.find("Rank")
+        user_pos = header_line.find("User")
+        exact_pos = header_line.find("Exact")
+        correct_pos = header_line.find("Correct")
+        points_pos = header_line.find("Points")
+        assert rank_pos < user_pos < exact_pos < correct_pos < points_pos

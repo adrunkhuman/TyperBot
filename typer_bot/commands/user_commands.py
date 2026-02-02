@@ -204,21 +204,25 @@ class UserCommands(commands.Cog):
         admin_help = """\n\n## 🔧 Admin Commands
 
 **For Admins:**
-• `/admin fixture` - Create new fixture (DM workflow)
-• `/admin results` - Enter actual scores (DM workflow)
-• `/admin calculate` - Calculate and post scores
-• `/admin delete` - Delete current fixture (use with caution!)
+**Fixture Management:**
+• `/admin fixture create` - Create new fixture (DM workflow)
+• `/admin fixture delete` - Delete current fixture
+
+**Results Management:**
+• `/admin results enter` - Enter actual scores (DM workflow)
+• `/admin results calculate` - Calculate and post scores
+• `/admin results post` - Re-post results with optional mentions
 
 **Admin Workflow:**
 1. **Create Fixture:**
-   - `/admin` → "fixture"
+   - `/admin fixture create`
    - Bot DMs you
    - Send game list (one per line)
    - Choose deadline (default or custom)
    - Confirm
 
 2. **Enter Results:**
-   - `/admin` → "results"
+   - `/admin results enter`
    - Bot DMs you
    - Send actual scores:
      ```
@@ -229,8 +233,12 @@ class UserCommands(commands.Cog):
    - Confirm
 
 3. **Calculate Scores:**
-   - `/admin` → "calculate"
-   - Bot posts results automatically
+   - `/admin results calculate`
+   - Bot posts results (overall + week) to channel
+
+4. **Re-post Results:**
+   - `/admin results post`
+   - Choose whether to mention users
 
 **Custom Deadline Format:**
 • `2024-02-15 18:00`
@@ -350,11 +358,14 @@ class PredictionConfirmView(discord.ui.View):
 
     @discord.ui.button(label="✅ Submit Predictions", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Save predictions."""
+        """Save predictions with fresh username from Discord."""
         pending_predictions.pop(str(self.user_id), None)
 
+        # Use fresh username from Discord instead of cached value
+        fresh_user_name = interaction.user.display_name
+
         await self.db.save_prediction(
-            self.fixture_id, str(self.user_id), self.user_name, self.predictions, self.is_late
+            self.fixture_id, str(self.user_id), fresh_user_name, self.predictions, self.is_late
         )
 
         status = " (late penalty applied)" if self.is_late else ""

@@ -21,10 +21,15 @@ A Discord bot for running weekly football prediction games with your friends. I 
 
 ### For Admins
 You need a Discord role named `Admin` or `typer-admin`.
-1. **Create Fixture**: `/admin fixture` -> DM the list of games -> Set deadline.
-2. **Game Over**: `/admin results` -> Enter the actual scores.
-3. **Calc**: `/admin calculate` -> Bot does the math and posts the results to the channel.
-4. **Refresh Usernames**: `/admin refresh_usernames` -> Updates all usernames from Discord (useful after importing historical data).
+
+**Fixture Management:**
+- `/admin fixture create` - Create a new fixture (DM workflow with games + deadline)
+- `/admin fixture delete` - Delete the current fixture
+
+**Results Management:**
+- `/admin results enter` - Enter actual game scores (DM workflow)
+- `/admin results calculate` - Calculate scores and post results (no mentions by default)
+- `/admin results post` - Re-post results with option to mention users
 
 ## Hosting (The Easy Way)
 
@@ -68,6 +73,10 @@ If you have a bunch of old scores you want to keep:
 1. Put `.sql` files in `archive/` folder (check `example_import.sql` for format).
 2. Start bot with a fresh database.
 3. It'll import them automatically.
+
+## Username Management
+
+Usernames are automatically refreshed on bot startup and updated when users submit predictions. No manual refresh needed.
 
 ## Backup and Restore
 
