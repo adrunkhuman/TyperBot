@@ -79,11 +79,38 @@ class AdminCommands(commands.Cog):
         if guild_id:
             guild = self.bot.get_guild(guild_id)
             if guild:
+                logger.info(f"Guild found: {guild.name} (ID: {guild_id})")
                 member = guild.get_member(int(user_id))
-                if not member or not self.is_admin(member):
+                if not member:
+                    logger.warning(
+                        f"Member not found in guild cache for user {user_id}. "
+                        f"This may indicate Members intent is not enabled or member not cached."
+                    )
                     pending_fixtures.pop(user_id, None)
                     await message.author.send("❌ Permission denied or session expired.")
                     return
+                user_roles = [role.name for role in member.roles]
+                logger.info(f"User roles: {user_roles}")
+                is_admin_result = self.is_admin(member)
+                logger.info(f"is_admin check result: {is_admin_result}")
+                if not is_admin_result:
+                    logger.warning(
+                        f"Permission denied for user {user_id}. "
+                        f"Expected roles: admin/typer-admin, found: {user_roles}"
+                    )
+                    pending_fixtures.pop(user_id, None)
+                    await message.author.send("❌ Permission denied or session expired.")
+                    return
+            else:
+                logger.warning(f"Guild not found for ID: {guild_id}")
+                pending_fixtures.pop(user_id, None)
+                await message.author.send("❌ Permission denied or session expired.")
+                return
+        else:
+            logger.warning(f"No guild_id in fixture state for user {user_id}")
+            pending_fixtures.pop(user_id, None)
+            await message.author.send("❌ Permission denied or session expired.")
+            return
 
         step = state.get("step", "games")
 
@@ -217,11 +244,38 @@ class AdminCommands(commands.Cog):
         if guild_id:
             guild = self.bot.get_guild(guild_id)
             if guild:
+                logger.info(f"Guild found: {guild.name} (ID: {guild_id})")
                 member = guild.get_member(int(user_id))
-                if not member or not self.is_admin(member):
+                if not member:
+                    logger.warning(
+                        f"Member not found in guild cache for user {user_id}. "
+                        f"This may indicate Members intent is not enabled or member not cached."
+                    )
                     pending_results[user_id] = result_data
                     await message.author.send("❌ Permission denied or session expired.")
                     return
+                user_roles = [role.name for role in member.roles]
+                logger.info(f"User roles: {user_roles}")
+                is_admin_result = self.is_admin(member)
+                logger.info(f"is_admin check result: {is_admin_result}")
+                if not is_admin_result:
+                    logger.warning(
+                        f"Permission denied for user {user_id}. "
+                        f"Expected roles: admin/typer-admin, found: {user_roles}"
+                    )
+                    pending_results[user_id] = result_data
+                    await message.author.send("❌ Permission denied or session expired.")
+                    return
+            else:
+                logger.warning(f"Guild not found for ID: {guild_id}")
+                pending_results[user_id] = result_data
+                await message.author.send("❌ Permission denied or session expired.")
+                return
+        else:
+            logger.warning(f"No guild_id in result data for user {user_id}")
+            pending_results[user_id] = result_data
+            await message.author.send("❌ Permission denied or session expired.")
+            return
         fixture = await self.db.get_fixture_by_id(fixture_id)
 
         if not fixture:
