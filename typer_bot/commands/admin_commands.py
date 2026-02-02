@@ -34,6 +34,7 @@ def is_admin(member: discord.Member) -> bool:
 
 def admin_only():
     """Decorator to check if user has admin permissions."""
+
     async def predicate(interaction: discord.Interaction) -> bool:
         if not isinstance(interaction.user, discord.Member):
             await interaction.response.send_message(
@@ -46,6 +47,7 @@ def admin_only():
             )
             return False
         return True
+
     return app_commands.check(predicate)
 
 
@@ -80,9 +82,7 @@ class AdminCommands(commands.Cog):
     admin = app_commands.Group(name="admin", description="Admin commands for managing fixtures")
 
     # Fixture subgroup
-    fixture = app_commands.Group(
-        name="fixture", description="Manage fixtures", parent=admin
-    )
+    fixture = app_commands.Group(name="fixture", description="Manage fixtures", parent=admin)
 
     @fixture.command(name="create", description="Create a new fixture (DM workflow)")
     @admin_only()
@@ -142,11 +142,11 @@ class AdminCommands(commands.Cog):
         )
 
     # Results subgroup
-    results = app_commands.Group(
-        name="results", description="Manage results", parent=admin
-    )
+    results = app_commands.Group(name="results", description="Manage results", parent=admin)
 
-    @results.command(name="enter", description="Enter results for the current fixture (DM workflow)")
+    @results.command(
+        name="enter", description="Enter results for the current fixture (DM workflow)"
+    )
     @admin_only()
     async def results_enter(self, interaction: discord.Interaction):
         """Initiate results entry via DM."""
@@ -308,7 +308,7 @@ class AdminCommands(commands.Cog):
                     # Calculate delta from last week
                     delta = ""
                     if user["user_id"] in last_week_points:
-                        delta = f" (+{last_week_points[user['user_id']]})")
+                        delta = f" (+{last_week_points[user['user_id']]})"
 
                     lines.append(
                         f"{i:4}  {user_name}  {user['total_exact']:5}  "
