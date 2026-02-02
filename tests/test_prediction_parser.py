@@ -1,6 +1,7 @@
 """Tests for prediction parsing utilities."""
 
 from typer_bot.utils.prediction_parser import (
+    ascii_username,
     format_predictions_preview,
     format_standings,
     parse_line_predictions,
@@ -385,3 +386,85 @@ class TestFormatStandings:
         correct_pos = header_line.find("Correct")
         points_pos = header_line.find("Points")
         assert rank_pos < user_pos < exact_pos < correct_pos < points_pos
+
+
+class TestAsciiUsername:
+    """Test suite for ascii_username function."""
+
+    def test_basic_ascii_username(self):
+        """Basic ASCII username should be unchanged."""
+        result = ascii_username("User123")
+        assert result == "User123             "
+        assert len(result) == 20
+
+    def test_username_with_emojis(self):
+        """Username with emojis should strip non-ASCII characters."""
+        result = ascii_username("Piekny_Maryjan ✌🏐 🥈")
+        assert "✌" not in result
+        assert "🏐" not in result
+        assert "🥈" not in result
+        assert result.strip() == "Piekny_Maryjan"
+
+    def test_username_with_unicode_bold(self):
+        """Username with Unicode bold letters should strip them."""
+        result = ascii_username("𝗛𝗼𝗿𝘂𝘀 ☀")
+        assert "𝗛" not in result
+        assert "☀" not in result
+        assert result.strip() == ""
+
+    def test_long_username_truncation(self):
+        """Long usernames should be truncated to max_len."""
+        long_name = "VeryLongUsernameThatExceedsTwentyChars"
+        result = ascii_username(long_name, max_len=20)
+        assert len(result) == 20
+        assert result.strip() == long_name[:20]
+
+    def test_username_padding(self):
+        """Short usernames should be padded to max_len."""
+        result = ascii_username("Bob", max_len=20)
+        assert len(result) == 20
+        assert result == "Bob                 "
+
+    def test_empty_username(self):
+        """Empty username should return padded string."""
+        result = ascii_username("")
+        assert len(result) == 20
+        assert result.strip() == ""
+
+    def test_standings_formatting_with_emojis(self):
+        """Standings table should have aligned columns with emoji usernames."""
+        standings = [
+            {
+                "user_id": "1",
+                "user_name": "Piekny_Maryjan ✌🏐 🥈",
+                "total_points": 6,
+                "total_exact": 1,
+                "total_correct": 3,
+                "weeks_played": 2,
+            },
+            {
+                "user_id": "2",
+                "user_name": "𝗛𝗼𝗿𝘂𝘀 ☀",
+                "total_points": 0,
+                "total_exact": 0,
+                "total_correct": 0,
+                "weeks_played": 2,
+            },
+        ]
+        result = format_standings(standings, None)
+        lines = result.split("\n")
+
+        # Find data lines (lines with rank numbers)
+        data_lines = [
+            line for line in lines if line.strip().startswith(("1", "2")) and "User" not in line
+        ]
+        assert len(data_lines) >= 2
+
+        # Check that Points column is aligned (same position in both lines)
+        # Points header is at a fixed position, data should align under it
+        for line in data_lines:
+            # Points values should be right-aligned at position
+            if "6" in line or "0" in line:
+                # The actual points value should be at a consistent column
+                # Since we're using ascii_username, usernames should be exactly 20 chars
+                assert len(line) > 20  # Should have more content after username

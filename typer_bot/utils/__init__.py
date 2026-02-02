@@ -1,15 +1,16 @@
 """Utility functions and helpers."""
 
 from .prediction_parser import (
+    ascii_username,
     format_standings,
     parse_line_predictions,
     parse_predictions,
-    visual_truncate,
 )
 from .scoring import calculate_points
 from .timezone import APP_TZ, format_for_discord, now, parse_deadline, parse_iso
 
 __all__ = [
+    "ascii_username",
     "parse_predictions",
     "parse_line_predictions",
     "format_standings",
