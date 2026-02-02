@@ -1,9 +1,7 @@
 """Admin Discord commands."""
 
 import logging
-from datetime import datetime, timedelta
 
-import aiosqlite
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -11,9 +9,8 @@ from discord.ext import commands
 from typer_bot.database import Database
 from typer_bot.handlers import FixtureCreationHandler, ResultsEntryHandler
 from typer_bot.utils import (
-    APP_TZ,
     calculate_points,
-    format_for_discord,
+    format_standings,
     now,
 )
 from typer_bot.utils.config import BACKUP_DIR
@@ -268,62 +265,16 @@ class AdminCommands(commands.Cog):
         # Post results to channel (without mentions by default)
         channel = interaction.channel
         if channel:
-            # Build last week results message
-            lines = [f"📊 **Week {fixture['week_number']} Results**\n"]
-            lines.append("```")
-            lines.append("Rank  User                    Exact  Correct  Points")
-            lines.append("----  --------------------    -----  -------  ------")
-
-            for i, score in enumerate(scores, 1):
-                user_name = score["user_name"][:20].ljust(20)
-                lines.append(
-                    f"{i:4}  {user_name}  {score['exact_scores']:5}  "
-                    f"{score['correct_results']:7}  {score['points']}"
-                )
-
-            lines.append("```")
-            last_week_message = "\n".join(lines)
-
-            # Get overall standings
+            # Get overall standings and format the complete message
             standings = await self.db.get_standings()
             last_fixture = await self.db.get_last_fixture_scores()
 
-            # Build overall standings message
-            lines = ["🏆 **Overall Standings**\n"]
-            lines.append("```")
-            lines.append("Rank  User                    Exact  Correct  Points")
-            lines.append("----  --------------------    -----  -------  ------")
-
-            if standings:
-                # Create lookup for last week's points
-                last_week_points = {}
-                if last_fixture:
-                    for score in last_fixture["scores"]:
-                        last_week_points[score["user_id"]] = score["points"]
-
-                for i, user in enumerate(standings, 1):
-                    user_name = user["user_name"][:20].ljust(20)
-                    total_points = user["total_points"]
-
-                    # Calculate delta from last week
-                    delta = ""
-                    if user["user_id"] in last_week_points:
-                        delta = f" (+{last_week_points[user['user_id']]})"
-
-                    lines.append(
-                        f"{i:4}  {user_name}  {user['total_exact']:5}  "
-                        f"{user['total_correct']:7}  {total_points}{delta}"
-                    )
-            else:
-                lines.append("No standings yet!")
-
-            lines.append("```")
-            standings_message = "\n".join(lines)
+            # Use format_standings to generate both overall and last week results
+            message = format_standings(standings, last_fixture)
 
             try:
-                # Send both messages
-                await channel.send(standings_message)
-                await channel.send(last_week_message)
+                # Send the complete standings message
+                await channel.send(message)
 
                 await interaction.response.send_message(
                     f"Week {fixture['week_number']} results calculated and posted!",
@@ -343,8 +294,9 @@ class AdminCommands(commands.Cog):
     @admin_only()
     async def results_post(self, interaction: discord.Interaction):
         """Post the latest fixture results to the channel with mention confirmation."""
-        # Get the latest closed fixture scores
+        # Get the latest closed fixture scores and overall standings
         fixture_data = await self.db.get_last_fixture_scores()
+        standings = await self.db.get_standings()
 
         if not fixture_data:
             await interaction.response.send_message(
@@ -352,23 +304,10 @@ class AdminCommands(commands.Cog):
             )
             return
 
-        # Show preview with confirmation buttons
-        lines = [f"📊 **Week {fixture_data['week_number']} Results**\n"]
-        lines.append("```")
-        lines.append("Rank  User                    Exact  Correct  Points")
-        lines.append("----  --------------------    -----  -------  ------")
+        # Show preview with confirmation buttons using format_standings
+        preview = format_standings(standings, fixture_data)
 
-        for i, score in enumerate(fixture_data["scores"], 1):
-            user_name = score["user_name"][:20].ljust(20)
-            lines.append(
-                f"{i:4}  {user_name}  {score['exact_scores']:5}  "
-                f"{score['correct_results']:7}  {score['points']}"
-            )
-
-        lines.append("```")
-        preview = "\n".join(lines)
-
-        view = PostResultsConfirmView(self.db, fixture_data, interaction.channel)
+        view = PostResultsConfirmView(self.db, fixture_data, standings, interaction.channel)
 
         await interaction.response.send_message(
             f"{preview}\n\nMention users in this post?",
@@ -422,10 +361,13 @@ class DeleteConfirmView(discord.ui.View):
 class PostResultsConfirmView(discord.ui.View):
     """View for confirming results posting with mentions."""
 
-    def __init__(self, db: Database, fixture_data: dict, channel: discord.TextChannel):
+    def __init__(
+        self, db: Database, fixture_data: dict, standings: list[dict], channel: discord.TextChannel
+    ):
         super().__init__(timeout=60)
         self.db = db
         self.fixture_data = fixture_data
+        self.standings = standings
         self.channel = channel
 
     async def on_timeout(self):
@@ -434,20 +376,7 @@ class PostResultsConfirmView(discord.ui.View):
     @discord.ui.button(label="NO", style=discord.ButtonStyle.primary)
     async def no_mentions(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Post results without mentions."""
-        lines = [f"📊 **Week {self.fixture_data['week_number']} Results**\n"]
-        lines.append("```")
-        lines.append("Rank  User                    Exact  Correct  Points")
-        lines.append("----  --------------------    -----  -------  ------")
-
-        for i, score in enumerate(self.fixture_data["scores"], 1):
-            user_name = score["user_name"][:20].ljust(20)
-            lines.append(
-                f"{i:4}  {user_name}  {score['exact_scores']:5}  "
-                f"{score['correct_results']:7}  {score['points']}"
-            )
-
-        lines.append("```")
-        message = "\n".join(lines)
+        message = format_standings(self.standings, self.fixture_data)
 
         try:
             await self.channel.send(message)
@@ -463,29 +392,14 @@ class PostResultsConfirmView(discord.ui.View):
     @discord.ui.button(label="YES", style=discord.ButtonStyle.green)
     async def with_mentions(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Post results with user mentions."""
-        lines = [f"📊 **Week {self.fixture_data['week_number']} Results**\n"]
-        lines.append("```")
-        lines.append("Rank  User                    Exact  Correct  Points")
-        lines.append("----  --------------------    -----  -------  ------")
+        message = format_standings(self.standings, self.fixture_data)
 
-        for i, score in enumerate(self.fixture_data["scores"], 1):
-            user_name = score["user_name"][:20].ljust(20)
-            lines.append(
-                f"{i:4}  {user_name}  {score['exact_scores']:5}  "
-                f"{score['correct_results']:7}  {score['points']}"
-            )
-
-        lines.append("```")
-        lines.append("")
-        lines.append("**Participants:**")
-
-        # Add mentions
+        # Add mentions section
         mentions = []
         for score in self.fixture_data["scores"]:
             mentions.append(f"<@{score['user_id']}>")
-        lines.append(" ".join(mentions))
 
-        message = "\n".join(lines)
+        message += f"\n\n**Participants:**\n{' '.join(mentions)}"
 
         try:
             await self.channel.send(message)
