@@ -1,9 +1,7 @@
 """Admin Discord commands."""
 
 import logging
-from datetime import datetime, timedelta
 
-import aiosqlite
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -11,10 +9,9 @@ from discord.ext import commands
 from typer_bot.database import Database
 from typer_bot.handlers import FixtureCreationHandler, ResultsEntryHandler
 from typer_bot.utils import (
-    APP_TZ,
     calculate_points,
-    format_for_discord,
     now,
+    visual_truncate,
 )
 from typer_bot.utils.config import BACKUP_DIR
 from typer_bot.utils.db_backup import cleanup_old_backups, create_backup
@@ -275,10 +272,10 @@ class AdminCommands(commands.Cog):
             lines.append("----  --------------------    -----  -------  ------")
 
             for i, score in enumerate(scores, 1):
-                user_name = score["user_name"][:20].ljust(20)
+                user_name = visual_truncate(score["user_name"], 20)
                 lines.append(
                     f"{i:4}  {user_name}  {score['exact_scores']:5}  "
-                    f"{score['correct_results']:7}  {score['points']}"
+                    f"{score['correct_results']:7}  {score['points']:>4}"
                 )
 
             lines.append("```")
@@ -302,7 +299,7 @@ class AdminCommands(commands.Cog):
                         last_week_points[score["user_id"]] = score["points"]
 
                 for i, user in enumerate(standings, 1):
-                    user_name = user["user_name"][:20].ljust(20)
+                    user_name = visual_truncate(user["user_name"], 20)
                     total_points = user["total_points"]
 
                     # Calculate delta from last week
@@ -312,7 +309,7 @@ class AdminCommands(commands.Cog):
 
                     lines.append(
                         f"{i:4}  {user_name}  {user['total_exact']:5}  "
-                        f"{user['total_correct']:7}  {total_points}{delta}"
+                        f"{user['total_correct']:7}  {total_points:>4}{delta}"
                     )
             else:
                 lines.append("No standings yet!")
@@ -359,10 +356,10 @@ class AdminCommands(commands.Cog):
         lines.append("----  --------------------    -----  -------  ------")
 
         for i, score in enumerate(fixture_data["scores"], 1):
-            user_name = score["user_name"][:20].ljust(20)
+            user_name = visual_truncate(score["user_name"], 20)
             lines.append(
                 f"{i:4}  {user_name}  {score['exact_scores']:5}  "
-                f"{score['correct_results']:7}  {score['points']}"
+                f"{score['correct_results']:7}  {score['points']:>4}"
             )
 
         lines.append("```")
@@ -440,10 +437,10 @@ class PostResultsConfirmView(discord.ui.View):
         lines.append("----  --------------------    -----  -------  ------")
 
         for i, score in enumerate(self.fixture_data["scores"], 1):
-            user_name = score["user_name"][:20].ljust(20)
+            user_name = visual_truncate(score["user_name"], 20)
             lines.append(
                 f"{i:4}  {user_name}  {score['exact_scores']:5}  "
-                f"{score['correct_results']:7}  {score['points']}"
+                f"{score['correct_results']:7}  {score['points']:>4}"
             )
 
         lines.append("```")
@@ -469,10 +466,10 @@ class PostResultsConfirmView(discord.ui.View):
         lines.append("----  --------------------    -----  -------  ------")
 
         for i, score in enumerate(self.fixture_data["scores"], 1):
-            user_name = score["user_name"][:20].ljust(20)
+            user_name = visual_truncate(score["user_name"], 20)
             lines.append(
                 f"{i:4}  {user_name}  {score['exact_scores']:5}  "
-                f"{score['correct_results']:7}  {score['points']}"
+                f"{score['correct_results']:7}  {score['points']:>4}"
             )
 
         lines.append("```")
