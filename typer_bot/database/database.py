@@ -292,3 +292,26 @@ class Database:
             await db.execute("DELETE FROM predictions WHERE fixture_id = ?", (fixture_id,))
             await db.execute("DELETE FROM fixtures WHERE id = ?", (fixture_id,))
             await db.commit()
+
+    async def get_all_user_ids(self) -> list[str]:
+        """Get all unique user IDs from predictions and scores."""
+        async with aiosqlite.connect(self.db_path) as db:
+            user_ids = set()
+            async with db.execute("SELECT DISTINCT user_id FROM predictions") as cursor:
+                async for row in cursor:
+                    user_ids.add(row[0])
+            async with db.execute("SELECT DISTINCT user_id FROM scores") as cursor:
+                async for row in cursor:
+                    user_ids.add(row[0])
+            return list(user_ids)
+
+    async def update_username(self, user_id: str, user_name: str):
+        """Update username for a user across all tables."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute(
+                "UPDATE predictions SET user_name = ? WHERE user_id = ?", (user_name, user_id)
+            )
+            await db.execute(
+                "UPDATE scores SET user_name = ? WHERE user_id = ?", (user_name, user_id)
+            )
+            await db.commit()

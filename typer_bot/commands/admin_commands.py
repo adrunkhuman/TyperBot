@@ -329,6 +329,7 @@ class AdminCommands(commands.Cog):
             app_commands.Choice(name="results", value="results"),
             app_commands.Choice(name="calculate", value="calculate"),
             app_commands.Choice(name="delete", value="delete"),
+            app_commands.Choice(name="refresh_usernames", value="refresh_usernames"),
         ]
     )
     async def admin(self, interaction: discord.Interaction, action: app_commands.Choice[str]):
@@ -347,6 +348,8 @@ class AdminCommands(commands.Cog):
             await self._calculate_scores(interaction)
         elif action.value == "delete":
             await self._delete_fixture(interaction)
+        elif action.value == "refresh_usernames":
+            await self._refresh_usernames(interaction)
 
     async def _create_fixture(self, interaction: discord.Interaction):
         """Initiate fixture creation via DM."""
@@ -432,7 +435,7 @@ class AdminCommands(commands.Cog):
             )
 
     async def _calculate_scores(self, interaction: discord.Interaction):
-        """Calculate scores for current fixture."""
+        """Calculate scores for current fixture and post to channel."""
         user_id = str(interaction.user.id)
         current_time = now().timestamp()
 
@@ -469,13 +472,13 @@ class AdminCommands(commands.Cog):
             )
             return
 
+        # Calculate scores
         scores = []
         for pred in predictions:
             score_data = calculate_points(pred["predictions"], results, pred["is_late"])
             scores.append(
                 {
                     "user_id": pred["user_id"],
-                    "user_name": pred["user_name"],
                     "points": score_data["points"],
                     "exact_scores": score_data["exact_scores"],
                     "correct_results": score_data["correct_results"],
@@ -484,6 +487,8 @@ class AdminCommands(commands.Cog):
 
         scores.sort(key=lambda x: x["points"], reverse=True)
         await self.db.save_scores(fixture["id"], scores)
+
+        # Create backup
         try:
             await self.bot.loop.run_in_executor(
                 None, lambda: create_backup(self.db.db_path, BACKUP_DIR)
@@ -493,14 +498,34 @@ class AdminCommands(commands.Cog):
             )
         except Exception as e:
             logger.warning(f"Backup failed but calculation succeeded: {e}")
+
+        # Build results message with mentions
         lines = [f"🏆 **Week {fixture['week_number']} Results**\n"]
         for i, score in enumerate(scores, 1):
             lines.append(
-                f"{i}. **{score['user_name']}**: {score['points']} pts "
+                f"{i}. <@{score['user_id']}>: {score['points']} pts "
                 f"({score['exact_scores']} exact, {score['correct_results']} correct)"
             )
 
-        await interaction.response.send_message("\n".join(lines))
+        results_message = "\n".join(lines)
+
+        # Post to channel
+        channel = interaction.channel
+        if channel:
+            try:
+                await channel.send(results_message)
+                await interaction.response.send_message(
+                    f"✅ Week {fixture['week_number']} results posted to this channel!",
+                    ephemeral=True,
+                )
+            except Exception as e:
+                logger.error(f"Failed to post results to channel: {e}")
+                await interaction.response.send_message(
+                    f"✅ Scores calculated but failed to post to channel.\n\n{results_message}",
+                    ephemeral=True,
+                )
+        else:
+            await interaction.response.send_message(results_message, ephemeral=True)
 
     @app_commands.command(name="health", description="Check bot health status")
     async def health_check(self, interaction: discord.Interaction):
@@ -553,6 +578,56 @@ class AdminCommands(commands.Cog):
             view=view,
             ephemeral=True,
         )
+
+    async def _refresh_usernames(self, interaction: discord.Interaction):
+        """Refresh all usernames in the database from Discord."""
+        if not self.is_admin(interaction.user):
+            await interaction.response.send_message(
+                "❌ You don't have permission to use this command.", ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "🔄 Refreshing usernames from Discord...", ephemeral=True
+        )
+
+        try:
+            user_ids = await self.db.get_all_user_ids()
+            updated = 0
+            failed = 0
+            not_found = []
+
+            for user_id in user_ids:
+                try:
+                    user = self.bot.get_user(int(user_id))
+                    if not user:
+                        # Try to fetch from API if not in cache
+                        try:
+                            user = await self.bot.fetch_user(int(user_id))
+                        except discord.NotFound:
+                            not_found.append(user_id)
+                            failed += 1
+                            continue
+
+                    if user:
+                        await self.db.update_username(user_id, user.display_name)
+                        updated += 1
+                except Exception as e:
+                    logger.warning(f"Failed to update username for {user_id}: {e}")
+                    failed += 1
+
+            # Build summary message
+            lines = ["✅ **Username Refresh Complete**\n"]
+            lines.append(f"Updated: {updated}")
+            lines.append(f"Failed: {failed}")
+            if not_found:
+                lines.append(f"\nUsers not found: {len(not_found)}")
+
+            await interaction.edit_original_response(content="\n".join(lines))
+
+        except Exception as e:
+            logger.exception("Error refreshing usernames")
+            await interaction.edit_original_response(content=f"❌ Error refreshing usernames: {e}")
 
 
 class DeadlineChoiceView(discord.ui.View):
