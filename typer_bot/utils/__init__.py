@@ -1,6 +1,11 @@
 """Utility functions and helpers."""
 
-from .prediction_parser import format_standings, parse_line_predictions, parse_predictions
+from .prediction_parser import (
+    format_standings,
+    parse_line_predictions,
+    parse_predictions,
+    visual_truncate,
+)
 from .scoring import calculate_points
 from .timezone import APP_TZ, format_for_discord, now, parse_deadline, parse_iso
 

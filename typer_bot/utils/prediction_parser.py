@@ -87,6 +87,20 @@ def parse_line_predictions(lines: list[str], games: list[str]) -> tuple[list[str
     return predictions, errors
 
 
+def visual_truncate(text: str, max_width: int = 20) -> str:
+    """Truncate text to fit visual display width, accounting for wide chars."""
+    width = 0
+    result = []
+    for char in text:
+        # Approximate: ASCII=1, CJK/emoji=2
+        char_width = 2 if ord(char) > 127 else 1
+        if width + char_width > max_width:
+            break
+        width += char_width
+        result.append(char)
+    return "".join(result).ljust(max_width)
+
+
 def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
     """Format standings table for Discord using code blocks for proper alignment."""
     lines = []
@@ -107,7 +121,7 @@ def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
                 last_week_points[score["user_id"]] = score["points"]
 
         for i, user in enumerate(standings, 1):
-            user_name = user["user_name"][:20].ljust(20)
+            user_name = visual_truncate(user["user_name"], 20)
             total_points = user["total_points"]
 
             # Calculate delta from last week
@@ -116,7 +130,7 @@ def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
                 delta = f" (+{last_week_points[user['user_id']]})"
 
             lines.append(
-                f"{i:4}  {user_name}  {user['total_exact']:5}  {user['total_correct']:7}  {total_points}{delta}"
+                f"{i:4}  {user_name}  {user['total_exact']:5}  {user['total_correct']:7}  {total_points:>4}{delta}"
             )
 
     lines.append("```")
@@ -130,9 +144,9 @@ def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
         lines.append("----  --------------------    -----  -------  ------")
 
         for i, score in enumerate(last_fixture["scores"], 1):
-            user_name = score["user_name"][:20].ljust(20)
+            user_name = visual_truncate(score["user_name"], 20)
             lines.append(
-                f"{i:4}  {user_name}  {score['exact_scores']:5}  {score['correct_results']:7}  {score['points']}"
+                f"{i:4}  {user_name}  {score['exact_scores']:5}  {score['correct_results']:7}  {score['points']:>4}"
             )
 
         lines.append("```")
