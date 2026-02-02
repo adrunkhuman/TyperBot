@@ -194,6 +194,9 @@ class TyperBot(commands.Bot):
         for guild in self.guilds:
             logger.info(f"  - {guild.name} (ID: {guild.id})")
 
+        # Auto-refresh usernames on startup
+        await self._refresh_usernames()
+
     async def on_error(self, event_method, *args, **kwargs):
         """Handle uncaught errors."""
         logger.exception(f"Error in {event_method}")
@@ -256,6 +259,42 @@ class TyperBot(commands.Bot):
         """Check if user has admin role (case-insensitive)."""
         admin_roles = {"admin", "typer-admin"}
         return any(role.name.lower() in admin_roles for role in user.roles)
+
+    async def _refresh_usernames(self):
+        """Refresh all usernames in the database from Discord."""
+        logger.info("Starting username refresh on startup...")
+
+        try:
+            user_ids = await self.db.get_all_user_ids()
+            if not user_ids:
+                logger.info("No users found to refresh")
+                return
+
+            updated = 0
+            failed = 0
+
+            for user_id in user_ids:
+                try:
+                    user = self.get_user(int(user_id))
+                    if not user:
+                        # Try to fetch from API if not in cache
+                        try:
+                            user = await self.fetch_user(int(user_id))
+                        except discord.NotFound:
+                            failed += 1
+                            continue
+
+                    if user:
+                        await self.db.update_username(user_id, user.display_name)
+                        updated += 1
+                except Exception as e:
+                    logger.warning(f"Failed to update username for {user_id}: {e}")
+                    failed += 1
+
+            logger.info(f"Username refresh complete: {updated} updated, {failed} failed")
+
+        except Exception as e:
+            logger.exception(f"Error during username refresh: {e}")
 
 
 def main():

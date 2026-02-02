@@ -88,36 +88,54 @@ def parse_line_predictions(lines: list[str], games: list[str]) -> tuple[list[str
 
 
 def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
-    """Format standings table for Discord."""
+    """Format standings table for Discord using code blocks for proper alignment."""
     lines = []
 
-    lines.append("## Overall Standings")
-    lines.append("")
+    # Overall Standings
+    lines.append("🏆 **Overall Standings**")
+    lines.append("```")
+    lines.append("Rank  User                    Exact  Correct  Points")
+    lines.append("----  --------------------    -----  -------  ------")
 
     if not standings:
         lines.append("No standings yet!")
     else:
-        lines.append("| Rank | User | Points | Exact | Correct | Weeks |")
-        lines.append("|------|------|--------|-------|---------|-------|")
+        # Create lookup for last week's points to calculate delta
+        last_week_points = {}
+        if last_fixture:
+            for score in last_fixture["scores"]:
+                last_week_points[score["user_id"]] = score["points"]
 
         for i, user in enumerate(standings, 1):
+            user_name = user["user_name"][:20].ljust(20)
+            total_points = user["total_points"]
+
+            # Calculate delta from last week
+            delta = ""
+            if user["user_id"] in last_week_points:
+                delta = f" (+{last_week_points[user['user_id']]})"
+
             lines.append(
-                f"| {i} | {user['user_name']} | {user['total_points']} | "
-                f"{user['total_exact']} | {user['total_correct']} | {user['weeks_played']} |"
+                f"{i:4}  {user_name}  {user['total_exact']:5}  {user['total_correct']:7}  {total_points}{delta}"
             )
 
+    lines.append("```")
+
+    # Last Week Results
     if last_fixture:
         lines.append("")
-        lines.append(f"## Last Week (Week {last_fixture['week_number']})")
-        lines.append("")
-        lines.append("| Rank | User | Points | Exact | Correct |")
-        lines.append("|------|------|--------|-------|---------|")
+        lines.append(f"📊 **Week {last_fixture['week_number']} Results**")
+        lines.append("```")
+        lines.append("Rank  User                    Exact  Correct  Points")
+        lines.append("----  --------------------    -----  -------  ------")
 
         for i, score in enumerate(last_fixture["scores"], 1):
+            user_name = score["user_name"][:20].ljust(20)
             lines.append(
-                f"| {i} | {score['user_name']} | {score['points']} | "
-                f"{score['exact_scores']} | {score['correct_results']} |"
+                f"{i:4}  {user_name}  {score['exact_scores']:5}  {score['correct_results']:7}  {score['points']}"
             )
+
+        lines.append("```")
 
     return "\n".join(lines)
 
