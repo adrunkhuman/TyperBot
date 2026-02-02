@@ -9,9 +9,9 @@ from discord.ext import commands
 from typer_bot.database import Database
 from typer_bot.handlers import FixtureCreationHandler, ResultsEntryHandler
 from typer_bot.utils import (
+    ascii_username,
     calculate_points,
     now,
-    visual_truncate,
 )
 from typer_bot.utils.config import BACKUP_DIR
 from typer_bot.utils.db_backup import cleanup_old_backups, create_backup
@@ -272,7 +272,7 @@ class AdminCommands(commands.Cog):
             lines.append("----  --------------------    -----  -------  ------")
 
             for i, score in enumerate(scores, 1):
-                user_name = visual_truncate(score["user_name"], 20)
+                user_name = ascii_username(score["user_name"])
                 lines.append(
                     f"{i:4}  {user_name}  {score['exact_scores']:5}  "
                     f"{score['correct_results']:7}  {score['points']:>4}"
@@ -299,7 +299,7 @@ class AdminCommands(commands.Cog):
                         last_week_points[score["user_id"]] = score["points"]
 
                 for i, user in enumerate(standings, 1):
-                    user_name = visual_truncate(user["user_name"], 20)
+                    user_name = ascii_username(user["user_name"])
                     total_points = user["total_points"]
 
                     # Calculate delta from last week
@@ -356,7 +356,7 @@ class AdminCommands(commands.Cog):
         lines.append("----  --------------------    -----  -------  ------")
 
         for i, score in enumerate(fixture_data["scores"], 1):
-            user_name = visual_truncate(score["user_name"], 20)
+            user_name = ascii_username(score["user_name"])
             lines.append(
                 f"{i:4}  {user_name}  {score['exact_scores']:5}  "
                 f"{score['correct_results']:7}  {score['points']:>4}"
@@ -437,7 +437,7 @@ class PostResultsConfirmView(discord.ui.View):
         lines.append("----  --------------------    -----  -------  ------")
 
         for i, score in enumerate(self.fixture_data["scores"], 1):
-            user_name = visual_truncate(score["user_name"], 20)
+            user_name = ascii_username(score["user_name"])
             lines.append(
                 f"{i:4}  {user_name}  {score['exact_scores']:5}  "
                 f"{score['correct_results']:7}  {score['points']:>4}"
@@ -466,7 +466,7 @@ class PostResultsConfirmView(discord.ui.View):
         lines.append("----  --------------------    -----  -------  ------")
 
         for i, score in enumerate(self.fixture_data["scores"], 1):
-            user_name = visual_truncate(score["user_name"], 20)
+            user_name = ascii_username(score["user_name"])
             lines.append(
                 f"{i:4}  {user_name}  {score['exact_scores']:5}  "
                 f"{score['correct_results']:7}  {score['points']:>4}"

@@ -87,18 +87,10 @@ def parse_line_predictions(lines: list[str], games: list[str]) -> tuple[list[str
     return predictions, errors
 
 
-def visual_truncate(text: str, max_width: int = 20) -> str:
-    """Truncate text to fit visual display width, accounting for wide chars."""
-    width = 0
-    result = []
-    for char in text:
-        # Approximate: ASCII=1, CJK/emoji=2
-        char_width = 2 if ord(char) > 127 else 1
-        if width + char_width > max_width:
-            break
-        width += char_width
-        result.append(char)
-    return "".join(result).ljust(max_width)
+def ascii_username(username: str, max_len: int = 20) -> str:
+    """Filter username to ASCII-only for reliable alignment in Discord code blocks."""
+    ascii_only = "".join(c for c in username if ord(c) < 128)
+    return ascii_only[:max_len].ljust(max_len)
 
 
 def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
@@ -121,7 +113,7 @@ def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
                 last_week_points[score["user_id"]] = score["points"]
 
         for i, user in enumerate(standings, 1):
-            user_name = visual_truncate(user["user_name"], 20)
+            user_name = ascii_username(user["user_name"])
             total_points = user["total_points"]
 
             # Calculate delta from last week
@@ -144,7 +136,7 @@ def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
         lines.append("----  --------------------    -----  -------  ------")
 
         for i, score in enumerate(last_fixture["scores"], 1):
-            user_name = visual_truncate(score["user_name"], 20)
+            user_name = ascii_username(score["user_name"])
             lines.append(
                 f"{i:4}  {user_name}  {score['exact_scores']:5}  {score['correct_results']:7}  {score['points']:>4}"
             )
