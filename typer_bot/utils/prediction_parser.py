@@ -122,7 +122,7 @@ def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
                 delta = f" (+{last_week_points[user['user_id']]})"
 
             lines.append(
-                f"{i:4}  {user_name}  {user['total_exact']:5}  {user['total_correct']:7}  {total_points:>4}{delta}"
+                f"{i:>4}  {user_name}  {user['total_exact']:>5}  {user['total_correct']:>7}  {total_points:>4}{delta}"
             )
 
     lines.append("```")
@@ -138,7 +138,7 @@ def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
         for i, score in enumerate(last_fixture["scores"], 1):
             user_name = ascii_username(score["user_name"])
             lines.append(
-                f"{i:4}  {user_name}  {score['exact_scores']:5}  {score['correct_results']:7}  {score['points']:>4}"
+                f"{i:>4}  {user_name}  {score['exact_scores']:>5}  {score['correct_results']:>7}  {score['points']:>4}"
             )
 
         lines.append("```")
