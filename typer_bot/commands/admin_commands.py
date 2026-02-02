@@ -328,6 +328,7 @@ class AdminCommands(commands.Cog):
             app_commands.Choice(name="fixture", value="fixture"),
             app_commands.Choice(name="results", value="results"),
             app_commands.Choice(name="calculate", value="calculate"),
+            app_commands.Choice(name="post_results", value="post_results"),
             app_commands.Choice(name="delete", value="delete"),
             app_commands.Choice(name="refresh_usernames", value="refresh_usernames"),
         ]
@@ -346,6 +347,8 @@ class AdminCommands(commands.Cog):
             await self._enter_results(interaction)
         elif action.value == "calculate":
             await self._calculate_scores(interaction)
+        elif action.value == "post_results":
+            await self._post_results(interaction)
         elif action.value == "delete":
             await self._delete_fixture(interaction)
         elif action.value == "refresh_usernames":
@@ -628,6 +631,51 @@ class AdminCommands(commands.Cog):
         except Exception as e:
             logger.exception("Error refreshing usernames")
             await interaction.edit_original_response(content=f"❌ Error refreshing usernames: {e}")
+
+    async def _post_results(self, interaction: discord.Interaction):
+        """Post the latest fixture results to the channel."""
+        if not self.is_admin(interaction.user):
+            await interaction.response.send_message(
+                "❌ You don't have permission to use this command.", ephemeral=True
+            )
+            return
+
+        # Get the latest closed fixture scores
+        fixture_data = await self.db.get_last_fixture_scores()
+
+        if not fixture_data:
+            await interaction.response.send_message(
+                "❌ No completed fixtures found with scores!", ephemeral=True
+            )
+            return
+
+        # Build results message with mentions
+        lines = [f"🏆 **Week {fixture_data['week_number']} Results**\n"]
+        for i, score in enumerate(fixture_data["scores"], 1):
+            lines.append(
+                f"{i}. <@{score['user_id']}>: {score['points']} pts "
+                f"({score['exact_scores']} exact, {score['correct_results']} correct)"
+            )
+
+        results_message = "\n".join(lines)
+
+        # Post to channel
+        channel = interaction.channel
+        if channel:
+            try:
+                await channel.send(results_message)
+                await interaction.response.send_message(
+                    f"✅ Week {fixture_data['week_number']} results posted!", ephemeral=True
+                )
+            except Exception as e:
+                logger.error(f"Failed to post results to channel: {e}")
+                await interaction.response.send_message(
+                    f"❌ Failed to post to channel: {e}", ephemeral=True
+                )
+        else:
+            await interaction.response.send_message(
+                "❌ Could not find channel to post in.", ephemeral=True
+            )
 
 
 class DeadlineChoiceView(discord.ui.View):

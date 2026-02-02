@@ -272,8 +272,10 @@ class Database:
                         scores = await cursor2.fetchall()
                         return {
                             "week_number": row["week_number"],
+                            "fixture_id": fixture_id,
                             "scores": [
                                 {
+                                    "user_id": s["user_id"],
                                     "user_name": s["user_name"],
                                     "points": s["points"],
                                     "exact_scores": s["exact_scores"],
