@@ -272,6 +272,26 @@ class AdminCommands(commands.Cog):
             # Use format_standings to generate both overall and last week results
             message = format_standings(standings, last_fixture)
 
+            # Add top 3 mentions from last week's results
+            if last_fixture and last_fixture["scores"]:
+                # Sort by: points DESC, exact_scores DESC, correct_results DESC
+                sorted_scores = sorted(
+                    last_fixture["scores"],
+                    key=lambda x: (x["points"], x["exact_scores"], x["correct_results"]),
+                    reverse=True,
+                )
+
+                # Get top 3 user mentions
+                top3 = sorted_scores[:3]
+                if len(top3) >= 1:
+                    medals = [f"🥇 <@{top3[0]['user_id']}>"]
+                    if len(top3) >= 2:
+                        medals.append(f"🥈 <@{top3[1]['user_id']}>")
+                    if len(top3) >= 3:
+                        medals.append(f"🥉 <@{top3[2]['user_id']}>")
+
+                    message += f"\n{' '.join(medals)}"
+
             try:
                 # Send the complete standings message
                 await channel.send(message)
@@ -290,10 +310,10 @@ class AdminCommands(commands.Cog):
                 "Could not find channel to post in.", ephemeral=True
             )
 
-    @results.command(name="post", description="Post results with optional user mentions")
+    @results.command(name="post", description="Post the latest results to the channel")
     @admin_only()
     async def results_post(self, interaction: discord.Interaction):
-        """Post the latest fixture results to the channel with mention confirmation."""
+        """Post the latest fixture results to the channel."""
         # Get the latest closed fixture scores and overall standings
         fixture_data = await self.db.get_last_fixture_scores()
         standings = await self.db.get_standings()
@@ -304,16 +324,25 @@ class AdminCommands(commands.Cog):
             )
             return
 
-        # Show preview with confirmation buttons using format_standings
-        preview = format_standings(standings, fixture_data)
+        channel = interaction.channel
+        if not channel:
+            await interaction.response.send_message(
+                "Could not find channel to post in.", ephemeral=True
+            )
+            return
 
-        view = PostResultsConfirmView(self.db, fixture_data, standings, interaction.channel)
+        # Format and post the results
+        message = format_standings(standings, fixture_data)
 
-        await interaction.response.send_message(
-            f"{preview}\n\nMention users in this post?",
-            view=view,
-            ephemeral=True,
-        )
+        try:
+            await channel.send(message)
+            await interaction.response.send_message(
+                f"Week {fixture_data['week_number']} results posted!",
+                ephemeral=True,
+            )
+        except Exception as e:
+            logger.error(f"Failed to post results: {e}")
+            await interaction.response.send_message(f"Failed to post results: {e}", ephemeral=True)
 
 
 class DeleteConfirmView(discord.ui.View):
@@ -330,7 +359,7 @@ class DeleteConfirmView(discord.ui.View):
         pass
 
     @discord.ui.button(label="Yes, Delete", style=discord.ButtonStyle.red)
-    async def confirm(self, interaction: discord.Interaction, _button: discord.ui.Button):
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Delete fixture from database."""
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message(
@@ -345,7 +374,7 @@ class DeleteConfirmView(discord.ui.View):
         )
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.gray)
-    async def cancel(self, interaction: discord.Interaction, _button: discord.ui.Button):
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Cancel deletion."""
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message(
@@ -356,61 +385,6 @@ class DeleteConfirmView(discord.ui.View):
         await interaction.response.edit_message(
             content="Deletion cancelled. The fixture is still active.", view=None
         )
-
-
-class PostResultsConfirmView(discord.ui.View):
-    """View for confirming results posting with mentions."""
-
-    def __init__(
-        self, db: Database, fixture_data: dict, standings: list[dict], channel: discord.TextChannel
-    ):
-        super().__init__(timeout=60)
-        self.db = db
-        self.fixture_data = fixture_data
-        self.standings = standings
-        self.channel = channel
-
-    async def on_timeout(self):
-        pass
-
-    @discord.ui.button(label="NO", style=discord.ButtonStyle.primary)
-    async def no_mentions(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        """Post results without mentions."""
-        message = format_standings(self.standings, self.fixture_data)
-
-        try:
-            await self.channel.send(message)
-            await interaction.response.edit_message(
-                content="Results posted without mentions!", view=None
-            )
-        except Exception as e:
-            logger.error(f"Failed to post results: {e}")
-            await interaction.response.edit_message(
-                content=f"Failed to post results: {e}", view=None
-            )
-
-    @discord.ui.button(label="YES", style=discord.ButtonStyle.green)
-    async def with_mentions(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        """Post results with user mentions."""
-        message = format_standings(self.standings, self.fixture_data)
-
-        # Add mentions section
-        mentions = []
-        for score in self.fixture_data["scores"]:
-            mentions.append(f"<@{score['user_id']}>")
-
-        message += f"\n\n**Participants:**\n{' '.join(mentions)}"
-
-        try:
-            await self.channel.send(message)
-            await interaction.response.edit_message(
-                content="Results posted with mentions!", view=None
-            )
-        except Exception as e:
-            logger.error(f"Failed to post results: {e}")
-            await interaction.response.edit_message(
-                content=f"Failed to post results: {e}", view=None
-            )
 
 
 async def setup(bot: commands.Bot):
