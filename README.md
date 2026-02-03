@@ -2,16 +2,23 @@
 
 100% vibecoded, no guarantees given but it seems to work.
 
-A Discord bot for running weekly football prediction games with your friends. I built this because spreadsheets are annoying and other bots were too complicated.
+A Discord bot for running weekly football prediction games. I built this because spreadsheets are annoying and other bots were too complicated.
 
 ## What it does
-- **Predictions via Thread**: Post directly in the fixture announcement thread. Edit anytime before the deadline.
-- **Predictions via DM**: Still works! Type `/predict`, bot slides into your DMs.
+- **Predictions via Thread**: Post directly in the fixture announcement thread.
+- **Predictions via DM**: Type `/predict` to submit privately.
 - **Easy Format**: Just reply with scores like `2-1` or `2:0`.
 - **Points**: 3 points for exact score, 1 point for correct winner/draw.
-- **Leaderboards**: `/standings` to see who knows ball.
-- **Deadlines**: Set them per fixture. Late submissions get 0 points (brutal but fair).
-- **Persistent**: Uses SQLite so your scores survive restarts/redeployments.
+- **Leaderboards**: `/standings` to see the table.
+- **Deadlines**: Set per fixture. Late submissions get 0 points.
+- **Persistent**: Uses SQLite.
+
+## Permissions
+Bot requires:
+- **Send Messages** & **Read Message History**
+- **Add Reactions**: To confirm predictions.
+- **Manage Messages**: To clear reactions on edit.
+- **Use Slash Commands**
 
 ## How to use
 
