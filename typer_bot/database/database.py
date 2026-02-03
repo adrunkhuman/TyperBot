@@ -6,6 +6,7 @@ import aiosqlite
 
 from typer_bot.utils import parse_iso
 from typer_bot.utils.config import DB_PATH
+from typer_bot.utils.logger import logger
 
 
 class Database:
@@ -74,6 +75,19 @@ class Database:
                 )
             """)
 
+            # Migration: Add missing columns to fixtures table
+            async with db.execute("PRAGMA table_info(fixtures)") as cursor:
+                columns = await cursor.fetchall()
+                column_names = {col[1] for col in columns}
+
+            if "announcement_message_id" not in column_names:
+                logger.info("Adding announcement_message_id column to fixtures table")
+                await db.execute("ALTER TABLE fixtures ADD COLUMN announcement_message_id TEXT")
+
+            if "thread_id" not in column_names:
+                logger.info("Adding thread_id column to fixtures table")
+                await db.execute("ALTER TABLE fixtures ADD COLUMN thread_id TEXT")
+
             await db.commit()
 
     async def create_fixture(self, week_number: int, games: list[str], deadline: datetime) -> int:
@@ -101,13 +115,13 @@ class Database:
                 row = await cursor.fetchone()
                 if row:
                     return {
-                        "id": row["id"],
-                        "week_number": row["week_number"],
-                        "games": row["games"].split("\n"),
-                        "deadline": parse_iso(row["deadline"]),
-                        "status": row["status"],
-                        "announcement_message_id": row["announcement_message_id"],
-                        "thread_id": row["thread_id"],
+                        "id": row.get("id"),
+                        "week_number": row.get("week_number"),
+                        "games": row.get("games", "").split("\n"),
+                        "deadline": parse_iso(row.get("deadline")) if row.get("deadline") else None,
+                        "status": row.get("status"),
+                        "announcement_message_id": row.get("announcement_message_id"),
+                        "thread_id": row.get("thread_id"),
                     }
                 return None
 
@@ -119,13 +133,13 @@ class Database:
                 row = await cursor.fetchone()
                 if row:
                     return {
-                        "id": row["id"],
-                        "week_number": row["week_number"],
-                        "games": row["games"].split("\n"),
-                        "deadline": parse_iso(row["deadline"]),
-                        "status": row["status"],
-                        "announcement_message_id": row["announcement_message_id"],
-                        "thread_id": row["thread_id"],
+                        "id": row.get("id"),
+                        "week_number": row.get("week_number"),
+                        "games": row.get("games", "").split("\n"),
+                        "deadline": parse_iso(row.get("deadline")) if row.get("deadline") else None,
+                        "status": row.get("status"),
+                        "announcement_message_id": row.get("announcement_message_id"),
+                        "thread_id": row.get("thread_id"),
                     }
                 return None
 
@@ -139,13 +153,13 @@ class Database:
                 row = await cursor.fetchone()
                 if row:
                     return {
-                        "id": row["id"],
-                        "week_number": row["week_number"],
-                        "games": row["games"].split("\n"),
-                        "deadline": parse_iso(row["deadline"]),
-                        "status": row["status"],
-                        "announcement_message_id": row["announcement_message_id"],
-                        "thread_id": row["thread_id"],
+                        "id": row.get("id"),
+                        "week_number": row.get("week_number"),
+                        "games": row.get("games", "").split("\n"),
+                        "deadline": parse_iso(row.get("deadline")) if row.get("deadline") else None,
+                        "status": row.get("status"),
+                        "announcement_message_id": row.get("announcement_message_id"),
+                        "thread_id": row.get("thread_id"),
                     }
                 return None
 
