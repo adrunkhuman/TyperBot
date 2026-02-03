@@ -136,8 +136,8 @@ class Database:
             await db.execute(
                 """INSERT INTO predictions (fixture_id, user_id, user_name, predictions, is_late)
                    VALUES (?, ?, ?, ?, ?)
-                   ON CONFLICT(fixture_id, user_id) 
-                   DO UPDATE SET predictions = excluded.predictions, 
+                   ON CONFLICT(fixture_id, user_id)
+                   DO UPDATE SET predictions = excluded.predictions,
                                  is_late = excluded.is_late,
                                  submitted_at = CURRENT_TIMESTAMP""",
                 (fixture_id, user_id, user_name, "\n".join(predictions), is_late),
@@ -208,7 +208,7 @@ class Database:
             await db.execute("DELETE FROM scores WHERE fixture_id = ?", (fixture_id,))
             for score in scores:
                 await db.execute(
-                    """INSERT INTO scores (fixture_id, user_id, user_name, points, 
+                    """INSERT INTO scores (fixture_id, user_id, user_name, points,
                                           exact_scores, correct_results)
                        VALUES (?, ?, ?, ?, ?, ?)""",
                     (
@@ -228,12 +228,12 @@ class Database:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                """SELECT user_id, user_name, 
+                """SELECT user_id, user_name,
                           SUM(points) as total_points,
                           SUM(exact_scores) as total_exact,
                           SUM(correct_results) as total_correct,
                           COUNT(DISTINCT fixture_id) as weeks_played
-                   FROM scores 
+                   FROM scores
                    GROUP BY user_id, user_name
                    ORDER BY total_points DESC"""
             ) as cursor:
@@ -255,7 +255,7 @@ class Database:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                """SELECT s.*, f.week_number 
+                """SELECT s.*, f.week_number
                    FROM scores s
                    JOIN fixtures f ON s.fixture_id = f.id
                    WHERE f.status = 'closed'
