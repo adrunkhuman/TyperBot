@@ -190,8 +190,8 @@ class FixtureCreationHandler:
             _pending_fixtures.pop(user_id, None)
             return
 
-        current = await self.db.get_current_fixture()
-        week_number = 1 if not current else current["week_number"] + 1
+        max_week = await self.db.get_max_week_number()
+        week_number = max_week + 1
         state["week_number"] = week_number
 
         lines = [f"**Week {week_number} Fixture Preview**\n"]
