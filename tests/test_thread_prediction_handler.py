@@ -1,0 +1,473 @@
+"""Tests for thread prediction handler."""
+
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
+
+import pytest
+
+from tests.conftest import MockMessage
+
+
+class TestOnMessage:
+    """Test suite for on_message handler."""
+
+    @pytest.mark.asyncio
+    async def test_ignores_bot_messages(self, handler, mock_message):
+        """Should ignore messages from bots."""
+        mock_message.author.bot = True
+
+        result = await handler.on_message(mock_message)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_ignores_dm_messages(self, handler, mock_message):
+        """Should ignore messages in DMs (no guild)."""
+        mock_message.guild = None
+
+        result = await handler.on_message(mock_message)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_ignores_non_thread_channels(self, handler, mock_message):
+        """Should ignore messages not in threads."""
+        mock_message.channel = object()  # Not a thread
+
+        result = await handler.on_message(mock_message)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("database")
+    async def test_ignores_unknown_threads(self, handler, mock_message):
+        """Should ignore threads not associated with fixtures."""
+        mock_message.channel.id = 999999  # Unknown thread ID
+
+        result = await handler.on_message(mock_message)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_rejects_message_too_long(self, handler, mock_message):
+        """Should reject messages exceeding max length."""
+        mock_message.content = "x" * 5001
+        mock_message.channel.id = 789012
+
+        result = await handler.on_message(mock_message)
+
+        assert result is True
+        assert "❌" in mock_message.reactions_added
+        assert len(mock_message.author.dm_sent) == 1
+        assert "too long" in mock_message.author.dm_sent[0]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_ignores_chatty_messages_no_scores(self, handler, mock_message):
+        """Should silently ignore messages with no valid scores (chatty thread fix)."""
+        mock_message.content = "Hey everyone, what do you think about today's matches?"
+        mock_message.channel.id = 789012
+
+        result = await handler.on_message(mock_message)
+
+        assert result is False
+        assert len(mock_message.reactions_added) == 0
+        assert len(mock_message.author.dm_sent) == 0
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_handles_invalid_prediction_format(self, handler, mock_message):
+        """Should DM user when predictions have format errors."""
+        # Must provide exactly 3 lines for 3 games
+        mock_message.content = "Team A - Team B invalid\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        mock_message.channel.id = 789012
+
+        result = await handler.on_message(mock_message)
+
+        assert result is True
+        assert "❌" in mock_message.reactions_added
+        assert len(mock_message.author.dm_sent) == 1
+        assert "Invalid predictions" in mock_message.author.dm_sent[0]
+
+    @pytest.mark.asyncio
+    async def test_saves_valid_predictions(self, handler, fixture_with_thread, mock_message):
+        """Should save valid predictions and add success reaction."""
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        mock_message.channel.id = 789012
+
+        result = await handler.on_message(mock_message)
+
+        assert result is True
+        assert "✅" in mock_message.reactions_added
+
+        # Verify prediction was saved
+        predictions = await handler.db.get_all_predictions(fixture_with_thread["id"])
+        assert len(predictions) == 1
+        assert predictions[0]["user_id"] == "123456"
+        assert not predictions[0]["is_late"]
+
+    @pytest.mark.asyncio
+    async def test_marks_late_predictions(self, handler, database, mock_message, sample_games):
+        """Should mark predictions as late when past deadline."""
+        # Create fixture with past deadline
+        deadline = datetime.now(UTC) - timedelta(hours=1)
+        fixture_id = await database.create_fixture(1, sample_games, deadline)
+        await database.update_fixture_announcement(fixture_id, thread_id="789012")
+
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        mock_message.channel.id = 789012
+
+        result = await handler.on_message(mock_message)
+
+        assert result is True
+        assert "✅" in mock_message.reactions_added
+
+        # Verify prediction was saved as late
+        predictions = await handler.db.get_all_predictions(fixture_id)
+        assert len(predictions) == 1
+        assert predictions[0]["is_late"]
+        assert "Late prediction" in mock_message.author.dm_sent[0]
+
+
+class TestOnMessageEdit:
+    """Test suite for on_message_edit handler."""
+
+    @pytest.mark.asyncio
+    async def test_ignores_bot_messages(self, handler, mock_message):
+        """Should ignore edits from bots."""
+        mock_message.author.bot = True
+
+        result = await handler.on_message_edit(mock_message, mock_message)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_ignores_non_thread_channels(self, handler, mock_message):
+        """Should ignore edits not in threads."""
+        mock_message.channel = object()
+
+        result = await handler.on_message_edit(mock_message, mock_message)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_updates_existing_prediction(self, handler, mock_message):
+        """Should update prediction when user edits message."""
+        mock_message.channel.id = 789012
+
+        # First, save initial prediction
+        mock_message.content = "Team A - Team B 1-0\nTeam C - Team D 0-0\nTeam E - Team F 1-2"
+        await handler.on_message(mock_message)
+
+        # Now edit the message - handler passes 'after' to clear_reactions
+        edited_message = MockMessage(
+            content="Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-1",
+            author=mock_message.author,
+            channel=mock_message.channel,
+            guild=mock_message.guild,
+        )
+
+        result = await handler.on_message_edit(mock_message, edited_message)
+
+        assert result is True
+        # Verify clear_reactions was called on the edited message
+        assert edited_message.reactions_cleared is True
+        assert edited_message._clear_reactions_count == 1
+        # After clearing, only the new ✅ should be present
+        assert len(edited_message.reactions_added) == 1
+        assert "✅" in edited_message.reactions_added
+
+    @pytest.mark.asyncio
+    async def test_enforces_deadline_on_edit(self, handler, database, mock_message, sample_games):
+        """Should mark edited prediction as late when past deadline (sneaky edit fix)."""
+        # Create fixture with past deadline
+        deadline = datetime.now(UTC) - timedelta(hours=1)
+        fixture_id = await database.create_fixture(1, sample_games, deadline)
+        await database.update_fixture_announcement(fixture_id, thread_id="789012")
+
+        mock_message.channel.id = 789012
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        result = await handler.on_message_edit(mock_message, mock_message)
+
+        assert result is True
+
+        # Verify prediction was updated as late
+        predictions = await handler.db.get_all_predictions(fixture_id)
+        assert len(predictions) == 1
+        assert predictions[0]["is_late"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_handles_invalid_format_on_edit(self, handler, mock_message):
+        """Should DM user when edited predictions have format errors."""
+        mock_message.channel.id = 789012
+        # Must provide exactly 3 lines for 3 games
+        mock_message.content = "Team A - Team B invalid\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        result = await handler.on_message_edit(mock_message, mock_message)
+
+        assert result is True
+        assert "❌" in mock_message.reactions_added
+        assert len(mock_message.author.dm_sent) == 1
+        assert "Invalid predictions" in mock_message.author.dm_sent[0]
+
+
+class TestOnMessageDelete:
+    """Test suite for on_message_delete handler."""
+
+    @pytest.mark.asyncio
+    async def test_ignores_bot_messages(self, handler, mock_message):
+        """Should ignore deletions from bots."""
+        mock_message.author.bot = True
+
+        result = await handler.on_message_delete(mock_message)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_deletes_prediction_and_notifies_user(
+        self, handler, fixture_with_thread, mock_message
+    ):
+        """Should delete prediction and DM user when message is deleted."""
+        mock_message.channel.id = 789012
+
+        # First, save a prediction
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        await handler.on_message(mock_message)
+
+        # Verify prediction exists
+        predictions = await handler.db.get_all_predictions(fixture_with_thread["id"])
+        assert len(predictions) == 1
+
+        # Now delete the message
+        result = await handler.on_message_delete(mock_message)
+
+        assert result is True
+        assert len(mock_message.author.dm_sent) == 1
+        assert "deleted" in mock_message.author.dm_sent[0].lower()
+
+        # Verify prediction was deleted
+        predictions = await handler.db.get_all_predictions(fixture_with_thread["id"])
+        assert len(predictions) == 0
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_handles_delete_when_no_prediction_exists(self, handler, mock_message):
+        """Should handle deletion gracefully when no prediction exists."""
+        mock_message.channel.id = 789012
+
+        result = await handler.on_message_delete(mock_message)
+
+        assert result is True
+        # Should not crash or send DM when no prediction exists
+
+
+class TestEdgeCases:
+    """Test suite for edge cases and boundary conditions."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_handles_permission_error_on_reaction(self, handler, mock_message, monkeypatch):
+        """Should handle Forbidden exception when adding reactions."""
+        import discord
+
+        async def raise_forbidden(*_args, **_kwargs):
+            raise discord.Forbidden(MagicMock(), "Missing permissions")
+
+        mock_message.channel.id = 789012
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        monkeypatch.setattr(mock_message, "add_reaction", raise_forbidden)
+
+        # Should not crash
+        result = await handler.on_message(mock_message)
+        assert result is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_handles_dm_permission_error(self, handler, mock_message, monkeypatch):
+        """Should handle Forbidden exception when sending DMs."""
+        import discord
+
+        async def raise_forbidden(*_args, **_kwargs):
+            raise discord.Forbidden(MagicMock(), "Cannot send DMs")
+
+        mock_message.channel.id = 789012
+        # Must provide exactly 3 lines for 3 games, with invalid format to trigger DM
+        mock_message.content = "Team A - Team B invalid\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        monkeypatch.setattr(mock_message.author, "send", raise_forbidden)
+
+        # Should not crash and should add error reaction
+        result = await handler.on_message(mock_message)
+        assert result is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_handles_database_error_gracefully(self, handler, mock_message, monkeypatch):
+        """Should handle database errors gracefully."""
+
+        async def raise_error(*_args, **_kwargs):
+            raise Exception("Database connection failed")
+
+        mock_message.channel.id = 789012
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        monkeypatch.setattr(handler.db, "save_prediction", raise_error)
+
+        # Should not crash and should notify user
+        result = await handler.on_message(mock_message)
+        assert result is True
+        assert len(mock_message.author.dm_sent) == 1
+        assert "Error" in mock_message.author.dm_sent[0]
+
+    @pytest.mark.asyncio
+    async def test_thread_exists_but_not_in_database(self, handler, mock_message):
+        """Should handle threads created manually (not through bot)."""
+        mock_message.channel.id = 999999  # Thread not in database
+
+        result = await handler.on_message(mock_message)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_mixed_valid_and_chat_content(self, handler, mock_message):
+        """Should error when some lines have chat text instead of scores."""
+        mock_message.channel.id = 789012
+        # 3 lines but only 1 has a valid score - will error on lines 1 and 3
+        mock_message.content = "Let's go Team A!\nTeam A - Team B 2-1\nGood luck everyone!"
+
+        result = await handler.on_message(mock_message)
+
+        assert result is True
+        assert "❌" in mock_message.reactions_added
+        assert len(mock_message.author.dm_sent) == 1
+        assert "Invalid predictions" in mock_message.author.dm_sent[0]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_partial_predictions_with_errors(self, handler, mock_message):
+        """Should handle messages with some valid and some invalid predictions."""
+        mock_message.channel.id = 789012
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D invalid\nTeam E - Team F 0-2"
+
+        result = await handler.on_message(mock_message)
+
+        assert result is True
+        assert "❌" in mock_message.reactions_added
+        assert "Invalid predictions" in mock_message.author.dm_sent[0]
+
+
+class TestIntegration:
+    """Integration tests for full workflow scenarios."""
+
+    @pytest.mark.asyncio
+    async def test_full_workflow_create_predict_edit_delete(
+        self, handler, database, mock_message, sample_games
+    ):
+        """Test complete workflow: create fixture → predict → edit → delete."""
+        # Create fixture
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        fixture_id = await database.create_fixture(1, sample_games, deadline)
+        await database.update_fixture_announcement(fixture_id, thread_id="789012")
+
+        mock_message.channel.id = 789012
+
+        # Step 1: Submit prediction
+        mock_message.content = "Team A - Team B 1-0\nTeam C - Team D 0-0\nTeam E - Team F 1-2"
+        result = await handler.on_message(mock_message)
+        assert result is True
+        assert "✅" in mock_message.reactions_added
+
+        predictions = await database.get_all_predictions(fixture_id)
+        assert len(predictions) == 1
+        initial_pred = predictions[0]
+        assert initial_pred["user_id"] == "123456"
+
+        # Step 2: Edit prediction
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-0"
+        result = await handler.on_message_edit(mock_message, mock_message)
+        assert result is True
+
+        predictions = await database.get_all_predictions(fixture_id)
+        assert len(predictions) == 1
+        # Prediction should be updated
+
+        # Step 3: Delete prediction
+        result = await handler.on_message_delete(mock_message)
+        assert result is True
+
+        predictions = await database.get_all_predictions(fixture_id)
+        assert len(predictions) == 0
+
+    @pytest.mark.asyncio
+    async def test_multiple_users_same_thread(
+        self, handler, database, sample_games, mock_thread, mock_guild
+    ):
+        """Test multiple users predicting in the same thread."""
+        from tests.conftest import MockMessage, MockUser
+
+        # Create fixture
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        fixture_id = await database.create_fixture(1, sample_games, deadline)
+        await database.update_fixture_announcement(fixture_id, thread_id="789012")
+
+        # User 1 predicts
+        user1 = MockUser(user_id="111", name="User1")
+        message1 = MockMessage(
+            content="Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2",
+            message_id="1",
+            author=user1,
+            channel=mock_thread,
+            guild=mock_guild,
+        )
+        mock_thread.id = 789012
+        result = await handler.on_message(message1)
+        assert result is True
+
+        # User 2 predicts
+        user2 = MockUser(user_id="222", name="User2")
+        message2 = MockMessage(
+            content="Team A - Team B 1-0\nTeam C - Team D 2-2\nTeam E - Team F 1-1",
+            message_id="2",
+            author=user2,
+            channel=mock_thread,
+            guild=mock_guild,
+        )
+        result = await handler.on_message(message2)
+        assert result is True
+
+        # Verify both predictions exist
+        predictions = await database.get_all_predictions(fixture_id)
+        assert len(predictions) == 2
+        user_ids = {p["user_id"] for p in predictions}
+        assert user_ids == {"111", "222"}
+
+    @pytest.mark.asyncio
+    async def test_late_prediction_then_on_time_edit(
+        self, handler, database, mock_message, sample_games
+    ):
+        """Test scenario: late prediction submitted, then edited after deadline still late."""
+        # Create fixture with past deadline
+        deadline = datetime.now(UTC) - timedelta(hours=1)
+        fixture_id = await database.create_fixture(1, sample_games, deadline)
+        await database.update_fixture_announcement(fixture_id, thread_id="789012")
+
+        mock_message.channel.id = 789012
+
+        # Submit late prediction
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        result = await handler.on_message(mock_message)
+        assert result is True
+
+        predictions = await database.get_all_predictions(fixture_id)
+        assert predictions[0]["is_late"]
+
+        # Edit prediction (still late)
+        mock_message.content = "Team A - Team B 3-0\nTeam C - Team D 2-1\nTeam E - Team F 1-1"
+        result = await handler.on_message_edit(mock_message, mock_message)
+        assert result is True
+
+        predictions = await database.get_all_predictions(fixture_id)
+        assert predictions[0]["is_late"]  # Still marked as late
