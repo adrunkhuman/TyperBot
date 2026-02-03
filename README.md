@@ -59,13 +59,31 @@ If you know Python:
 # Clone and setup
 git clone https://github.com/adrunkhuman/matchday-typer
 cd matchday-typer
-python -m venv .venv
-source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-pip install -e .
+
+# Install dependencies (requires [uv](https://docs.astral.sh/uv/))
+uv sync
 
 # Run
 export DISCORD_TOKEN="your_token"
-python -m typer_bot
+uv run python -m typer_bot
+```
+
+## Development Setup
+
+To run tests and linting:
+
+```bash
+# Install with dev dependencies (pytest, ruff, etc.)
+uv sync --group dev
+
+# Run tests
+uv run pytest tests/ -v
+
+# Run linting
+uv run ruff check .
+
+# Format code
+uv run ruff format .
 ```
 
 ## Importing History
