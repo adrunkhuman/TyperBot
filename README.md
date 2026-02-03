@@ -5,7 +5,8 @@
 A Discord bot for running weekly football prediction games with your friends. I built this because spreadsheets are annoying and other bots were too complicated.
 
 ## What it does
-- **Predictions via DM**: You type `/predict`, bot slides into your DMs.
+- **Predictions via Thread**: Post directly in the fixture announcement thread. Edit anytime before the deadline.
+- **Predictions via DM**: Still works! Type `/predict`, bot slides into your DMs.
 - **Easy Format**: Just reply with scores like `2-1` or `2:0`.
 - **Points**: 3 points for exact score, 1 point for correct winner/draw.
 - **Leaderboards**: `/standings` to see who knows ball.
@@ -15,15 +16,32 @@ A Discord bot for running weekly football prediction games with your friends. I 
 ## How to use
 
 ### For Players
-1. **Predict**: `/predict` -> Bot DMs you the games -> You reply with scores.
-2. **Check**: `/mypredictions` to see what you sent.
-3. **Flex**: `/standings` to see the table.
+
+**Method 1: Thread Predictions (Recommended)**
+1. Look for the fixture announcement with a thread attached
+2. Reply in the thread with your predictions:
+   ```
+   Team A - Team B 2:1
+   Team C - Team D 0:0
+   Team E - Team F 3:2
+   ...
+   ```
+3. Bot reacts ✅ when saved. Edit your message anytime before the deadline.
+4. Delete your message to remove your prediction.
+
+**Method 2: DM Predictions**
+1. Type `/predict` -> Bot DMs you the games
+2. Reply with scores (same format as above)
+3. Confirm via the button
+
+**Check**: `/mypredictions` to see what you sent.
+**Flex**: `/standings` to see the table.
 
 ### For Admins
 You need a Discord role named `Admin` or `typer-admin`.
 
 **Fixture Management:**
-- `/admin fixture create` - Create a new fixture (DM workflow with games + deadline)
+- `/admin fixture create` - Create a new fixture (DM workflow with games + deadline, auto-creates prediction thread)
 - `/admin fixture delete` - Delete the current fixture
 
 **Results Management:**

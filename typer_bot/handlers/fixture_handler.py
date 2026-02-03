@@ -297,7 +297,12 @@ class FixtureConfirmView(ui.View):
         try:
             # Send announcement message
             announcement = await self.channel.send(
-                f"**Week {self.week_number} Fixture is now open!**\n\n{self.preview}"
+                f"**Week {self.week_number} Fixture is now open!**\n\n"
+                f"{self.preview}\n\n"
+                f"💬 **How to predict:**\n"
+                f"• Reply in this thread with your scores (one per line)\n"
+                f"• Or use `/predict` for DM mode\n"
+                f"• You can edit your prediction anytime before the deadline"
             )
 
             # Create a thread for predictions
