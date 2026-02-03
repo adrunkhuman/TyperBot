@@ -1,12 +1,14 @@
 """SQLite database operations for the prediction bot."""
 
+import logging
 from datetime import datetime
 
 import aiosqlite
 
 from typer_bot.utils import parse_iso
 from typer_bot.utils.config import DB_PATH
-from typer_bot.utils.logger import logger
+
+logger = logging.getLogger(__name__)
 
 
 class Database:
@@ -114,14 +116,17 @@ class Database:
             ) as cursor:
                 row = await cursor.fetchone()
                 if row:
+                    row_dict = dict(row)
                     return {
-                        "id": row.get("id"),
-                        "week_number": row.get("week_number"),
-                        "games": row.get("games", "").split("\n"),
-                        "deadline": parse_iso(row.get("deadline")) if row.get("deadline") else None,
-                        "status": row.get("status"),
-                        "announcement_message_id": row.get("announcement_message_id"),
-                        "thread_id": row.get("thread_id"),
+                        "id": row_dict.get("id"),
+                        "week_number": row_dict.get("week_number"),
+                        "games": row_dict.get("games", "").split("\n"),
+                        "deadline": parse_iso(row_dict.get("deadline"))
+                        if row_dict.get("deadline")
+                        else None,
+                        "status": row_dict.get("status"),
+                        "announcement_message_id": row_dict.get("announcement_message_id"),
+                        "thread_id": row_dict.get("thread_id"),
                     }
                 return None
 
@@ -132,14 +137,17 @@ class Database:
             async with db.execute("SELECT * FROM fixtures WHERE id = ?", (fixture_id,)) as cursor:
                 row = await cursor.fetchone()
                 if row:
+                    row_dict = dict(row)
                     return {
-                        "id": row.get("id"),
-                        "week_number": row.get("week_number"),
-                        "games": row.get("games", "").split("\n"),
-                        "deadline": parse_iso(row.get("deadline")) if row.get("deadline") else None,
-                        "status": row.get("status"),
-                        "announcement_message_id": row.get("announcement_message_id"),
-                        "thread_id": row.get("thread_id"),
+                        "id": row_dict.get("id"),
+                        "week_number": row_dict.get("week_number"),
+                        "games": row_dict.get("games", "").split("\n"),
+                        "deadline": parse_iso(row_dict.get("deadline"))
+                        if row_dict.get("deadline")
+                        else None,
+                        "status": row_dict.get("status"),
+                        "announcement_message_id": row_dict.get("announcement_message_id"),
+                        "thread_id": row_dict.get("thread_id"),
                     }
                 return None
 
@@ -152,14 +160,17 @@ class Database:
             ) as cursor:
                 row = await cursor.fetchone()
                 if row:
+                    row_dict = dict(row)
                     return {
-                        "id": row.get("id"),
-                        "week_number": row.get("week_number"),
-                        "games": row.get("games", "").split("\n"),
-                        "deadline": parse_iso(row.get("deadline")) if row.get("deadline") else None,
-                        "status": row.get("status"),
-                        "announcement_message_id": row.get("announcement_message_id"),
-                        "thread_id": row.get("thread_id"),
+                        "id": row_dict.get("id"),
+                        "week_number": row_dict.get("week_number"),
+                        "games": row_dict.get("games", "").split("\n"),
+                        "deadline": parse_iso(row_dict.get("deadline"))
+                        if row_dict.get("deadline")
+                        else None,
+                        "status": row_dict.get("status"),
+                        "announcement_message_id": row_dict.get("announcement_message_id"),
+                        "thread_id": row_dict.get("thread_id"),
                     }
                 return None
 
@@ -169,10 +180,12 @@ class Database:
         Returns:
             Maximum week number, or 0 if no fixtures exist.
         """
-        async with aiosqlite.connect(self.db_path) as db:
-            async with db.execute("SELECT MAX(week_number) FROM fixtures") as cursor:
-                row = await cursor.fetchone()
-                return row[0] if row and row[0] is not None else 0
+        async with (
+            aiosqlite.connect(self.db_path) as db,
+            db.execute("SELECT MAX(week_number) FROM fixtures") as cursor,
+        ):
+            row = await cursor.fetchone()
+            return row[0] if row and row[0] is not None else 0
 
     async def save_prediction(
         self,

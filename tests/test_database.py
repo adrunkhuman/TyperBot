@@ -1,7 +1,7 @@
 """Tests for database operations and defensive coding patterns."""
 
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiosqlite
@@ -39,9 +39,9 @@ class TestGetMaxWeekNumber:
         await db.initialize()
 
         # Create fixtures with various week numbers
-        await db.create_fixture(1, ["Team A - Team B"], datetime.now(timezone.utc))
-        await db.create_fixture(3, ["Team C - Team D"], datetime.now(timezone.utc))
-        await db.create_fixture(5, ["Team E - Team F"], datetime.now(timezone.utc))
+        await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
+        await db.create_fixture(3, ["Team C - Team D"], datetime.now(UTC))
+        await db.create_fixture(5, ["Team E - Team F"], datetime.now(UTC))
 
         result = await db.get_max_week_number()
         assert result == 5
@@ -53,7 +53,7 @@ class TestGetMaxWeekNumber:
         await db.initialize()
 
         # Create a fixture and close it
-        fixture_id = await db.create_fixture(10, ["Team A - Team B"], datetime.now(timezone.utc))
+        fixture_id = await db.create_fixture(10, ["Team A - Team B"], datetime.now(UTC))
         await db.save_scores(
             fixture_id,
             [
@@ -68,7 +68,7 @@ class TestGetMaxWeekNumber:
         )
 
         # Create another fixture
-        await db.create_fixture(5, ["Team C - Team D"], datetime.now(timezone.utc))
+        await db.create_fixture(5, ["Team C - Team D"], datetime.now(UTC))
 
         result = await db.get_max_week_number()
         assert result == 10
@@ -84,7 +84,7 @@ class TestDefensiveColumnAccess:
         await db.initialize()
 
         # Create a fixture
-        await db.create_fixture(1, ["Team A - Team B"], datetime.now(timezone.utc))
+        await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
 
         # This should not crash even if columns were missing
         fixture = await db.get_current_fixture()
@@ -99,7 +99,7 @@ class TestDefensiveColumnAccess:
         await db.initialize()
 
         # Create a fixture
-        fixture_id = await db.create_fixture(1, ["Team A - Team B"], datetime.now(timezone.utc))
+        fixture_id = await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
 
         # This should not crash even if columns were missing
         fixture = await db.get_fixture_by_id(fixture_id)
@@ -114,7 +114,7 @@ class TestDefensiveColumnAccess:
         await db.initialize()
 
         # Create a fixture with thread_id
-        fixture_id = await db.create_fixture(1, ["Team A - Team B"], datetime.now(timezone.utc))
+        fixture_id = await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
         await db.update_fixture_announcement(fixture_id, thread_id="123456")
 
         # This should not crash
@@ -150,7 +150,7 @@ class TestSchemaMigration:
         await db.initialize()
 
         # Verify columns were added by creating a fixture
-        await db.create_fixture(1, ["Team A - Team B"], datetime.now(timezone.utc))
+        await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
         fixture = await db.get_current_fixture()
         assert fixture is not None
         assert "announcement_message_id" in fixture
