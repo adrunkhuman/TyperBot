@@ -179,7 +179,7 @@ class ThreadPredictionHandler:
 
             # Remove bot's own reactions and add success reaction
             for emoji in ["✅", "❌"]:
-                with suppress(discord.Forbidden):
+                with suppress(discord.Forbidden, discord.NotFound):
                     await after.remove_reaction(emoji, self.bot.user)
 
             try:
