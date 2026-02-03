@@ -234,6 +234,9 @@ class TyperBot(commands.Bot):
         # Auto-refresh usernames on startup
         await self._refresh_usernames()
 
+        # Sync any manually-created threads
+        await self._sync_fixture_thread()
+
     async def on_error(self, event_method, *_args, **_kwargs):
         """Handle uncaught errors."""
         logger.exception(f"Error in {event_method}")
@@ -332,6 +335,64 @@ class TyperBot(commands.Bot):
 
         except Exception as e:
             logger.exception(f"Error during username refresh: {e}")
+
+    async def _sync_fixture_thread(self):
+        """Sync manually-created thread on startup.
+
+        If an open fixture has an announcement message but no thread_id,
+        check if a thread exists on that message and sync it.
+        """
+        logger.info("Syncing fixture threads...")
+
+        try:
+            fixture = await self.db.get_current_fixture()
+            if not fixture:
+                logger.info("No open fixture found, skipping thread sync")
+                return
+
+            if fixture.get("thread_id"):
+                logger.info(f"Fixture {fixture['id']} already has thread_id, skipping sync")
+                return
+
+            announcement_id = fixture.get("announcement_message_id")
+            if not announcement_id:
+                logger.info(
+                    f"Fixture {fixture['id']} has no announcement_message_id, skipping sync"
+                )
+                return
+
+            # Search channels for the announcement message
+            for guild in self.guilds:
+                for channel in guild.text_channels:
+                    try:
+                        message = await channel.fetch_message(int(announcement_id))
+                        if message.thread:
+                            await self.db.update_fixture_announcement(
+                                fixture["id"], thread_id=str(message.thread.id)
+                            )
+                            logger.info(
+                                f"Synced thread {message.thread.id} to fixture {fixture['id']}"
+                            )
+                        else:
+                            logger.info(
+                                f"Message {announcement_id} has no thread for fixture {fixture['id']}"
+                            )
+                        return
+                    except discord.NotFound:
+                        continue
+                    except discord.Forbidden:
+                        logger.warning(f"No permission to read channel {channel.id}")
+                        continue
+                    except Exception as e:
+                        logger.warning(f"Could not sync thread in {channel.id}: {e}")
+                        continue
+
+            logger.warning(
+                f"Could not find announcement message {announcement_id} for fixture {fixture['id']}"
+            )
+
+        except Exception as e:
+            logger.exception(f"Error during thread sync: {e}")
 
 
 def main():
