@@ -358,6 +358,51 @@ class TestEdgeCases:
         assert "❌" in mock_message.reactions_added
         assert "Invalid predictions" in mock_message.author.dm_sent[0]
 
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_sends_fallback_dm_on_reaction_permission_error(
+        self, handler, mock_message, monkeypatch
+    ):
+        """Should send DM when adding reaction fails (Fallback logic)."""
+        import discord
+
+        mock_message.channel.id = 789012
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        async def raise_forbidden(*_args, **_kwargs):
+            raise discord.Forbidden(MagicMock(), "Missing permissions")
+
+        monkeypatch.setattr(mock_message, "add_reaction", raise_forbidden)
+
+        result = await handler.on_message(mock_message)
+
+        assert result is True
+        predictions = await handler.db.get_all_predictions(1)
+        assert len(predictions) == 1
+        assert len(mock_message.author.dm_sent) == 1
+        assert "Prediction saved" in mock_message.author.dm_sent[0]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_survives_double_permission_failure(self, handler, mock_message, monkeypatch):
+        """Should not crash if both Reaction and DM fail (Degraded UX)."""
+        import discord
+
+        mock_message.channel.id = 789012
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        async def raise_forbidden(*_args, **_kwargs):
+            raise discord.Forbidden(MagicMock(), "Missing permissions")
+
+        monkeypatch.setattr(mock_message, "add_reaction", raise_forbidden)
+        monkeypatch.setattr(mock_message.author, "send", raise_forbidden)
+
+        result = await handler.on_message(mock_message)
+
+        assert result is True
+        predictions = await handler.db.get_all_predictions(1)
+        assert len(predictions) == 1
+
 
 class TestIntegration:
     """Integration tests for full workflow scenarios."""

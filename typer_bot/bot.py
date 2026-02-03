@@ -231,6 +231,9 @@ class TyperBot(commands.Bot):
         for guild in self.guilds:
             logger.info(f"  - {guild.name} (ID: {guild.id})")
 
+        # Check bot permissions on all guilds
+        await self._check_permissions()
+
         # Auto-refresh usernames on startup
         await self._refresh_usernames()
 
@@ -393,6 +396,37 @@ class TyperBot(commands.Bot):
 
         except Exception as e:
             logger.exception(f"Error during thread sync: {e}")
+
+    async def _check_permissions(self):
+        """Check bot permissions on all guilds.
+
+        Logs warnings if the bot is missing critical permissions.
+        """
+        required_permissions = [
+            ("send_messages", "Send Messages"),
+            ("read_message_history", "Read Message History"),
+            ("add_reactions", "Add Reactions"),
+            ("manage_messages", "Manage Messages"),
+        ]
+
+        for guild in self.guilds:
+            me = guild.me
+            if not me:
+                logger.warning(f"Bot not found in guild {guild.name} (ID: {guild.id})")
+                continue
+
+            missing = []
+            for perm_attr, perm_name in required_permissions:
+                if not getattr(me.guild_permissions, perm_attr, False):
+                    missing.append(perm_name)
+
+            if missing:
+                logger.warning(
+                    f"⚠️  Guild '{guild.name}' (ID: {guild.id}): "
+                    f"Missing permissions: {', '.join(missing)}"
+                )
+            else:
+                logger.info(f"✓ Guild '{guild.name}': All required permissions present")
 
 
 def main():

@@ -81,7 +81,20 @@ class ThreadPredictionHandler:
             )
 
             # Add success reaction
-            await message.add_reaction("✅")
+            try:
+                await message.add_reaction("✅")
+            except discord.Forbidden:
+                logger.warning(
+                    f"Could not add reaction to thread prediction from {message.author.id}. "
+                    "Missing 'Add Reactions' permission."
+                )
+                # Fallback: DM the user so they know it worked
+                with suppress(discord.Forbidden):
+                    await message.author.send(
+                        "✅ **Prediction saved!**\n"
+                        "(I couldn't react to your message in the thread due to missing permissions, "
+                        "but your prediction has been recorded.)"
+                    )
 
             logger.info(
                 f"Saved thread prediction from {message.author.id} for fixture {fixture['id']}"
@@ -168,7 +181,20 @@ class ThreadPredictionHandler:
             with suppress(discord.Forbidden):
                 await after.clear_reactions()
 
-            await after.add_reaction("✅")
+            try:
+                await after.add_reaction("✅")
+            except discord.Forbidden:
+                logger.warning(
+                    f"Could not add reaction to updated prediction from {after.author.id}. "
+                    "Missing 'Add Reactions' permission."
+                )
+                # Fallback: DM the user so they know it worked
+                with suppress(discord.Forbidden):
+                    await after.author.send(
+                        "✅ **Prediction updated!**\n"
+                        "(I couldn't react to your message in the thread due to missing permissions, "
+                        "but your update has been recorded.)"
+                    )
 
             logger.info(
                 f"Updated thread prediction from {after.author.id} for fixture {fixture['id']}"
