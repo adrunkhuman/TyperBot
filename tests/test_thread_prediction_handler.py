@@ -271,6 +271,31 @@ class TestEdgeCases:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_handles_reaction_not_found(self, handler, mock_message, monkeypatch):
+        """Should handle NotFound exception when removing reactions (e.g. not present)."""
+        import discord
+
+        async def raise_not_found(*_args, **_kwargs):
+            raise discord.NotFound(MagicMock(), "Reaction not found")
+
+        mock_message.channel.id = 789012
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        # We need to test on_message_edit specifically as that's where remove_reaction is called
+        # Mock remove_reaction to raise NotFound
+        monkeypatch.setattr(mock_message, "remove_reaction", raise_not_found)
+
+        # Should return True and SUCCEED (suppressing NotFound)
+        result = await handler.on_message_edit(mock_message, mock_message)
+        assert result is True
+
+        # Verify NO error DM was sent
+        assert len(mock_message.author.dm_sent) == 0
+        # Verify success reaction was added
+        assert "✅" in mock_message.reactions_added
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
     async def test_handles_permission_error_on_reaction(self, handler, mock_message, monkeypatch):
         """Should handle Forbidden exception when adding reactions."""
         import discord
