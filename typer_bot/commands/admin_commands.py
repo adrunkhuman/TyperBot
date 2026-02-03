@@ -330,7 +330,7 @@ class DeleteConfirmView(discord.ui.View):
         pass
 
     @discord.ui.button(label="Yes, Delete", style=discord.ButtonStyle.red)
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def confirm(self, interaction: discord.Interaction, _button: discord.ui.Button):
         """Delete fixture from database."""
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message(
@@ -345,7 +345,7 @@ class DeleteConfirmView(discord.ui.View):
         )
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.gray)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def cancel(self, interaction: discord.Interaction, _button: discord.ui.Button):
         """Cancel deletion."""
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message(
@@ -374,7 +374,7 @@ class PostResultsConfirmView(discord.ui.View):
         pass
 
     @discord.ui.button(label="NO", style=discord.ButtonStyle.primary)
-    async def no_mentions(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def no_mentions(self, interaction: discord.Interaction, _button: discord.ui.Button):
         """Post results without mentions."""
         message = format_standings(self.standings, self.fixture_data)
 
@@ -390,7 +390,7 @@ class PostResultsConfirmView(discord.ui.View):
             )
 
     @discord.ui.button(label="YES", style=discord.ButtonStyle.green)
-    async def with_mentions(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def with_mentions(self, interaction: discord.Interaction, _button: discord.ui.Button):
         """Post results with user mentions."""
         message = format_standings(self.standings, self.fixture_data)
 

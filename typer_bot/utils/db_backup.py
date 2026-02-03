@@ -60,7 +60,7 @@ def create_backup(db_path: str, backup_dir: str) -> str:
     backup_file = backup_path / f"backup_{timestamp}.sql"
 
     conn = sqlite3.connect(db_path)
-    with open(backup_file, "w", encoding="utf-8") as f:
+    with backup_file.open("w", encoding="utf-8") as f:
         for line in conn.iterdump():
             f.write(f"{line}\n")
     conn.close()

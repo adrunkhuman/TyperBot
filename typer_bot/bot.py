@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 from datetime import timedelta
+from pathlib import Path
 
 import discord
 from discord.ext import commands, tasks
@@ -121,7 +122,6 @@ class TyperBot(commands.Bot):
 
     async def _run_archive_imports(self):
         """Run SQL files from archive folder if database is empty."""
-        import glob
         import os
 
         import aiosqlite
@@ -141,7 +141,7 @@ class TyperBot(commands.Bot):
                     logger.info("Database already has fixtures, skipping archive import")
                     return
 
-            archive_files = sorted(glob.glob("archive/*.sql"))
+            archive_files = sorted(Path("archive").glob("*.sql"))
             if not archive_files:
                 logger.info("No archive SQL files found")
                 return
@@ -151,7 +151,8 @@ class TyperBot(commands.Bot):
             for sql_file in archive_files:
                 logger.info(f"Importing {sql_file}...")
                 try:
-                    with open(sql_file, encoding="utf-8") as f:
+                    # Archive import is one-time startup operation, blocking I/O is acceptable
+                    with sql_file.open(encoding="utf-8") as f:  # noqa: ASYNC230
                         sql_content = f.read()
 
                     if not self._validate_archive_sql(sql_content):
@@ -197,7 +198,7 @@ class TyperBot(commands.Bot):
         # Auto-refresh usernames on startup
         await self._refresh_usernames()
 
-    async def on_error(self, event_method, *args, **kwargs):
+    async def on_error(self, event_method, *_args, **_kwargs):
         """Handle uncaught errors."""
         logger.exception(f"Error in {event_method}")
 
