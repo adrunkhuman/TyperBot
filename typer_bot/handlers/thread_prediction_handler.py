@@ -1,7 +1,7 @@
 """Handler for thread-based predictions."""
 
 import logging
-import re
+from contextlib import suppress
 
 import discord
 
@@ -88,13 +88,11 @@ class ThreadPredictionHandler:
             )
 
             if is_late:
-                try:
+                with suppress(discord.Forbidden):
                     await message.author.send(
-                        f"⚠️ **Late prediction!** Your prediction was saved but you will receive "
-                        f"0 points for this round since the deadline has passed."
+                        "⚠️ **Late prediction!** Your prediction was saved but you will receive "
+                        "0 points for this round since the deadline has passed."
                     )
-                except discord.Forbidden:
-                    pass  # User has DMs disabled
 
             return True
 
@@ -106,7 +104,7 @@ class ThreadPredictionHandler:
             )
             return True
 
-    async def on_message_edit(self, before: discord.Message, after: discord.Message):
+    async def on_message_edit(self, _before: discord.Message, after: discord.Message):
         """Handle message edits in fixture threads.
 
         Returns True if message was handled, False otherwise.
@@ -167,10 +165,8 @@ class ThreadPredictionHandler:
             )
 
             # Remove any existing reactions and add success reaction
-            try:
+            with suppress(discord.Forbidden):
                 await after.clear_reactions()
-            except discord.Forbidden:
-                pass  # Bot might not have permission to clear reactions
 
             await after.add_reaction("✅")
 
@@ -179,13 +175,11 @@ class ThreadPredictionHandler:
             )
 
             if is_late:
-                try:
+                with suppress(discord.Forbidden):
                     await after.author.send(
-                        f"⚠️ **Late prediction!** Your edited prediction was saved but you will "
-                        f"receive 0 points for this round since the deadline has passed."
+                        "⚠️ **Late prediction!** Your edited prediction was saved but you will "
+                        "receive 0 points for this round since the deadline has passed."
                     )
-                except discord.Forbidden:
-                    pass  # User has DMs disabled
 
             return True
 
@@ -225,14 +219,12 @@ class ThreadPredictionHandler:
                     f"Deleted prediction from {message.author.id} for fixture {fixture['id']}"
                 )
 
-                try:
+                with suppress(discord.Forbidden):
                     await message.author.send(
                         f"🗑️ **Your prediction has been deleted.**\n\n"
                         f"Week {fixture['week_number']} prediction removed. "
-                        f"Submit a new prediction before the deadline if you want to participate."
+                        "Submit a new prediction before the deadline if you want to participate."
                     )
-                except discord.Forbidden:
-                    pass  # User has DMs disabled
 
             return True
 
@@ -242,13 +234,10 @@ class ThreadPredictionHandler:
 
     async def _handle_error(self, message: discord.Message, error_text: str):
         """Handle errors by DMing the user and optionally reacting to the message."""
-        try:
+        with suppress(discord.Forbidden):
             await message.author.send(error_text)
-        except discord.Forbidden:
-            # User has DMs disabled, add reaction to indicate error
-            try:
-                await message.add_reaction("❌")
-            except discord.Forbidden:
-                pass  # Can't react either
+        # If DM failed (DMs disabled), add reaction to indicate error
+        with suppress(discord.Forbidden):
+            await message.add_reaction("❌")
 
         logger.warning(f"Sent error DM to {message.author.id}: {error_text[:100]}...")
