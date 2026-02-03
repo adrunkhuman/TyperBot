@@ -72,12 +72,7 @@ class ResultsEntryHandler:
         processing_msg = await message.author.send("Processing your results...")
 
         try:
-            content = message.content.strip()
-            lines = content.split("\n")
-
-            logger.info(f"Received {len(lines)} lines, expected {len(fixture['games'])}")
-
-            results, errors = parse_line_predictions(lines, fixture["games"])
+            results, errors = parse_line_predictions(message.content, fixture["games"])
 
             if results:
                 logger.info(f"Successfully parsed {len(results)} scores")

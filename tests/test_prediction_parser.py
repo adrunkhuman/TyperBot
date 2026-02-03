@@ -79,110 +79,166 @@ class TestParseLinePredictions:
 
     def test_basic_line_parsing(self):
         """Basic line-by-line parsing with game context."""
-        lines = ["Team A vs Team B 2-1", "Team C vs Team D 1-0"]
+        input_text = "Team A vs Team B 2-1\nTeam C vs Team D 1-0"
         games = ["Team A vs Team B", "Team C vs Team D"]
-        predictions, errors = parse_line_predictions(lines, games)
+        predictions, errors = parse_line_predictions(input_text, games)
         assert predictions == ["2-1", "1-0"]
         assert not errors
 
     def test_score_at_end_of_line(self):
         """Score must be at end of line - trailing text causes parse failure."""
         # Score at end works
-        lines = ["Team A vs Team B 2-1", "Team B 1-0"]
+        input_text = "Team A vs Team B 2-1\nTeam B 1-0"
         games = ["Team A", "Team B"]
-        predictions, errors = parse_line_predictions(lines, games)
+        predictions, errors = parse_line_predictions(input_text, games)
         assert predictions == ["2-1", "1-0"]
         assert not errors
 
     def test_trailing_text_fails(self):
         """Text after score fails - parser expects score at line end."""
-        lines = ["Team A 2-1 some comment", "Team B 1-0"]
+        input_text = "Team A 2-1 some comment\nTeam B 1-0"
         games = ["Team A", "Team B"]
-        predictions, errors = parse_line_predictions(lines, games)
+        predictions, errors = parse_line_predictions(input_text, games)
         assert predictions == ["1-0"]  # Only second line parses
         assert len(errors) == 1
         assert "Could not find score" in errors[0]
 
     def test_leading_indentation(self):
         """Lines with leading whitespace/indentation."""
-        lines = ["   Team A 2-1", "    Team B 1-0"]
+        input_text = "   Team A 2-1\n    Team B 1-0"
         games = ["Team A", "Team B"]
-        predictions, errors = parse_line_predictions(lines, games)
+        predictions, errors = parse_line_predictions(input_text, games)
         assert predictions == ["2-1", "1-0"]
         assert not errors
 
     def test_colon_separators_in_lines(self):
         """Lines with colon separators."""
-        lines = ["Team A 2:1", "Team B 1:0"]
+        input_text = "Team A 2:1\nTeam B 1:0"
         games = ["Team A", "Team B"]
-        predictions, errors = parse_line_predictions(lines, games)
+        predictions, errors = parse_line_predictions(input_text, games)
         assert predictions == ["2-1", "1-0"]
         assert not errors
 
     def test_mixed_separators_in_lines(self):
         """Lines with mixed separators."""
-        lines = ["Team A 2-1", "Team B 1:0", "Team C 2-2"]
+        input_text = "Team A 2-1\nTeam B 1:0\nTeam C 2-2"
         games = ["Team A", "Team B", "Team C"]
-        predictions, errors = parse_line_predictions(lines, games)
+        predictions, errors = parse_line_predictions(input_text, games)
         assert predictions == ["2-1", "1-0", "2-2"]
         assert not errors
 
     def test_missing_score_in_line(self):
         """Line without a valid score at the end."""
-        lines = ["Team A 2-1", "Team B no score here"]
+        input_text = "Team A 2-1\nTeam B no score here"
         games = ["Team A", "Team B"]
-        predictions, errors = parse_line_predictions(lines, games)
+        predictions, errors = parse_line_predictions(input_text, games)
         assert predictions == ["2-1"]
         assert len(errors) == 1
         assert "Could not find score" in errors[0]
 
     def test_wrong_line_count_error(self):
         """Error when line count doesn't match game count."""
-        lines = ["Team A 2-1"]
+        input_text = "Team A 2-1"
         games = ["Team A", "Team B"]
-        predictions, errors = parse_line_predictions(lines, games)
+        predictions, errors = parse_line_predictions(input_text, games)
         assert predictions == []
         assert len(errors) == 1
-        assert "Expected 2 lines, got 1" in errors[0]
+        assert "Expected 2 predictions, found 1" in errors[0]
 
     def test_extra_whitespace_in_lines(self):
         """Lines with extra internal whitespace."""
-        lines = ["Team A    2  -  1", "Team B  1  :  0  "]
+        input_text = "Team A    2  -  1\nTeam B  1  :  0  "
         games = ["Team A", "Team B"]
-        predictions, errors = parse_line_predictions(lines, games)
+        predictions, errors = parse_line_predictions(input_text, games)
         assert predictions == ["2-1", "1-0"]
         assert not errors
 
     def test_nullified_game_lowercase_x(self):
         """Parse 'x' as nullified game marker."""
-        lines = ["Team A 2-1", "Team B x"]
+        input_text = "Team A 2-1\nTeam B x"
         games = ["Team A", "Team B"]
-        predictions, errors = parse_line_predictions(lines, games)
+        predictions, errors = parse_line_predictions(input_text, games)
         assert predictions == ["2-1", "x"]
         assert not errors
 
     def test_nullified_game_uppercase_x(self):
         """Parse 'X' as nullified game marker (case insensitive)."""
-        lines = ["Team A 2-1", "Team B X"]
+        input_text = "Team A 2-1\nTeam B X"
         games = ["Team A", "Team B"]
-        predictions, errors = parse_line_predictions(lines, games)
+        predictions, errors = parse_line_predictions(input_text, games)
         assert predictions == ["2-1", "x"]
         assert not errors
 
     def test_mixed_scores_and_nullified(self):
         """Mix of regular scores and nullified games."""
-        lines = ["Team A 2-1", "Team B x", "Team C 0-0", "Team D X"]
+        input_text = "Team A 2-1\nTeam B x\nTeam C 0-0\nTeam D X"
         games = ["Team A", "Team B", "Team C", "Team D"]
-        predictions, errors = parse_line_predictions(lines, games)
+        predictions, errors = parse_line_predictions(input_text, games)
         assert predictions == ["2-1", "x", "0-0", "x"]
         assert not errors
 
     def test_nullified_with_whitespace(self):
         """Nullified marker with trailing whitespace."""
-        lines = ["Team A x   ", "Team B X   "]
+        input_text = "Team A x   \nTeam B X   "
         games = ["Team A", "Team B"]
-        predictions, errors = parse_line_predictions(lines, games)
+        predictions, errors = parse_line_predictions(input_text, games)
         assert predictions == ["x", "x"]
+        assert not errors
+
+    def test_comma_separated_predictions(self):
+        """Comma-separated predictions."""
+        input_text = "Team A 2-1, Team B 1-0"
+        games = ["Team A", "Team B"]
+        predictions, errors = parse_line_predictions(input_text, games)
+        assert predictions == ["2-1", "1-0"]
+        assert not errors
+
+    def test_mixed_comma_and_newline(self):
+        """Mixed comma and newline delimiters."""
+        input_text = "Team A 2-1, Team B 1-0\nTeam C 2-2"
+        games = ["Team A", "Team B", "Team C"]
+        predictions, errors = parse_line_predictions(input_text, games)
+        assert predictions == ["2-1", "1-0", "2-2"]
+        assert not errors
+
+    def test_comma_with_extra_whitespace(self):
+        """Comma-separated with extra whitespace."""
+        input_text = "Team A 2-1 , Team B 1-0 , Team C 2-2"
+        games = ["Team A", "Team B", "Team C"]
+        predictions, errors = parse_line_predictions(input_text, games)
+        assert predictions == ["2-1", "1-0", "2-2"]
+        assert not errors
+
+    def test_trailing_comma(self):
+        """Trailing comma should be handled gracefully."""
+        input_text = "Team A 2-1, Team B 1-0,"
+        games = ["Team A", "Team B"]
+        predictions, errors = parse_line_predictions(input_text, games)
+        assert predictions == ["2-1", "1-0"]
+        assert not errors
+
+    def test_multiple_commas(self):
+        """Multiple consecutive commas should not create empty segments."""
+        input_text = "Team A 2-1,, Team B 1-0"
+        games = ["Team A", "Team B"]
+        predictions, errors = parse_line_predictions(input_text, games)
+        assert predictions == ["2-1", "1-0"]
+        assert not errors
+
+    def test_comma_with_nullified_games(self):
+        """Comma-separated with nullified games."""
+        input_text = "Team A 2-1, Team B x, Team C 1-0"
+        games = ["Team A", "Team B", "Team C"]
+        predictions, errors = parse_line_predictions(input_text, games)
+        assert predictions == ["2-1", "x", "1-0"]
+        assert not errors
+
+    def test_comma_with_colon_separator(self):
+        """Comma-separated with colon score separators."""
+        input_text = "Team A 2:1, Team B 1:0"
+        games = ["Team A", "Team B"]
+        predictions, errors = parse_line_predictions(input_text, games)
+        assert predictions == ["2-1", "1-0"]
         assert not errors
 
 
