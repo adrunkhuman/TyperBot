@@ -14,7 +14,8 @@ You are working on `matchday-typer`, a Discord bot for football prediction leagu
   - `DATA_DIR`: Base directory (default: `/app/data`)
   - `DB_PATH`: Full database path (default: `{DATA_DIR}/typer.db`)
   - `BACKUP_DIR`: Backup storage (default: `{DATA_DIR}/backups`)
-- **DM Workflow:** All complex inputs (predictions, fixture creation) happen in DMs to keep channel clean.
+- **DM Workflow:** Complex inputs (fixture creation, results entry) happen in DMs to keep channel clean.
+- **Thread Predictions:** Users can post predictions in public threads under fixture announcements (NEW - see handlers/thread_prediction_handler.py).
 - **Async:** All database ops must be async (`aiosqlite`).
 - **Parsing:** Use `utils.prediction_parser.parse_line_predictions` for all score parsing. Do NOT write ad-hoc regex.
 - **Logging:** Use `typer_bot.utils.logger.setup_logging()` early. Do not use `print()`.
@@ -27,30 +28,32 @@ SQLite. Tables are initialized in `database.py`.
 fixtures (
     id INTEGER PK,
     week_number INTEGER,
-    games TEXT,       -- Newline separated: "Team A - Team B\nTeam C - Team D"
+    games TEXT,                      -- Newline separated: "Team A - Team B\nTeam C - Team D"
     deadline DATETIME,
-    status TEXT       -- 'open' or 'closed'
+    status TEXT DEFAULT 'open',      -- 'open' or 'closed'
+    announcement_message_id TEXT,    -- Discord message ID of fixture announcement
+    thread_id TEXT                   -- Discord thread ID for public predictions
 )
 
 predictions (
     id INTEGER PK,
     fixture_id INTEGER FK,
-    user_id TEXT,     -- Discord ID
-    predictions TEXT, -- Newline separated: "2-1\n1-1"
+    user_id TEXT,                    -- Discord ID
+    predictions TEXT,                -- Newline separated: "2-1\n1-1"
     is_late BOOLEAN
 )
 
 results (
     id INTEGER PK,
     fixture_id INTEGER FK,
-    results TEXT      -- Newline separated actual scores
+    results TEXT                     -- Newline separated actual scores
 )
 
 scores (
     id INTEGER PK,
     fixture_id INTEGER FK,
     user_id TEXT,
-    points INTEGER,   -- 3 (exact), 1 (outcome), 0 (miss)
+    points INTEGER,                  -- 3 (exact), 1 (outcome), 0 (miss)
     exact_scores INTEGER,
     correct_results INTEGER
 )
@@ -60,6 +63,9 @@ scores (
 - `typer_bot/bot.py`: Entry point, setup hook, archive import logic.
 - `typer_bot/commands/user_commands.py`: `/predict`, `/standings` (Public).
 - `typer_bot/commands/admin_commands.py`: `/admin` hub (Protected).
+- `typer_bot/handlers/thread_prediction_handler.py`: Thread-based prediction processing (on_message, on_edit, on_delete).
+- `typer_bot/handlers/fixture_handler.py`: DM workflow for fixture creation.
+- `typer_bot/handlers/results_handler.py`: DM workflow for results entry.
 - `typer_bot/utils/config.py`: Centralized configuration (data paths via env vars).
 - `typer_bot/utils/prediction_parser.py`: Central logic for parsing "2-1" or "2:1" strings.
 - `typer_bot/utils/scoring.py`: Point calculation rules.

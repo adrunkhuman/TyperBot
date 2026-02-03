@@ -11,6 +11,7 @@ from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 from typer_bot.database import Database
+from typer_bot.handlers.thread_prediction_handler import ThreadPredictionHandler
 from typer_bot.utils import format_for_discord, now
 from typer_bot.utils.config import IS_PRODUCTION
 from typer_bot.utils.logger import set_trace_id
@@ -36,6 +37,7 @@ class TyperBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents, help_command=None)
 
         self.db = Database()
+        self.thread_handler = ThreadPredictionHandler(self, self.db)
         logger.info("Database instance created")
 
     async def on_interaction(self, interaction: discord.Interaction):
@@ -51,7 +53,41 @@ class TyperBot(commands.Bot):
             return
 
         set_trace_id(f"msg-{message.id}")
+
+        # Handle thread predictions first
+        handled = await self.thread_handler.on_message(message)
+        if handled:
+            return
+
         await super().on_message(message)
+
+    async def on_message_edit(self, before: discord.Message, after: discord.Message):
+        """Handle message edits, including thread prediction updates."""
+        if after.author.bot:
+            return
+
+        set_trace_id(f"edit-{after.id}")
+
+        # Handle thread prediction edits
+        handled = await self.thread_handler.on_message_edit(before, after)
+        if handled:
+            return
+
+        await super().on_message_edit(before, after)
+
+    async def on_message_delete(self, message: discord.Message):
+        """Handle message deletions, including thread prediction removals."""
+        if message.author.bot:
+            return
+
+        set_trace_id(f"del-{message.id}")
+
+        # Handle thread prediction deletions
+        handled = await self.thread_handler.on_message_delete(message)
+        if handled:
+            return
+
+        await super().on_message_delete(message)
 
     async def setup_hook(self):
         """Initialize database and load cogs."""
