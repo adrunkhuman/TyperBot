@@ -175,7 +175,7 @@ class ResultsConfirmView(ui.View):
         _pending_results.pop(self.user_id, None)
 
     @ui.button(label="Save Results", style=discord.ButtonStyle.green)
-    async def confirm(self, interaction: discord.Interaction, button: ui.Button):
+    async def confirm(self, interaction: discord.Interaction, _button: ui.Button):
         """Save results to database."""
         await self.handler.save_results(self.user_id, self.fixture_id, self.results)
         await interaction.response.edit_message(
@@ -184,7 +184,7 @@ class ResultsConfirmView(ui.View):
         )
 
     @ui.button(label="Cancel", style=discord.ButtonStyle.red)
-    async def cancel(self, interaction: discord.Interaction, button: ui.Button):
+    async def cancel(self, interaction: discord.Interaction, _button: ui.Button):
         """Cancel results entry."""
         self.handler.cancel_session(self.user_id)
         await interaction.response.edit_message(

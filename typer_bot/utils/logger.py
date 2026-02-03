@@ -67,7 +67,7 @@ class RailwayJSONFormatter(logging.Formatter):
                 k: "[REDACTED]" if str(k).lower() in self.SENSITIVE_KEYS else self._sanitize(v)
                 for k, v in obj.items()
             }
-        elif isinstance(obj, (list, tuple)):
+        if isinstance(obj, list | tuple):
             return type(obj)(self._sanitize(item) for item in obj)
         return obj
 

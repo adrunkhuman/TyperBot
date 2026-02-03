@@ -239,7 +239,7 @@ class DeadlineChoiceView(ui.View):
         _pending_fixtures.pop(self.user_id, None)
 
     @ui.button(label="Use Default (Friday 18:00)", style=discord.ButtonStyle.primary)
-    async def use_default(self, interaction: discord.Interaction, button: ui.Button):
+    async def use_default(self, interaction: discord.Interaction, _button: ui.Button):
         """Use default deadline."""
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("This button is not for you!", ephemeral=True)
@@ -286,7 +286,7 @@ class FixtureConfirmView(ui.View):
         _pending_fixtures.pop(self.user_id, None)
 
     @ui.button(label="Create Fixture", style=discord.ButtonStyle.green)
-    async def confirm(self, interaction: discord.Interaction, button: ui.Button):
+    async def confirm(self, interaction: discord.Interaction, _button: ui.Button):
         """Save fixture to database and announce."""
         await self.handler.create_fixture(self.user_id, self.week_number, self.games, self.deadline)
 
@@ -305,7 +305,7 @@ class FixtureConfirmView(ui.View):
             )
 
     @ui.button(label="Cancel", style=discord.ButtonStyle.red)
-    async def cancel(self, interaction: discord.Interaction, button: ui.Button):
+    async def cancel(self, interaction: discord.Interaction, _button: ui.Button):
         """Cancel fixture creation."""
         self.handler.cancel_session(self.user_id)
         await interaction.response.edit_message(content="Fixture creation cancelled.", view=None)

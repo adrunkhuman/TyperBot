@@ -357,7 +357,7 @@ class PredictionConfirmView(discord.ui.View):
         pending_predictions.pop(str(self.user_id), None)
 
     @discord.ui.button(label="✅ Submit Predictions", style=discord.ButtonStyle.green)
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def confirm(self, interaction: discord.Interaction, _button: discord.ui.Button):
         """Save predictions with fresh username from Discord."""
         pending_predictions.pop(str(self.user_id), None)
 
@@ -374,7 +374,7 @@ class PredictionConfirmView(discord.ui.View):
         )
 
     @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def cancel(self, interaction: discord.Interaction, _button: discord.ui.Button):
         """Cancel predictions."""
         pending_predictions.pop(str(self.user_id), None)
 
