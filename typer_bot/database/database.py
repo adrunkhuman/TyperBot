@@ -30,6 +30,8 @@ class Database:
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
                     status TEXT DEFAULT 'open',
+                    announcement_message_id TEXT,
+                    thread_id TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -104,6 +106,8 @@ class Database:
                         "games": row["games"].split("\n"),
                         "deadline": parse_iso(row["deadline"]),
                         "status": row["status"],
+                        "announcement_message_id": row["announcement_message_id"],
+                        "thread_id": row["thread_id"],
                     }
                 return None
 
@@ -120,6 +124,28 @@ class Database:
                         "games": row["games"].split("\n"),
                         "deadline": parse_iso(row["deadline"]),
                         "status": row["status"],
+                        "announcement_message_id": row["announcement_message_id"],
+                        "thread_id": row["thread_id"],
+                    }
+                return None
+
+    async def get_fixture_by_thread_id(self, thread_id: str) -> dict | None:
+        """Get a fixture by its Discord thread ID."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM fixtures WHERE thread_id = ? AND status = 'open'", (thread_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                if row:
+                    return {
+                        "id": row["id"],
+                        "week_number": row["week_number"],
+                        "games": row["games"].split("\n"),
+                        "deadline": parse_iso(row["deadline"]),
+                        "status": row["status"],
+                        "announcement_message_id": row["announcement_message_id"],
+                        "thread_id": row["thread_id"],
                     }
                 return None
 
@@ -162,6 +188,16 @@ class Database:
                         "is_late": row["is_late"],
                     }
                 return None
+
+    async def delete_prediction(self, fixture_id: int, user_id: str) -> bool:
+        """Delete a user's prediction for a fixture. Returns True if deleted."""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "DELETE FROM predictions WHERE fixture_id = ? AND user_id = ?",
+                (fixture_id, user_id),
+            )
+            await db.commit()
+            return cursor.rowcount > 0
 
     async def get_all_predictions(self, fixture_id: int) -> list[dict]:
         """Get all predictions for a fixture."""
@@ -317,3 +353,25 @@ class Database:
                 "UPDATE scores SET user_name = ? WHERE user_id = ?", (user_name, user_id)
             )
             await db.commit()
+
+    async def update_fixture_announcement(
+        self,
+        fixture_id: int,
+        announcement_message_id: str | None = None,
+        thread_id: str | None = None,
+    ):
+        """Update announcement message and thread IDs for a fixture."""
+        async with aiosqlite.connect(self.db_path) as db:
+            updates = []
+            params = []
+            if announcement_message_id is not None:
+                updates.append("announcement_message_id = ?")
+                params.append(announcement_message_id)
+            if thread_id is not None:
+                updates.append("thread_id = ?")
+                params.append(thread_id)
+
+            if updates:
+                params.append(fixture_id)
+                await db.execute(f"UPDATE fixtures SET {', '.join(updates)} WHERE id = ?", params)
+                await db.commit()

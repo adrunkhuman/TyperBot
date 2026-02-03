@@ -191,21 +191,29 @@ class UserCommands(commands.Cog):
         user_help = """## 📖 User Commands
 
 **For Players:**
-• `/predict` - Submit your predictions (bot will DM you)
+• `/predict` - Submit predictions via DM
 • `/fixtures` - View this week's games
 • `/standings` - See overall leaderboard
 • `/mypredictions` - Check your submitted predictions
 
-**How to Predict:**
-1. Type `/predict` in the channel
-2. Bot sends you a DM with the fixture list
-3. Reply with your predictions:
+**How to Predict (Two Methods):**
+
+**Method 1: Thread Predictions (NEW)**
+1. Look for the fixture announcement thread (created when admin posts fixtures)
+2. Reply in the thread with your predictions:
    ```
    Team A - Team B 2:0
    Team C - Team D 1:1
    ...
    ```
-4. Confirm to save your predictions
+3. Bot will react ✅ when saved
+4. Edit your message anytime before deadline to update
+
+**Method 2: DM Predictions**
+1. Type `/predict` in the channel
+2. Bot sends you a DM with the fixture list
+3. Reply with your predictions
+4. Confirm to save
 
 **Scoring:**
 • Exact score: 3 points
@@ -213,13 +221,15 @@ class UserCommands(commands.Cog):
 • Wrong: 0 points
 • Late predictions: 0 points (submit before deadline!)
 
-**Input formats:** Use `2:0`, `2-0`, or `2 : 0`"""
+**Input formats:** Use `2:0`, `2-0`, or `2 : 0`
+
+**Editing:** You can edit your prediction message before the deadline. Deleting your message removes your prediction."""
 
         admin_help = """\n\n## 🔧 Admin Commands
 
 **For Admins:**
 **Fixture Management:**
-• `/admin fixture create` - Create new fixture (DM workflow)
+• `/admin fixture create` - Create new fixture (DM workflow, auto-creates thread)
 • `/admin fixture delete` - Delete current fixture
 
 **Results Management:**
@@ -234,6 +244,7 @@ class UserCommands(commands.Cog):
    - Send game list (one per line)
    - Choose deadline (default or custom)
    - Confirm
+   - Bot auto-creates thread for predictions
 
 2. **Enter Results:**
    - `/admin results enter`
