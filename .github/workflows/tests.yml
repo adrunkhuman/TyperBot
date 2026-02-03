@@ -24,10 +24,10 @@ jobs:
         version: 'latest'
     
     - name: Install dependencies
-      run: uv pip install -e ".[dev]" --system
+      run: uv sync --group dev
     
     - name: Run tests
-      run: pytest tests/ -v
+      run: uv run pytest tests/ -v
     
     - name: Run linting
-      run: ruff check typer_bot tests
+      run: uv run ruff check typer_bot tests
