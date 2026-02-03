@@ -7,18 +7,18 @@ authors = [
     {name = "Typer Team"}
 ]
 dependencies = [
-    "discord-py>=2.3.0",
+    "discord-py>=2.6.0",
     "python-dotenv>=1.0.0",
-    "aiosqlite>=0.19.0",
+    "aiosqlite>=0.22.0",
     "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
-    "ruff>=0.1.0",
-    "freezegun>=1.4.0",
+    "pytest>=9.0.0",
+    "pytest-asyncio>=1.0.0",
+    "ruff>=0.14.0",
+    "freezegun>=1.5.0",
 ]
 
 [build-system]
