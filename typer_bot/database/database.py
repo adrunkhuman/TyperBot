@@ -163,6 +163,17 @@ class Database:
                     }
                 return None
 
+    async def get_max_week_number(self) -> int:
+        """Get the maximum week number from all fixtures.
+
+        Returns:
+            Maximum week number, or 0 if no fixtures exist.
+        """
+        async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("SELECT MAX(week_number) FROM fixtures") as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row and row[0] is not None else 0
+
     async def save_prediction(
         self,
         fixture_id: int,
