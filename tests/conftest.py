@@ -131,6 +131,12 @@ class MockMessage:
         self._clear_reactions_count += 1
         self.reactions_added.clear()
 
+    async def remove_reaction(self, emoji: str, member):
+        """Mock remove reaction method - tracks removed reactions."""
+        if not hasattr(self, "reactions_removed"):
+            self.reactions_removed = []
+        self.reactions_removed.append((emoji, member.id if hasattr(member, "id") else member))
+
 
 @pytest.fixture
 def mock_user():

@@ -20,7 +20,7 @@ You are working on `matchday-typer`, a Discord bot for football prediction leagu
 - **Parsing:** Use `utils.prediction_parser.parse_line_predictions` for all score parsing. Do NOT write ad-hoc regex.
 - **Logging:** Use `typer_bot.utils.logger.setup_logging()` early. Do not use `print()`.
 - **Timezones:** All datetime operations use timezone-aware objects. Use `utils.timezone.now()` instead of `datetime.now()`. Configure via `TZ` env var (default: Europe/Warsaw).
-- **Permissions:** Bot requires `Send Messages`, `Read Message History`, `Add Reactions` (confirmations), and `Manage Messages` (cleanup).
+- **Permissions:** Bot requires `Send Messages`, `Read Message History`, and `Add Reactions` (confirmations).
 
 ## 3. Database Schema
 SQLite. Tables are initialized in `database.py`.

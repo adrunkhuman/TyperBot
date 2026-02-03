@@ -177,9 +177,10 @@ class ThreadPredictionHandler:
                 is_late,
             )
 
-            # Remove any existing reactions and add success reaction
-            with suppress(discord.Forbidden):
-                await after.clear_reactions()
+            # Remove bot's own reactions and add success reaction
+            for emoji in ["✅", "❌"]:
+                with suppress(discord.Forbidden):
+                    await after.remove_reaction(emoji, self.bot.user)
 
             try:
                 await after.add_reaction("✅")

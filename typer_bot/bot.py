@@ -406,7 +406,6 @@ class TyperBot(commands.Bot):
             ("send_messages", "Send Messages"),
             ("read_message_history", "Read Message History"),
             ("add_reactions", "Add Reactions"),
-            ("manage_messages", "Manage Messages"),
         ]
 
         for guild in self.guilds:

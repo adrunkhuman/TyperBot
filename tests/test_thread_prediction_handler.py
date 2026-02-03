@@ -172,10 +172,11 @@ class TestOnMessageEdit:
         result = await handler.on_message_edit(mock_message, edited_message)
 
         assert result is True
-        # Verify clear_reactions was called on the edited message
-        assert edited_message.reactions_cleared is True
-        assert edited_message._clear_reactions_count == 1
-        # After clearing, only the new ✅ should be present
+        # Verify remove_reaction was called for bot's reactions
+        assert len(edited_message.reactions_removed) == 2
+        removed_emojis = {emoji for emoji, _ in edited_message.reactions_removed}
+        assert removed_emojis == {"✅", "❌"}
+        # After removing, only the new ✅ should be present
         assert len(edited_message.reactions_added) == 1
         assert "✅" in edited_message.reactions_added
 
