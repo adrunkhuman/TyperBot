@@ -60,8 +60,7 @@ class UserCommands(commands.Cog):
             current_time = now()
             is_late = current_time > fixture["deadline"]
 
-            lines = message.content.strip().split("\n")
-            predictions, errors = parse_line_predictions(lines, games)
+            predictions, errors = parse_line_predictions(message.content, games)
 
             if errors:
                 error_msg = "\n".join(errors)
@@ -144,7 +143,7 @@ class UserCommands(commands.Cog):
         lines = [
             f"**Week {fixture['week_number']} - Submit Your Predictions**",
             "",
-            "Reply with your predictions in this format:",
+            "Reply with your predictions in this format (one per line OR comma-separated):",
             "```",
         ]
         for game in fixture["games"]:
@@ -155,7 +154,22 @@ class UserCommands(commands.Cog):
             [
                 "```",
                 "",
-                "Add your score (e.g., 2:0 or 2-1) at the end of each line.",
+                "Or comma-separated:",
+                "```",
+            ]
+        )
+        # Show comma-separated example
+        example_games = fixture["games"][:2] if len(fixture["games"]) >= 2 else fixture["games"]
+        example_preds = [f"{game} 2:0" for game in example_games]
+        if len(fixture["games"]) > 2:
+            lines.append(", ".join(example_preds) + ", ...")
+        else:
+            lines.append(", ".join(example_preds))
+        lines.extend(
+            [
+                "```",
+                "",
+                "Add your score (e.g., 2:0 or 2-1) at the end of each game.",
                 f"\n**Deadline:** {deadline_str} ({relative_str})",
             ]
         )

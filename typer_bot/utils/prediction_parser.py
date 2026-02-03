@@ -38,24 +38,29 @@ def parse_predictions(input_text: str, expected_count: int = 9) -> tuple[list[st
     return predictions, errors
 
 
-def parse_line_predictions(lines: list[str], games: list[str]) -> tuple[list[str], list[str]]:
-    """Parse predictions line-by-line with game context.
+def parse_line_predictions(input_text: str, games: list[str]) -> tuple[list[str], list[str]]:
+    """Parse predictions from user input with game context.
 
-    Each line should contain a score at the end in format like "2:0" or "2-1".
+    Accepts newline-separated or comma-separated predictions.
+    Each segment should contain a score at the end in format like "2:0" or "2-1".
 
     Args:
-        lines: List of text lines, one per game
+        input_text: Raw input text (supports commas or newlines as delimiters)
         games: List of game names for context
 
     Returns: (valid_predictions, errors)
     """
+    # Normalize: commas become newlines, then split and filter empty segments
+    normalized = input_text.replace(",", "\n")
+    lines = [line.strip() for line in normalized.split("\n") if line.strip()]
+
     logger.debug(f"Parsing line predictions: {len(lines)} lines, {len(games)} games")
 
     predictions = []
     errors = []
 
     if len(lines) != len(games):
-        error_msg = f"Expected {len(games)} lines, got {len(lines)}"
+        error_msg = f"Expected {len(games)} predictions, found {len(lines)}"
         logger.warning(f"Line count mismatch: {error_msg}")
         errors.append(error_msg)
         return predictions, errors
