@@ -64,7 +64,7 @@ scores (
 - `typer_bot/bot.py`: Entry point, setup hook, archive import logic.
 - `typer_bot/commands/user_commands.py`: `/predict`, `/standings` (Public).
 - `typer_bot/commands/admin_commands.py`: `/admin` hub (Protected).
-- `typer_bot/handlers/thread_prediction_handler.py`: Thread-based prediction processing (on_message, on_edit, on_delete).
+- `typer_bot/handlers/thread_prediction_handler.py`: Thread-based prediction processing (on_message, on_edit).
 - `typer_bot/handlers/fixture_handler.py`: DM workflow for fixture creation.
 - `typer_bot/handlers/results_handler.py`: DM workflow for results entry.
 - `typer_bot/utils/config.py`: Centralized configuration (data paths via env vars).
