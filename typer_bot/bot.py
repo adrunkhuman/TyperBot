@@ -76,17 +76,11 @@ class TyperBot(commands.Bot):
         await super().on_message_edit(before, after)
 
     async def on_message_delete(self, message: discord.Message):
-        """Handle message deletions, including thread prediction removals."""
+        """Handle message deletions."""
         if message.author.bot:
             return
 
         set_trace_id(f"del-{message.id}")
-
-        # Handle thread prediction deletions
-        handled = await self.thread_handler.on_message_delete(message)
-        if handled:
-            return
-
         await super().on_message_delete(message)
 
     async def setup_hook(self):

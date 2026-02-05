@@ -216,56 +216,6 @@ class TestOnMessageEdit:
         assert "Invalid predictions" in mock_message.author.dm_sent[0]
 
 
-class TestOnMessageDelete:
-    """Test suite for on_message_delete handler."""
-
-    @pytest.mark.asyncio
-    async def test_ignores_bot_messages(self, handler, mock_message):
-        """Should ignore deletions from bots."""
-        mock_message.author.bot = True
-
-        result = await handler.on_message_delete(mock_message)
-
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_deletes_prediction_and_notifies_user(
-        self, handler, fixture_with_thread, mock_message
-    ):
-        """Should delete prediction and DM user when message is deleted."""
-        mock_message.channel.id = 789012
-
-        # First, save a prediction
-        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
-        await handler.on_message(mock_message)
-
-        # Verify prediction exists
-        predictions = await handler.db.get_all_predictions(fixture_with_thread["id"])
-        assert len(predictions) == 1
-
-        # Now delete the message
-        result = await handler.on_message_delete(mock_message)
-
-        assert result is True
-        assert len(mock_message.author.dm_sent) == 1
-        assert "deleted" in mock_message.author.dm_sent[0].lower()
-
-        # Verify prediction was deleted
-        predictions = await handler.db.get_all_predictions(fixture_with_thread["id"])
-        assert len(predictions) == 0
-
-    @pytest.mark.asyncio
-    @pytest.mark.usefixtures("fixture_with_thread")
-    async def test_handles_delete_when_no_prediction_exists(self, handler, mock_message):
-        """Should handle deletion gracefully when no prediction exists."""
-        mock_message.channel.id = 789012
-
-        result = await handler.on_message_delete(mock_message)
-
-        assert result is True
-        # Should not crash or send DM when no prediction exists
-
-
 class TestEdgeCases:
     """Test suite for edge cases and boundary conditions."""
 
@@ -434,10 +384,10 @@ class TestIntegration:
     """Integration tests for full workflow scenarios."""
 
     @pytest.mark.asyncio
-    async def test_full_workflow_create_predict_edit_delete(
+    async def test_full_workflow_create_predict_edit(
         self, handler, database, mock_message, sample_games
     ):
-        """Test complete workflow: create fixture → predict → edit → delete."""
+        """Test complete workflow: create fixture → predict → edit."""
         # Create fixture
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
@@ -464,13 +414,6 @@ class TestIntegration:
         predictions = await database.get_all_predictions(fixture_id)
         assert len(predictions) == 1
         # Prediction should be updated
-
-        # Step 3: Delete prediction
-        result = await handler.on_message_delete(mock_message)
-        assert result is True
-
-        predictions = await database.get_all_predictions(fixture_id)
-        assert len(predictions) == 0
 
     @pytest.mark.asyncio
     async def test_multiple_users_same_thread(

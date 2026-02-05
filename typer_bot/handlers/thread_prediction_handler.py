@@ -218,47 +218,6 @@ class ThreadPredictionHandler:
             )
             return True
 
-    async def on_message_delete(self, message: discord.Message):
-        """Handle message deletions in fixture threads.
-
-        Returns True if message was handled, False otherwise.
-        """
-        # Ignore bot messages and DMs
-        if message.author.bot or message.guild is None:
-            return False
-
-        # Check if this is a thread
-        if not isinstance(message.channel, discord.Thread):
-            return False
-
-        # Check if this thread belongs to a fixture
-        thread_id = str(message.channel.id)
-        fixture = await self.db.get_fixture_by_thread_id(thread_id)
-        if not fixture:
-            return False
-
-        try:
-            # Delete the prediction
-            deleted = await self.db.delete_prediction(fixture["id"], str(message.author.id))
-
-            if deleted:
-                logger.info(
-                    f"Deleted prediction from {message.author.id} for fixture {fixture['id']}"
-                )
-
-                with suppress(discord.Forbidden):
-                    await message.author.send(
-                        f"🗑️ **Your prediction has been deleted.**\n\n"
-                        f"Week {fixture['week_number']} prediction removed. "
-                        "Submit a new prediction before the deadline if you want to participate."
-                    )
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Error deleting thread prediction: {e}", exc_info=True)
-            return True
-
     async def _handle_error(self, message: discord.Message, error_text: str):
         """Handle errors by DMing the user and optionally reacting to the message."""
         with suppress(discord.Forbidden):
