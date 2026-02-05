@@ -272,11 +272,10 @@ class UserCommands(commands.Cog):
 
 ⚠️ Make sure your Discord allows DMs from server members!"""
 
-        help_text = user_help
-        if is_admin_user:
-            help_text += admin_help
+        await interaction.response.send_message(user_help, ephemeral=True)
 
-        await interaction.response.send_message(help_text, ephemeral=True)
+        if is_admin_user:
+            await interaction.followup.send(admin_help, ephemeral=True)
 
     def _is_admin(self, member: discord.Member) -> bool:
         """Check if member has admin role (case-insensitive)."""

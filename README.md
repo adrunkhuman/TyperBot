@@ -32,8 +32,7 @@ Bot requires:
    Team E - Team F 3:2
    ...
    ```
-3. Bot reacts ✅ when saved. Edit your message anytime before the deadline.
-4. Delete your message to remove your prediction.
+3. Bot reacts ✅ when saved. Edit your message anytime before the deadline to update.
 
 **Method 2: DM Predictions**
 1. Type `/predict` -> Bot DMs you the games
