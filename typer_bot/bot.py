@@ -122,33 +122,27 @@ class TyperBot(commands.Bot):
         self.reminder_task.start()
         logger.info("Setup hook complete")
 
-    def _validate_archive_sql(self, sql_content: str) -> bool:
-        """Validate archive SQL - only INSERTs allowed. Blocks DDL/DML that could corrupt the db."""
+    async def _validate_archive_sql(self, db_path: str, sql_content: str) -> bool:
+        """Validate archive SQL using sandbox transaction - only safe INSERTs allowed."""
         import re
 
-        normalized = re.sub(r"--.*?$", "", sql_content, flags=re.MULTILINE)
-        normalized = re.sub(r"/\*.*?\*/", "", normalized, flags=re.DOTALL)
-        normalized = normalized.upper()
+        import aiosqlite
 
-        dangerous = [
-            "DROP",
-            "DELETE",
-            "UPDATE",
-            "ALTER",
-            "CREATE",
-            "TRUNCATE",
-            "REPLACE",
-            "ATTACH",
-            "DETACH",
-            "PRAGMA",
-        ]
+        # Pre-check: block operations that bypass transaction safety
+        if re.search(r"\b(ATTACH|DETACH|VACUUM|PRAGMA)\b", sql_content, re.IGNORECASE):
+            return False
 
-        for keyword in dangerous:
-            if re.search(rf"\b{keyword}\b", normalized):
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute("BEGIN")
+            await db.execute("PRAGMA writable_schema=OFF")
+            try:
+                await db.executescript(sql_content)
+                await db.rollback()
+                return True
+            except aiosqlite.Error as e:
+                logger.warning(f"SQL validation failed: {e}")
+                await db.rollback()
                 return False
-
-        statements = [s.strip() for s in normalized.split(";") if s.strip()]
-        return all(stmt.startswith("INSERT") for stmt in statements)
 
     async def _run_archive_imports(self):
         """Run SQL files from archive folder if database is empty."""
@@ -185,8 +179,10 @@ class TyperBot(commands.Bot):
                     with sql_file.open(encoding="utf-8") as f:  # noqa: ASYNC230
                         sql_content = f.read()
 
-                    if not self._validate_archive_sql(sql_content):
-                        logger.error(f"❌ Rejected {sql_file}: contains non-INSERT statements")
+                    if not await self._validate_archive_sql(self.db.db_path, sql_content):
+                        logger.error(
+                            f"❌ Rejected {sql_file}: validation failed (non-INSERT statements detected)"
+                        )
                         continue
 
                     async with aiosqlite.connect(self.db.db_path) as db:
