@@ -1,19 +1,35 @@
 """Handler for results entry DM workflow."""
 
 import logging
+from datetime import timedelta
 
 import discord
 from discord import ui
 
 from typer_bot.database import Database
-from typer_bot.utils import parse_line_predictions
+from typer_bot.utils import now, parse_line_predictions
 
 logger = logging.getLogger(__name__)
 
-# user_id -> {"fixture_id": int, "guild_id": int}
+# user_id -> {"fixture_id": int, "guild_id": int, "created_at": datetime}
 _pending_results: dict = {}
 
 MAX_MESSAGE_LENGTH = 5000
+SESSION_TIMEOUT_HOURS = 1
+
+
+def _cleanup_expired_sessions():
+    """Remove results sessions older than SESSION_TIMEOUT_HOURS."""
+    current_time = now()
+    expired = [
+        user_id
+        for user_id, state in _pending_results.items()
+        if current_time - state.get("created_at", current_time)
+        > timedelta(hours=SESSION_TIMEOUT_HOURS)
+    ]
+    for user_id in expired:
+        _pending_results.pop(user_id, None)
+        logger.debug(f"Cleaned up expired results session for {user_id}")
 
 
 class ResultsEntryHandler:
@@ -25,13 +41,16 @@ class ResultsEntryHandler:
 
     def start_session(self, user_id: str, fixture_id: int, guild_id: int) -> None:
         """Initialize a new results entry session."""
+        _cleanup_expired_sessions()
         _pending_results[user_id] = {
             "fixture_id": fixture_id,
             "guild_id": guild_id,
+            "created_at": now(),
         }
 
     def has_session(self, user_id: str) -> bool:
         """Check if user has an active results entry session."""
+        _cleanup_expired_sessions()
         return user_id in _pending_results
 
     async def handle_dm(self, message: discord.Message, user_id: str, is_admin_fn) -> bool:

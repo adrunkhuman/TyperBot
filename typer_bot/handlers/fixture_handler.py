@@ -11,11 +11,26 @@ from typer_bot.utils import APP_TZ, format_for_discord, now
 
 logger = logging.getLogger(__name__)
 
-# user_id -> {"channel_id": int, "guild_id": int, "games": list, "deadline": datetime, "step": str}
+# user_id -> {"channel_id": int, "guild_id": int, "games": list, "deadline": datetime, "step": str, "created_at": datetime}
 _pending_fixtures: dict = {}
 
 MAX_MESSAGE_LENGTH = 5000
 MAX_GAMES = 100
+SESSION_TIMEOUT_HOURS = 1
+
+
+def _cleanup_expired_sessions():
+    """Remove fixture sessions older than SESSION_TIMEOUT_HOURS."""
+    current_time = now()
+    expired = [
+        user_id
+        for user_id, state in _pending_fixtures.items()
+        if current_time - state.get("created_at", current_time)
+        > timedelta(hours=SESSION_TIMEOUT_HOURS)
+    ]
+    for user_id in expired:
+        _pending_fixtures.pop(user_id, None)
+        logger.debug(f"Cleaned up expired fixture session for {user_id}")
 
 
 class FixtureCreationHandler:
@@ -27,14 +42,17 @@ class FixtureCreationHandler:
 
     def start_session(self, user_id: str, channel_id: int, guild_id: int) -> None:
         """Initialize a new fixture creation session."""
+        _cleanup_expired_sessions()
         _pending_fixtures[user_id] = {
             "channel_id": channel_id,
             "guild_id": guild_id,
             "step": "games",
+            "created_at": now(),
         }
 
     def has_session(self, user_id: str) -> bool:
         """Check if user has an active fixture creation session."""
+        _cleanup_expired_sessions()
         return user_id in _pending_fixtures
 
     async def handle_dm(self, message: discord.Message, user_id: str, is_admin_fn) -> bool:

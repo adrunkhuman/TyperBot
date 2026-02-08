@@ -2,6 +2,7 @@
 
 import logging
 from contextlib import suppress
+from datetime import datetime, timedelta
 
 import discord
 
@@ -11,6 +12,10 @@ from typer_bot.utils import now, parse_line_predictions
 logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_LENGTH = 5000
+
+# Rate limiting: user_id -> last prediction timestamp
+PREDICTION_RATE_LIMIT_SECONDS = 1
+_prediction_cooldowns: dict[str, datetime] = {}
 
 
 class ThreadPredictionHandler:
@@ -38,6 +43,21 @@ class ThreadPredictionHandler:
         fixture = await self.db.get_fixture_by_thread_id(thread_id)
         if not fixture:
             return False
+
+        # Rate limiting check - atomic update to prevent race conditions
+        user_id = str(message.author.id)
+        current_time = now()
+        last_time = _prediction_cooldowns.get(user_id)
+        _prediction_cooldowns[user_id] = current_time  # Always update atomically
+        if last_time and (current_time - last_time).total_seconds() < PREDICTION_RATE_LIMIT_SECONDS:
+            logger.debug(f"Rate limiting prediction from {user_id}")
+            return True  # Silently ignore rate-limited messages
+
+        # Cleanup old rate limit entries (prevent unbounded memory growth)
+        cutoff = current_time - timedelta(hours=1)
+        expired = [uid for uid, ts in list(_prediction_cooldowns.items()) if ts < cutoff]
+        for uid in expired:
+            _prediction_cooldowns.pop(uid, None)
 
         # Check message length
         if len(message.content) > MAX_MESSAGE_LENGTH:
