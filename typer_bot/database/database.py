@@ -277,25 +277,35 @@ class Database:
             return None
 
     async def save_scores(self, fixture_id: int, scores: list[dict]):
-        """Save calculated scores for a fixture."""
+        """Save calculated scores for a fixture atomically."""
         async with aiosqlite.connect(self.db_path) as db:
-            await db.execute("DELETE FROM scores WHERE fixture_id = ?", (fixture_id,))
-            for score in scores:
+            await db.execute("BEGIN")
+            try:
+                await db.execute("DELETE FROM scores WHERE fixture_id = ?", (fixture_id,))
+                for score in scores:
+                    await db.execute(
+                        """INSERT INTO scores (fixture_id, user_id, user_name, points,
+                                              exact_scores, correct_results)
+                           VALUES (?, ?, ?, ?, ?, ?)""",
+                        (
+                            fixture_id,
+                            score["user_id"],
+                            score["user_name"],
+                            score["points"],
+                            score["exact_scores"],
+                            score["correct_results"],
+                        ),
+                    )
                 await db.execute(
-                    """INSERT INTO scores (fixture_id, user_id, user_name, points,
-                                          exact_scores, correct_results)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
-                    (
-                        fixture_id,
-                        score["user_id"],
-                        score["user_name"],
-                        score["points"],
-                        score["exact_scores"],
-                        score["correct_results"],
-                    ),
+                    "UPDATE fixtures SET status = 'closed' WHERE id = ?", (fixture_id,)
                 )
-            await db.execute("UPDATE fixtures SET status = 'closed' WHERE id = ?", (fixture_id,))
-            await db.commit()
+                await db.commit()
+            except aiosqlite.Error:
+                try:
+                    await db.rollback()
+                except aiosqlite.Error as rb_err:
+                    logger.warning(f"Rollback failed after save_scores error: {rb_err}")
+                raise
 
     async def get_standings(self) -> list[dict]:
         """Get overall standings across all fixtures."""
