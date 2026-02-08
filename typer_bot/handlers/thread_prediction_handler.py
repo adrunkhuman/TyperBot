@@ -70,11 +70,22 @@ class ThreadPredictionHandler:
         current_time = now()
         is_late = current_time > fixture["deadline"]
 
+        user_id = str(message.author.id)
+
+        # Check if already submitted via DM (race condition prevention)
+        existing = await self.db.get_prediction(fixture["id"], user_id)
+        if existing:
+            await message.author.send(
+                "ℹ️ You already submitted predictions for this fixture. "
+                "Use `/predict` if you want to update them."
+            )
+            return True
+
         try:
             # Save prediction
             await self.db.save_prediction(
                 fixture["id"],
-                str(message.author.id),
+                user_id,
                 message.author.display_name,
                 predictions,
                 is_late,

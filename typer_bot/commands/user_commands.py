@@ -48,6 +48,16 @@ class UserCommands(commands.Cog):
             return
 
         fixture_id, games = pending_predictions.pop(user_id)
+
+        # Check if already submitted via thread (race condition prevention)
+        existing = await self.db.get_prediction(fixture_id, user_id)
+        if existing:
+            await message.author.send(
+                "ℹ️ You already submitted predictions for this fixture. "
+                "Use `/predict` if you want to update them."
+            )
+            return
+
         fixture = await self.db.get_fixture_by_id(fixture_id)
 
         if not fixture:
