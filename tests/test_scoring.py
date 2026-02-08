@@ -1,7 +1,5 @@
 """Tests for scoring calculation utilities."""
 
-import pytest
-
 from typer_bot.utils.scoring import calculate_points
 
 
@@ -82,19 +80,18 @@ class TestCalculatePoints:
         assert result["points"] == 6  # 3 + 3
         assert result["exact_scores"] == 2
 
-    def test_colon_format_not_supported_directly(self):
-        """calculate_points expects normalized X-Y format from parser.
+    def test_colon_format_gracefully_handled(self):
+        """calculate_points gracefully handles invalid formats by skipping them.
 
-        Raw X:Y format would fail - normalization happens in prediction_parser.
-        This test documents the expected input contract.
+        Malformed data in DB is skipped rather than crashing the scoring.
         """
         # Normalized format from parser works
         result = calculate_points(["2-1"], ["2-1"])
         assert result["points"] == 3
 
-        # Raw colon format would raise ValueError (int("2:1") fails)
-        with pytest.raises(ValueError):
-            calculate_points(["2:1"], ["2:1"])
+        # Invalid formats are gracefully skipped (no crash)
+        result = calculate_points(["2:1"], ["2:1"])
+        assert result["points"] == 0  # Invalid format skipped
 
     def test_nullified_game_excluded_from_scoring(self):
         """Games marked with 'x' should be excluded from scoring calculations."""

@@ -1,5 +1,6 @@
 """Main Discord bot implementation."""
 
+import asyncio
 import logging
 import os
 import sys
@@ -175,9 +176,14 @@ class TyperBot(commands.Bot):
             for sql_file in archive_files:
                 logger.info(f"Importing {sql_file}...")
                 try:
-                    # Archive import is one-time startup operation, blocking I/O is acceptable
-                    with sql_file.open(encoding="utf-8") as f:  # noqa: ASYNC230
-                        sql_content = f.read()
+                    # Run file I/O in thread pool to avoid blocking event loop
+                    def _read_sql_file(file=sql_file):
+                        with file.open(encoding="utf-8") as f:
+                            return f.read()
+
+                    sql_content = await asyncio.get_event_loop().run_in_executor(
+                        None, _read_sql_file
+                    )
 
                     if not await self._validate_archive_sql(self.db.db_path, sql_content):
                         logger.error(
@@ -320,6 +326,9 @@ class TyperBot(commands.Bot):
                     if user:
                         await self.db.update_username(user_id, user.display_name)
                         updated += 1
+
+                    # Rate limiting: small delay between requests to avoid Discord API limits
+                    await asyncio.sleep(0.1)
                 except Exception as e:
                     logger.warning(f"Failed to update username for {user_id}: {e}")
                     failed += 1
@@ -433,7 +442,7 @@ def main():
         logger.error("Please update it with your actual bot token")
         sys.exit(1)
 
-    logger.info(f"Token check: Token starts with '{token[:20]}...'")
+    logger.info("✅ Token configured")
 
     if not IS_PRODUCTION:
         logger.info("⚠️  ENVIRONMENT is not 'production' - running in smoke test mode")

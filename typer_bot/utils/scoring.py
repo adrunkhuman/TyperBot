@@ -29,8 +29,14 @@ def calculate_points(
         if actual == "x":
             continue
 
-        pred_home, pred_away = map(int, pred.split("-"))
-        actual_home, actual_away = map(int, actual.split("-"))
+        parsed_pred = parse_result(pred)
+        parsed_actual = parse_result(actual)
+
+        if parsed_pred is None or parsed_actual is None:
+            continue
+
+        pred_home, pred_away = parsed_pred
+        actual_home, actual_away = parsed_actual
 
         if pred_home == actual_home and pred_away == actual_away:
             total_points += 3

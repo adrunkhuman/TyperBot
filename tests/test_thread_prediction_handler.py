@@ -6,6 +6,13 @@ from unittest.mock import MagicMock
 import pytest
 
 from tests.conftest import MockMessage
+from typer_bot.handlers.thread_prediction_handler import _prediction_cooldowns
+
+
+@pytest.fixture(autouse=True)
+def clear_rate_limits():
+    """Clear rate limiting cooldowns before each test."""
+    _prediction_cooldowns.clear()
 
 
 class TestOnMessage:
