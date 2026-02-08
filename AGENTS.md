@@ -10,12 +10,16 @@ You are working on `matchday-typer`, a Discord bot for football prediction leagu
 
 ## 2. Critical Constraints
 - **Persistence:** The database (`typer.db`) MUST live in `/app/data` on production (Railway volume).
+- **Transaction Safety:** Critical operations use atomic transactions (BEGIN/COMMIT/ROLLBACK) to ensure data consistency. Never modify transaction logic without understanding rollback implications.
+- **Race Condition Prevention:** Both DM and thread prediction handlers check for existing predictions before saving to prevent duplicates when users submit via both methods simultaneously.
+- **Archive Import Security:** SQL files in `archive/` are validated using sandbox transactions before execution. Only INSERT statements allowed; ATTACH/DETACH/VACUUM/PRAGMA blocked.
 - **Configuration:** All data paths configurable via env vars in `utils/config.py`:
   - `DATA_DIR`: Base directory (default: `/app/data`)
   - `DB_PATH`: Full database path (default: `{DATA_DIR}/typer.db`)
   - `BACKUP_DIR`: Backup storage (default: `{DATA_DIR}/backups`)
 - **DM Workflow:** Complex inputs (fixture creation, results entry) happen in DMs to keep channel clean.
 - **Thread Predictions:** Users can post predictions in public threads under fixture announcements (NEW - see handlers/thread_prediction_handler.py).
+- **Rate Limiting:** Thread predictions are rate-limited to 1 per second per user. Cooldown entries auto-expire after 1 hour.
 - **Async:** All database ops must be async (`aiosqlite`).
 - **Parsing:** Use `utils.prediction_parser.parse_line_predictions` for all score parsing. Do NOT write ad-hoc regex.
 - **Logging:** Use `typer_bot.utils.logger.setup_logging()` early. Do not use `print()`.
@@ -86,6 +90,9 @@ scores (
 - **Double Digits:** Scores like `10-0` are allowed.
 - **Format:** Users provide flexible separators (`-`, `:`, `–`).
 - **History:** `archive/` folder contains SQL files auto-imported on first run (empty DB).
+- **Rate Limiting:** Thread predictions limited to 1/second per user. DM predictions use confirmation buttons (no rate limit needed).
+- **Session Timeouts:** Fixture creation and results entry DM flows auto-expire after 1 hour of inactivity.
+- **Token Safety:** Bot validates DISCORD_TOKEN at startup (rejects placeholders like "your_bot_token_here"). Token values are never logged.
 
 ## 7. Deployment Environment
 - **Configuration:** The `ENVIRONMENT` variable controls bot behavior:

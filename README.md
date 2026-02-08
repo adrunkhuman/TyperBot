@@ -72,7 +72,8 @@ I recommend **Railway** because it's cheap/free and supports persistent storage 
    - `TZ`: (Optional) Timezone for deadlines. Default `Europe/Warsaw`. Examples: `America/New_York`, `Asia/Tokyo`.
    - `REMINDER_CHANNEL_ID`: (Optional) ID of channel to spam reminders in.
    - `LOG_LEVEL`: (Optional) Set to `DEBUG` for verbose logs. Default `INFO`.
-   - `IMPORT_ARCHIVE`: (Optional) Set to `true` to import `.sql` files from `archive/` on first run. Default: disabled.
+   - `IMPORT_ARCHIVE`: (Optional) Set to `true` to import `.sql` files from `archive/` on first run (validated via sandbox transaction, INSERT-only). Default: disabled.
+   - `ENVIRONMENT`: (Optional) Set to `production` for live bot operation. Other values run smoke-test mode (validates config then exits). Default: `development`.
 
 ## Running Locally
 
