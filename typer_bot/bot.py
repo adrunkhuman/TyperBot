@@ -230,9 +230,6 @@ class TyperBot(commands.Bot):
         # Check bot permissions on all guilds
         await self._check_permissions()
 
-        # Auto-refresh usernames on startup
-        await self._refresh_usernames()
-
         # Sync any manually-created threads
         await self._sync_fixture_thread()
 
@@ -298,45 +295,6 @@ class TyperBot(commands.Bot):
         """Check if user has admin role (case-insensitive)."""
         admin_roles = {"admin", "typer-admin"}
         return any(role.name.lower() in admin_roles for role in user.roles)
-
-    async def _refresh_usernames(self):
-        """Refresh all usernames in the database from Discord."""
-        logger.info("Starting username refresh on startup...")
-
-        try:
-            user_ids = await self.db.get_all_user_ids()
-            if not user_ids:
-                logger.info("No users found to refresh")
-                return
-
-            updated = 0
-            failed = 0
-
-            for user_id in user_ids:
-                try:
-                    user = self.get_user(int(user_id))
-                    if not user:
-                        # Try to fetch from API if not in cache
-                        try:
-                            user = await self.fetch_user(int(user_id))
-                        except discord.NotFound:
-                            failed += 1
-                            continue
-
-                    if user:
-                        await self.db.update_username(user_id, user.display_name)
-                        updated += 1
-
-                    # Rate limiting: small delay between requests to avoid Discord API limits
-                    await asyncio.sleep(0.1)
-                except Exception as e:
-                    logger.warning(f"Failed to update username for {user_id}: {e}")
-                    failed += 1
-
-            logger.info(f"Username refresh complete: {updated} updated, {failed} failed")
-
-        except Exception as e:
-            logger.exception(f"Error during username refresh: {e}")
 
     async def _sync_fixture_thread(self):
         """Sync manually-created thread on startup.
