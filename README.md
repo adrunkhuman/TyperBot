@@ -115,7 +115,7 @@ If you have a bunch of old scores you want to keep:
 
 ## Username Management
 
-Usernames are automatically refreshed on bot startup and updated when users submit predictions. No manual refresh needed.
+Usernames are updated automatically when users submit predictions.
 
 ## Backup and Restore
 
