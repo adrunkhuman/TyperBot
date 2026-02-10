@@ -1,9 +1,8 @@
 """Tests for admin Discord commands."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-import discord
 import pytest
 
 from typer_bot.commands.admin_commands import AdminCommands, _calculate_cooldowns
@@ -91,13 +90,13 @@ class TestFixtureDeleteLogic:
         return AdminCommands(mock_bot)
 
     @pytest.mark.asyncio
-    async def test_fixture_delete_no_active_fixture(self, admin_cog, database):
+    async def test_fixture_delete_no_active_fixture(self, admin_cog, database):  # noqa: ARG002
         """Deleting without an active fixture fails gracefully."""
         fixture = await database.get_current_fixture()
         assert fixture is None
 
     @pytest.mark.asyncio
-    async def test_fixture_delete_deletes_fixture(self, admin_cog, database, sample_games):
+    async def test_fixture_delete_deletes_fixture(self, admin_cog, database, sample_games):  # noqa: ARG002
         """Fixture deletion cascades to predictions and results."""
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
@@ -148,13 +147,13 @@ class TestResultsCalculateLogic:
         return AdminCommands(mock_bot)
 
     @pytest.mark.asyncio
-    async def test_calculate_no_active_fixture(self, admin_cog, database):
+    async def test_calculate_no_active_fixture(self, admin_cog, database):  # noqa: ARG002
         """Score calculation requires an active fixture."""
         fixture = await database.get_current_fixture()
         assert fixture is None
 
     @pytest.mark.asyncio
-    async def test_calculate_no_results(self, admin_cog, database, sample_games):
+    async def test_calculate_no_results(self, admin_cog, database, sample_games):  # noqa: ARG002
         """Missing results block leaderboard updates."""
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
@@ -163,7 +162,7 @@ class TestResultsCalculateLogic:
         assert results is None
 
     @pytest.mark.asyncio
-    async def test_calculate_no_predictions(self, admin_cog, database, sample_games):
+    async def test_calculate_no_predictions(self, admin_cog, database, sample_games):  # noqa: ARG002
         """Empty predictions yield empty scores without crashing."""
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
@@ -174,7 +173,10 @@ class TestResultsCalculateLogic:
 
     @pytest.mark.asyncio
     async def test_calculate_successfully_calculates_scores(
-        self, admin_cog, database, sample_games
+        self,
+        admin_cog,  # noqa: ARG002
+        database,
+        sample_games,
     ):
         """Point calculation: 3 for exact, 1 for outcome."""
         deadline = datetime.now(UTC) + timedelta(days=1)
@@ -276,7 +278,6 @@ class TestOnMessageListener:
         mock_message.author.bot = False
 
         admin_cog.fixture_handler.start_session(user_id, 123456, 111111)
-        original_handle_dm = admin_cog.fixture_handler.handle_dm
         admin_cog.fixture_handler.handle_dm = AsyncMock(return_value=True)
 
         await admin_cog.on_message(mock_message)
@@ -293,7 +294,6 @@ class TestOnMessageListener:
         mock_message.author.bot = False
 
         admin_cog.results_handler.start_session(user_id, 1, 111111)
-        original_handle_dm = admin_cog.results_handler.handle_dm
         admin_cog.results_handler.handle_dm = AsyncMock(return_value=True)
 
         await admin_cog.on_message(mock_message)

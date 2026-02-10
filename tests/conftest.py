@@ -218,7 +218,7 @@ class MockTextChannel:
         mock_msg.id = 999999
         return mock_msg
 
-    async def create_thread(self, name: str, auto_archive_duration: int = 1440):
+    async def create_thread(self, name: str, _auto_archive_duration: int = 1440):
         thread = MockThread(thread_id="999999", name=name, guild=self._guild)
         self.threads_created.append(thread)
         return thread

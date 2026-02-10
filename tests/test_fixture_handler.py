@@ -1,10 +1,8 @@
 """Tests for fixture creation handler DM workflow."""
 
-import asyncio
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-import discord
 import pytest
 
 from typer_bot.handlers.fixture_handler import (
@@ -76,7 +74,7 @@ class TestAdminVerification:
         mock_message.author = MagicMock()
         mock_message.author.send = AsyncMock()
 
-        result = await handler._verify_admin(mock_message, "123456", None, lambda x: True)
+        result = await handler._verify_admin(mock_message, "123456", None, lambda _: True)
 
         assert result is False
         assert "123456" not in _pending_fixtures
@@ -91,7 +89,7 @@ class TestAdminVerification:
         mock_message.author = MagicMock()
         mock_message.author.send = AsyncMock()
 
-        result = await handler._verify_admin(mock_message, "123456", 111111, lambda x: True)
+        result = await handler._verify_admin(mock_message, "123456", 111111, lambda _: True)
 
         assert result is False
 
@@ -108,7 +106,7 @@ class TestAdminVerification:
         mock_message.author = MagicMock()
         mock_message.author.send = AsyncMock()
 
-        result = await handler._verify_admin(mock_message, "123456", 111111, lambda x: True)
+        result = await handler._verify_admin(mock_message, "123456", 111111, lambda _: True)
 
         assert result is False
 
@@ -126,7 +124,7 @@ class TestAdminVerification:
         mock_message.author = MagicMock()
         mock_message.author.send = AsyncMock()
 
-        result = await handler._verify_admin(mock_message, "123456", 111111, lambda x: False)
+        result = await handler._verify_admin(mock_message, "123456", 111111, lambda _: False)
 
         assert result is False
 
@@ -141,7 +139,7 @@ class TestAdminVerification:
 
         mock_message = MagicMock()
 
-        result = await handler._verify_admin(mock_message, "123456", 111111, lambda x: True)
+        result = await handler._verify_admin(mock_message, "123456", 111111, lambda _: True)
 
         assert result is True
 
@@ -231,6 +229,7 @@ class TestDeadlineStep:
     async def test_handle_deadline_step_valid_format_iso(self, handler):
         """ISO format is accepted for timezone-aware parsing."""
         from zoneinfo import ZoneInfo
+
         from typer_bot.handlers import fixture_handler
 
         original_tz = fixture_handler.APP_TZ
@@ -268,7 +267,7 @@ class TestPreviewGeneration:
         return FixtureCreationHandler(mock_bot, database)
 
     @pytest.mark.asyncio
-    async def test_show_preview_creates_week_number(self, handler, database):
+    async def test_show_preview_creates_week_number(self, handler, database):  # noqa: ARG002
         _pending_fixtures["123456"] = {
             "step": "deadline",
             "games": ["Game 1", "Game 2"],
@@ -288,7 +287,7 @@ class TestPreviewGeneration:
         assert "Week 1 Fixture Preview" in call_content
 
     @pytest.mark.asyncio
-    async def test_show_preview_warns_wrong_game_count(self, handler, database):
+    async def test_show_preview_warns_wrong_game_count(self, handler, database):  # noqa: ARG002
         """Wrong game count triggers a warning."""
         _pending_fixtures["123456"] = {
             "step": "deadline",
@@ -309,7 +308,7 @@ class TestPreviewGeneration:
         assert "Expected 9 games" in call_content
 
     @pytest.mark.asyncio
-    async def test_show_preview_channel_not_found(self, handler, database):
+    async def test_show_preview_channel_not_found(self, handler, database):  # noqa: ARG002
         """Channel not found cancels the session."""
         handler.bot.get_channel.return_value = None
 
@@ -366,7 +365,7 @@ class TestHandleDM:
     async def test_handle_dm_no_session(self, handler):
         mock_message = MagicMock()
 
-        result = await handler.handle_dm(mock_message, "123456", lambda x: True)
+        result = await handler.handle_dm(mock_message, "123456", lambda _: True)
 
         assert result is False
 
@@ -380,7 +379,7 @@ class TestHandleDM:
         mock_message.author = MagicMock()
         mock_message.author.send = AsyncMock()
 
-        result = await handler.handle_dm(mock_message, "123456", lambda x: True)
+        result = await handler.handle_dm(mock_message, "123456", lambda _: True)
 
         assert result is True
         mock_message.author.send.assert_called_once()
@@ -395,7 +394,7 @@ class TestHandleDM:
         mock_message.author = MagicMock()
         mock_message.author.send = AsyncMock()
 
-        result = await handler.handle_dm(mock_message, "123456", lambda x: True)
+        result = await handler.handle_dm(mock_message, "123456", lambda _: True)
 
         assert result is True
         assert _pending_fixtures["123456"]["step"] == "deadline"
@@ -453,7 +452,7 @@ class TestViewBehavioral:
 
         captured_views = []
 
-        async def capture_send(content=None, view=None, **kwargs):
+        async def capture_send(_content=None, view=None, **_):
             if view:
                 captured_views.append(type(view).__name__)
 
@@ -489,13 +488,13 @@ class TestViewBehavioral:
 
             captured_views = []
 
-            async def capture_send(content=None, view=None, **kwargs):
+            async def capture_send(_content=None, view=None, **_):
                 if view:
                     captured_views.append(type(view).__name__)
 
             mock_message.author.send = capture_send
 
-            async def mock_show_preview(user, user_id):
+            async def mock_show_preview(_user, user_id):
                 from typer_bot.handlers.fixture_handler import FixtureConfirmView
 
                 view = FixtureConfirmView(

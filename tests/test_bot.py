@@ -1,17 +1,13 @@
 """Tests for main Discord bot implementation."""
 
-import asyncio
 import os
-import sys
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import discord
 import pytest
 
 from typer_bot.bot import TyperBot, main
-from typer_bot.utils.logger import set_trace_id
 
 
 class TestBotInitialization:
@@ -20,7 +16,7 @@ class TestBotInitialization:
     @pytest.mark.asyncio
     async def test_bot_creates_database_instance(self):
         """Database is initialized at startup."""
-        with patch.object(TyperBot, "__init__", lambda self: None):
+        with patch.object(TyperBot, "__init__", lambda _: None):
             bot = TyperBot.__new__(TyperBot)
             bot.db = MagicMock()
             bot.thread_handler = MagicMock()
@@ -30,7 +26,7 @@ class TestBotInitialization:
     async def test_bot_has_required_intents(self):
         """Message content and member intents are required for prediction processing and permission verification."""
         with (
-            patch("typer_bot.bot.commands.Bot.__init__") as mock_super,
+            patch("typer_bot.bot.commands.Bot.__init__"),
             patch("typer_bot.bot.discord.Intents") as mock_intents,
         ):
             mock_intent_instance = MagicMock()
@@ -38,10 +34,8 @@ class TestBotInitialization:
             mock_intent_instance.members = False
             mock_intents.default.return_value = mock_intent_instance
 
-            try:
-                bot = TyperBot()
-            except Exception:
-                pass  # Expected to fail due to mocking
+            with suppress(Exception):
+                TyperBot()
 
             assert mock_intent_instance.message_content is True
             assert mock_intent_instance.members is True
@@ -131,7 +125,7 @@ class TestOnReady:
             yield bot
 
     @pytest.mark.asyncio
-    async def test_on_ready_logs_bot_info(self, bot_instance, caplog):
+    async def test_on_ready_logs_bot_info(self, bot_instance, caplog):  # noqa: ARG002
         """Connection logging provides deployment visibility."""
         with patch("typer_bot.bot.logger") as mock_logger:
             await bot_instance.on_ready()
@@ -165,7 +159,7 @@ class TestPermissionCheck:
             yield bot
 
     @pytest.mark.asyncio
-    async def test_check_permissions_logs_missing_permissions(self, bot_instance, caplog):
+    async def test_check_permissions_logs_missing_permissions(self, bot_instance, caplog):  # noqa: ARG002
         """Missing permission warnings help admins identify configuration issues."""
         mock_guild = MagicMock()
         mock_guild.name = "Test Guild"
@@ -353,7 +347,7 @@ class TestArchiveImport:
 
     @pytest.mark.asyncio
     @patch.dict(os.environ, {"IMPORT_ARCHIVE": "true"})
-    async def test_archive_import_skips_if_fixtures_exist(self, bot_instance, tmp_path):
+    async def test_archive_import_skips_if_fixtures_exist(self, bot_instance, tmp_path):  # noqa: ARG002
         """Import is skipped when fixtures already exist."""
         import aiosqlite
 
@@ -442,7 +436,7 @@ class TestOnMessage:
 
         with (
             patch("typer_bot.bot.set_trace_id") as mock_set_trace,
-            patch.object(bot_instance, "process_commands") as mock_process,
+            patch.object(bot_instance, "process_commands"),
         ):
             await bot_instance.on_message(mock_message)
             mock_set_trace.assert_not_called()
@@ -456,7 +450,7 @@ class TestOnMessage:
 
         with (
             patch("typer_bot.bot.set_trace_id") as mock_set_trace,
-            patch.object(bot_instance, "process_commands") as mock_process,
+            patch.object(bot_instance, "process_commands"),
         ):
             await bot_instance.on_message(mock_message)
             mock_set_trace.assert_called_once_with("msg-123456")
@@ -493,10 +487,8 @@ class TestOnMessageEdit:
         mock_after.id = 123456
 
         with patch("typer_bot.bot.set_trace_id") as mock_set_trace:
-            try:
+            with suppress(AttributeError):  # Expected - parent doesn't have on_message_edit
                 await bot_instance.on_message_edit(mock_before, mock_after)
-            except AttributeError:
-                pass  # Expected - parent doesn't have on_message_edit
 
             mock_set_trace.assert_called_once_with("edit-123456")
 
@@ -507,8 +499,7 @@ class TestOnInteraction:
     @pytest.fixture
     def bot_instance(self):
         with patch("typer_bot.bot.commands.Bot.__init__", return_value=None):
-            bot = TyperBot.__new__(TyperBot)
-            return bot
+            return TyperBot.__new__(TyperBot)
 
     @pytest.mark.asyncio
     async def test_on_interaction_sets_trace_id(self, bot_instance):
