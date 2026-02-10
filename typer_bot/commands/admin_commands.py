@@ -11,6 +11,7 @@ from typer_bot.handlers import FixtureCreationHandler, ResultsEntryHandler
 from typer_bot.utils import (
     calculate_points,
     format_standings,
+    is_admin,
     now,
 )
 from typer_bot.utils.config import BACKUP_DIR
@@ -21,17 +22,6 @@ _calculate_cooldowns: dict = {}
 CALCULATE_COOLDOWN = 30.0
 
 logger = logging.getLogger(__name__)
-
-
-def is_admin(interaction: discord.Interaction) -> bool:
-    """Check if interaction user has admin role on the originating guild."""
-    if not interaction.guild:
-        return False
-    member = interaction.guild.get_member(interaction.user.id)
-    if not member:
-        return False
-    admin_roles = {"admin", "typer-admin"}
-    return any(role.name.lower() in admin_roles for role in member.roles)
 
 
 def admin_only():

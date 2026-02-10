@@ -8,6 +8,7 @@ from typer_bot.database import Database
 from typer_bot.utils import (
     format_for_discord,
     format_standings,
+    is_admin,
     now,
     parse_line_predictions,
 )
@@ -196,7 +197,7 @@ class UserCommands(commands.Cog):
     @app_commands.command(name="help", description="Show help information")
     async def help(self, interaction: discord.Interaction):
         """Display help for users and admins."""
-        is_admin_user = self._is_admin(interaction)
+        is_admin_user = is_admin(interaction)
 
         user_help = """## 📖 User Commands
 
@@ -286,16 +287,6 @@ class UserCommands(commands.Cog):
 
         if is_admin_user:
             await interaction.followup.send(admin_help, ephemeral=True)
-
-    def _is_admin(self, interaction: discord.Interaction) -> bool:
-        """Check if interaction user has admin role on the originating guild."""
-        if not interaction.guild:
-            return False
-        member = interaction.guild.get_member(interaction.user.id)
-        if not member:
-            return False
-        admin_roles = {"admin", "typer-admin"}
-        return any(role.name.lower() in admin_roles for role in member.roles)
 
     @app_commands.command(name="fixtures", description="View this week's fixtures")
     async def fixtures(self, interaction: discord.Interaction):
