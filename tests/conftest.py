@@ -81,6 +81,19 @@ class MockGuild:
     def __init__(self, guild_id: str = "111111"):
         self.id = int(guild_id)
         self.name = "Test Guild"
+        self._members = {}
+
+    def add_member(self, user_id: str, roles: list[str] = None):
+        """Add a member to the guild."""
+        mock_member = MagicMock()
+        mock_member.id = int(user_id)
+        mock_member.roles = [MockRole(role) for role in (roles or [])]
+        self._members[int(user_id)] = mock_member
+        return mock_member
+
+    def get_member(self, user_id: int):
+        """Get a member by ID."""
+        return self._members.get(user_id)
 
 
 class MockUser:
@@ -316,6 +329,8 @@ def mock_guild_with_members():
 @pytest.fixture
 def mock_interaction(mock_user, mock_guild, mock_text_channel):
     """Provide a mocked Discord interaction."""
+    # Add user to guild as non-admin
+    mock_guild.add_member(str(mock_user.id), roles=["user"])
     return MockInteraction(user=mock_user, guild=mock_guild, channel=mock_text_channel)
 
 
