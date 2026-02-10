@@ -125,7 +125,7 @@ class TestOnReady:
             yield bot
 
     @pytest.mark.asyncio
-    async def test_on_ready_logs_bot_info(self, bot_instance, caplog):  # noqa: ARG002
+    async def test_on_ready_logs_bot_info(self, bot_instance):
         """Connection logging provides deployment visibility."""
         with patch("typer_bot.bot.logger") as mock_logger:
             await bot_instance.on_ready()
@@ -159,7 +159,7 @@ class TestPermissionCheck:
             yield bot
 
     @pytest.mark.asyncio
-    async def test_check_permissions_logs_missing_permissions(self, bot_instance, caplog):  # noqa: ARG002
+    async def test_check_permissions_logs_missing_permissions(self, bot_instance):
         """Missing permission warnings help admins identify configuration issues."""
         mock_guild = MagicMock()
         mock_guild.name = "Test Guild"
@@ -347,7 +347,7 @@ class TestArchiveImport:
 
     @pytest.mark.asyncio
     @patch.dict(os.environ, {"IMPORT_ARCHIVE": "true"})
-    async def test_archive_import_skips_if_fixtures_exist(self, bot_instance, tmp_path):  # noqa: ARG002
+    async def test_archive_import_skips_if_fixtures_exist(self, bot_instance):
         """Import is skipped when fixtures already exist."""
         import aiosqlite
 

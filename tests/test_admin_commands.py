@@ -90,13 +90,13 @@ class TestFixtureDeleteLogic:
         return AdminCommands(mock_bot)
 
     @pytest.mark.asyncio
-    async def test_fixture_delete_no_active_fixture(self, admin_cog, database):  # noqa: ARG002
+    async def test_fixture_delete_no_active_fixture(self, database):
         """Deleting without an active fixture fails gracefully."""
         fixture = await database.get_current_fixture()
         assert fixture is None
 
     @pytest.mark.asyncio
-    async def test_fixture_delete_deletes_fixture(self, admin_cog, database, sample_games):  # noqa: ARG002
+    async def test_fixture_delete_deletes_fixture(self, database, sample_games):
         """Fixture deletion cascades to predictions and results."""
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
@@ -147,13 +147,13 @@ class TestResultsCalculateLogic:
         return AdminCommands(mock_bot)
 
     @pytest.mark.asyncio
-    async def test_calculate_no_active_fixture(self, admin_cog, database):  # noqa: ARG002
+    async def test_calculate_no_active_fixture(self, database):
         """Score calculation requires an active fixture."""
         fixture = await database.get_current_fixture()
         assert fixture is None
 
     @pytest.mark.asyncio
-    async def test_calculate_no_results(self, admin_cog, database, sample_games):  # noqa: ARG002
+    async def test_calculate_no_results(self, database, sample_games):
         """Missing results block leaderboard updates."""
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
@@ -162,7 +162,7 @@ class TestResultsCalculateLogic:
         assert results is None
 
     @pytest.mark.asyncio
-    async def test_calculate_no_predictions(self, admin_cog, database, sample_games):  # noqa: ARG002
+    async def test_calculate_no_predictions(self, database, sample_games):
         """Empty predictions yield empty scores without crashing."""
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
@@ -174,7 +174,6 @@ class TestResultsCalculateLogic:
     @pytest.mark.asyncio
     async def test_calculate_successfully_calculates_scores(
         self,
-        admin_cog,  # noqa: ARG002
         database,
         sample_games,
     ):

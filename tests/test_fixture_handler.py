@@ -267,7 +267,7 @@ class TestPreviewGeneration:
         return FixtureCreationHandler(mock_bot, database)
 
     @pytest.mark.asyncio
-    async def test_show_preview_creates_week_number(self, handler, database):  # noqa: ARG002
+    async def test_show_preview_creates_week_number(self, handler):
         _pending_fixtures["123456"] = {
             "step": "deadline",
             "games": ["Game 1", "Game 2"],
@@ -287,7 +287,7 @@ class TestPreviewGeneration:
         assert "Week 1 Fixture Preview" in call_content
 
     @pytest.mark.asyncio
-    async def test_show_preview_warns_wrong_game_count(self, handler, database):  # noqa: ARG002
+    async def test_show_preview_warns_wrong_game_count(self, handler):
         """Wrong game count triggers a warning."""
         _pending_fixtures["123456"] = {
             "step": "deadline",
@@ -308,7 +308,7 @@ class TestPreviewGeneration:
         assert "Expected 9 games" in call_content
 
     @pytest.mark.asyncio
-    async def test_show_preview_channel_not_found(self, handler, database):  # noqa: ARG002
+    async def test_show_preview_channel_not_found(self, handler):
         """Channel not found cancels the session."""
         handler.bot.get_channel.return_value = None
 
