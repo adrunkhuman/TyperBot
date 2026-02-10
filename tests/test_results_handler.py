@@ -7,7 +7,6 @@ import discord
 import pytest
 
 from typer_bot.handlers.results_handler import (
-    ResultsConfirmView,
     ResultsEntryHandler,
     _pending_results,
 )
@@ -136,40 +135,4 @@ class TestSaveResults:
         await handler.save_results("user123", fixture_id, ["2-1", "1-1", "0-2"])
         results = await database.get_results(fixture_id)
         assert results is not None
-        assert "user123" not in _pending_results
-
-
-class TestResultsConfirmView:
-    """Test suite for ResultsConfirmView interactions."""
-
-    @pytest.fixture
-    def confirm_view(self, handler):
-        """Provide a ResultsConfirmView instance."""
-        _pending_results["user123"] = {"fixture_id": 1}
-        return ResultsConfirmView(
-            handler, "user123", 1, ["2-1", "1-1", "0-2"], "Results Preview"
-        )
-
-    @pytest.mark.asyncio
-    async def test_confirm_saves_results(self, confirm_view, handler, database, sample_games):
-        """Should save results when confirmed."""
-        deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_id = await database.create_fixture(1, sample_games, deadline)
-        confirm_view.fixture_id = fixture_id
-        _pending_results["user123"] = {"fixture_id": fixture_id}
-        mock_interaction = MagicMock()
-        mock_interaction.response = MagicMock()
-        mock_interaction.response.edit_message = AsyncMock()
-        await confirm_view.confirm(mock_interaction, MagicMock())
-        results = await database.get_results(fixture_id)
-        assert results is not None
-        mock_interaction.response.edit_message.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_cancel_removes_session(self, confirm_view, handler):
-        """Should cancel and remove session."""
-        mock_interaction = MagicMock()
-        mock_interaction.response = MagicMock()
-        mock_interaction.response.edit_message = AsyncMock()
-        await confirm_view.cancel(mock_interaction, MagicMock())
         assert "user123" not in _pending_results

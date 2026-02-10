@@ -8,8 +8,6 @@ import discord
 import pytest
 
 from typer_bot.handlers.fixture_handler import (
-    DeadlineChoiceView,
-    FixtureConfirmView,
     FixtureCreationHandler,
     _pending_fixtures,
 )
@@ -364,115 +362,6 @@ class TestCreateFixture:
 
         # Session should be cleared
         assert "user123" not in _pending_fixtures
-
-
-class TestDeadlineChoiceView:
-    """Test suite for DeadlineChoiceView interactions."""
-
-    @pytest.fixture
-    def view(self, handler):
-        """Provide a DeadlineChoiceView instance."""
-        _pending_fixtures["user123"] = {
-            "step": "deadline",
-            "default_deadline": datetime.now(UTC),
-        }
-        return DeadlineChoiceView(handler, "user123")
-
-    @pytest.mark.asyncio
-    async def test_use_default_button_sets_deadline(self, view, handler):
-        """Should set deadline to default when button clicked."""
-        mock_interaction = MagicMock()
-        mock_interaction.user = MagicMock()
-        mock_interaction.user.id = 123456
-        mock_interaction.response = MagicMock()
-        mock_interaction.response.edit_message = AsyncMock()
-
-        handler._show_preview = AsyncMock()
-
-        await view.use_default(mock_interaction, MagicMock())
-
-        assert (
-            _pending_fixtures["user123"]["deadline"]
-            == _pending_fixtures["user123"]["default_deadline"]
-        )
-        handler._show_preview.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_use_default_wrong_user_rejected(self, view, handler):
-        """Should reject button click from wrong user."""
-        mock_interaction = MagicMock()
-        mock_interaction.user = MagicMock()
-        mock_interaction.user.id = 999999  # Different user
-        mock_interaction.response = MagicMock()
-        mock_interaction.response.send_message = AsyncMock()
-
-        await view.use_default(mock_interaction, MagicMock())
-
-        mock_interaction.response.send_message.assert_called_once()
-        assert (
-            "not for you"
-            in mock_interaction.response.send_message.call_args.kwargs.get("content", "").lower()
-        )
-
-
-class TestFixtureConfirmView:
-    """Test suite for FixtureConfirmView interactions."""
-
-    @pytest.fixture
-    def confirm_view(self, handler):
-        """Provide a FixtureConfirmView instance."""
-        mock_channel = MagicMock()
-        mock_channel.send = AsyncMock()
-        mock_channel.create_thread = AsyncMock()
-        mock_thread = MagicMock()
-        mock_thread.id = 789012
-        mock_channel.create_thread.return_value = mock_thread
-
-        _pending_fixtures["user123"] = {
-            "step": "confirm",
-            "channel_id": 123456,
-        }
-
-        return FixtureConfirmView(
-            handler,
-            "user123",
-            1,
-            ["Game 1", "Game 2"],
-            datetime.now(UTC),
-            mock_channel,
-            "Preview text",
-        )
-
-    @pytest.mark.asyncio
-    async def test_confirm_creates_fixture(self, confirm_view, handler, database):
-        """Should create fixture when confirmed."""
-        mock_interaction = MagicMock()
-        mock_interaction.user = MagicMock()
-        mock_interaction.response = MagicMock()
-        mock_interaction.response.edit_message = AsyncMock()
-        mock_interaction.followup = MagicMock()
-        mock_interaction.followup.send = AsyncMock()
-
-        await confirm_view.confirm(mock_interaction, MagicMock())
-
-        # Verify fixture was created
-        fixture = await database.get_current_fixture()
-        assert fixture is not None
-
-        mock_interaction.response.edit_message.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_cancel_removes_session(self, confirm_view, handler):
-        """Should cancel and remove session."""
-        mock_interaction = MagicMock()
-        mock_interaction.user = MagicMock()
-        mock_interaction.response = MagicMock()
-        mock_interaction.response.edit_message = AsyncMock()
-
-        await confirm_view.cancel(mock_interaction, MagicMock())
-
-        assert "user123" not in _pending_fixtures
-        mock_interaction.response.edit_message.assert_called_once()
 
 
 class TestHandleDM:

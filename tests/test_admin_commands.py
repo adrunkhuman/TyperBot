@@ -181,7 +181,8 @@ class TestResultsCalculateLogic:
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
-        await database.save_prediction(fixture_id, "123", "User1", "2-1\n1-1\n0-2", False)
+        # save_prediction expects a list, not a string
+        await database.save_prediction(fixture_id, "123", "User1", ["2-1", "1-1", "0-2"], False)
 
         from typer_bot.utils.scoring import calculate_points
 
