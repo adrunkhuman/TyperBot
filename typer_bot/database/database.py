@@ -107,6 +107,19 @@ class Database:
             await db.commit()
             return cursor.lastrowid
 
+    def _row_to_fixture(self, row: aiosqlite.Row) -> dict:
+        """Convert database row to fixture dictionary."""
+        row_dict = dict(row)
+        return {
+            "id": row_dict.get("id"),
+            "week_number": row_dict.get("week_number"),
+            "games": row_dict.get("games", "").split("\n"),
+            "deadline": parse_iso(row_dict.get("deadline")) if row_dict.get("deadline") else None,
+            "status": row_dict.get("status"),
+            "announcement_message_id": row_dict.get("announcement_message_id"),
+            "thread_id": row_dict.get("thread_id"),
+        }
+
     async def get_current_fixture(self) -> dict | None:
         """Get the current open fixture."""
         async with aiosqlite.connect(self.db_path) as db:
@@ -115,20 +128,7 @@ class Database:
                 "SELECT * FROM fixtures WHERE status = 'open' ORDER BY id DESC LIMIT 1"
             ) as cursor:
                 row = await cursor.fetchone()
-                if row:
-                    row_dict = dict(row)
-                    return {
-                        "id": row_dict.get("id"),
-                        "week_number": row_dict.get("week_number"),
-                        "games": row_dict.get("games", "").split("\n"),
-                        "deadline": parse_iso(row_dict.get("deadline"))
-                        if row_dict.get("deadline")
-                        else None,
-                        "status": row_dict.get("status"),
-                        "announcement_message_id": row_dict.get("announcement_message_id"),
-                        "thread_id": row_dict.get("thread_id"),
-                    }
-                return None
+                return self._row_to_fixture(row) if row else None
 
     async def get_fixture_by_id(self, fixture_id: int) -> dict | None:
         """Get a specific fixture by ID."""
@@ -136,20 +136,7 @@ class Database:
             db.row_factory = aiosqlite.Row
             async with db.execute("SELECT * FROM fixtures WHERE id = ?", (fixture_id,)) as cursor:
                 row = await cursor.fetchone()
-                if row:
-                    row_dict = dict(row)
-                    return {
-                        "id": row_dict.get("id"),
-                        "week_number": row_dict.get("week_number"),
-                        "games": row_dict.get("games", "").split("\n"),
-                        "deadline": parse_iso(row_dict.get("deadline"))
-                        if row_dict.get("deadline")
-                        else None,
-                        "status": row_dict.get("status"),
-                        "announcement_message_id": row_dict.get("announcement_message_id"),
-                        "thread_id": row_dict.get("thread_id"),
-                    }
-                return None
+                return self._row_to_fixture(row) if row else None
 
     async def get_fixture_by_thread_id(self, thread_id: str) -> dict | None:
         """Get a fixture by its Discord thread ID."""
@@ -159,20 +146,7 @@ class Database:
                 "SELECT * FROM fixtures WHERE thread_id = ? AND status = 'open'", (thread_id,)
             ) as cursor:
                 row = await cursor.fetchone()
-                if row:
-                    row_dict = dict(row)
-                    return {
-                        "id": row_dict.get("id"),
-                        "week_number": row_dict.get("week_number"),
-                        "games": row_dict.get("games", "").split("\n"),
-                        "deadline": parse_iso(row_dict.get("deadline"))
-                        if row_dict.get("deadline")
-                        else None,
-                        "status": row_dict.get("status"),
-                        "announcement_message_id": row_dict.get("announcement_message_id"),
-                        "thread_id": row_dict.get("thread_id"),
-                    }
-                return None
+                return self._row_to_fixture(row) if row else None
 
     async def get_max_week_number(self) -> int:
         """Get the maximum week number from all fixtures.
