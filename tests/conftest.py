@@ -192,3 +192,147 @@ async def fixture_with_thread(database, sample_games):
 def handler(mock_bot, database):
     """Provide a ThreadPredictionHandler instance."""
     return ThreadPredictionHandler(mock_bot, database)
+
+
+class MockRole:
+    """Mock Discord role for testing."""
+
+    def __init__(self, name: str):
+        self.name = name
+
+
+class MockAdminUser(MockUser):
+    """Mock Discord user with admin role for testing."""
+
+    def __init__(self, user_id: str = "123456", name: str = "AdminUser"):
+        super().__init__(user_id, name)
+        self.roles = [MockRole("admin")]
+
+
+class MockTextChannel:
+    """Mock Discord text channel for testing."""
+
+    def __init__(self, channel_id: str = "123456", name: str = "test-channel", guild=None):
+        self.id = int(channel_id)
+        self.name = name
+        self._guild = guild
+        self.messages_sent = []
+        self.threads_created = []
+
+    @property
+    def guild(self):
+        return self._guild
+
+    async def send(self, content: str = None, **kwargs):
+        """Mock send message method."""
+        msg = {"content": content}
+        msg.update(kwargs)
+        self.messages_sent.append(msg)
+        mock_msg = MagicMock()
+        mock_msg.id = 999999
+        return mock_msg
+
+    async def create_thread(self, name: str, auto_archive_duration: int = 1440):
+        """Mock create thread method."""
+        thread = MockThread(thread_id="999999", name=name, guild=self._guild)
+        self.threads_created.append(thread)
+        return thread
+
+
+class MockGuildWithMembers(MockGuild):
+    """Mock Discord guild with member lookup for testing."""
+
+    def __init__(self, guild_id: str = "111111"):
+        super().__init__(guild_id)
+        self._members = {}
+
+    def add_member(self, user_id: str, roles: list[str] = None):
+        """Add a member to the guild."""
+        mock_member = MagicMock()
+        mock_member.id = int(user_id)
+        mock_member.roles = [MockRole(role) for role in (roles or [])]
+        self._members[int(user_id)] = mock_member
+        return mock_member
+
+    def get_member(self, user_id: int):
+        """Get a member by ID."""
+        return self._members.get(user_id)
+
+
+class MockInteraction:
+    """Mock Discord interaction for slash command testing."""
+
+    def __init__(
+        self,
+        user: MockUser | None = None,
+        guild: MockGuild | None = None,
+        channel: MockTextChannel | None = None,
+    ):
+        self.user = user or MockUser()
+        self.guild = guild
+        self.channel = channel
+        self.response_sent = []
+        self.followup_sent = []
+        self.id = 123456789
+
+        # Create a mock response object
+        self.response = MagicMock()
+        self.response.is_done.return_value = False
+
+        # Create a mock followup object
+        self.followup = MagicMock()
+
+    async def response_send_message(self, content: str = None, **kwargs):
+        """Mock send message via interaction response."""
+        msg = {"content": content}
+        msg.update(kwargs)
+        self.response_sent.append(msg)
+
+    async def followup_send(self, content: str = None, **kwargs):
+        """Mock send followup message."""
+        msg = {"content": content}
+        msg.update(kwargs)
+        self.followup_sent.append(msg)
+
+
+@pytest.fixture
+def mock_text_channel(mock_guild):
+    """Provide a mocked text channel."""
+    return MockTextChannel(guild=mock_guild)
+
+
+@pytest.fixture
+def mock_admin_user():
+    """Provide a mocked admin user."""
+    return MockAdminUser()
+
+
+@pytest.fixture
+def mock_guild_with_members():
+    """Provide a mocked guild with member support."""
+    return MockGuildWithMembers()
+
+
+@pytest.fixture
+def mock_interaction(mock_user, mock_guild, mock_text_channel):
+    """Provide a mocked Discord interaction."""
+    return MockInteraction(user=mock_user, guild=mock_guild, channel=mock_text_channel)
+
+
+@pytest.fixture
+def mock_interaction_admin(mock_admin_user, mock_guild_with_members, mock_text_channel):
+    """Provide a mocked Discord interaction with admin user."""
+    mock_guild_with_members.add_member("123456", roles=["admin"])
+    return MockInteraction(
+        user=mock_admin_user, guild=mock_guild_with_members, channel=mock_text_channel
+    )
+
+
+@pytest.fixture
+def mock_admin_check():
+    """Provide a mock admin check function that returns True."""
+
+    def check(member):
+        return any(role.name.lower() in {"admin", "typer-admin"} for role in member.roles)
+
+    return check

@@ -1,0 +1,175 @@
+"""Tests for results entry handler DM workflow."""
+
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import discord
+import pytest
+
+from typer_bot.handlers.results_handler import (
+    ResultsConfirmView,
+    ResultsEntryHandler,
+    _pending_results,
+)
+
+
+@pytest.fixture(autouse=True)
+def clear_pending_results():
+    """Clear pending results sessions before each test."""
+    _pending_results.clear()
+
+
+class TestSessionManagement:
+    """Test suite for results entry session management."""
+
+    @pytest.fixture
+    def handler(self, mock_bot, database):
+        """Provide a ResultsEntryHandler instance."""
+        return ResultsEntryHandler(mock_bot, database)
+
+    def test_start_session_creates_session(self, handler):
+        """Should create a new results entry session."""
+        handler.start_session("user123", 1, 111111)
+        assert handler.has_session("user123")
+        assert _pending_results["user123"]["fixture_id"] == 1
+
+    def test_has_session_returns_false_for_no_session(self, handler):
+        """Should return False when no session exists."""
+        assert not handler.has_session("nonexistent_user")
+
+    def test_cancel_session_removes_session(self, handler):
+        """Should remove session when cancelled."""
+        handler.start_session("user123", 1, 111111)
+        assert handler.has_session("user123")
+        handler.cancel_session("user123")
+        assert not handler.has_session("user123")
+
+
+class TestAdminVerification:
+    """Test suite for admin permission verification."""
+
+    @pytest.fixture
+    def handler(self, mock_bot, database):
+        """Provide a ResultsEntryHandler instance."""
+        return ResultsEntryHandler(mock_bot, database)
+
+    @pytest.mark.asyncio
+    async def test_verify_admin_no_guild_id(self, handler):
+        """Should reject when no guild_id in session."""
+        _pending_results["user123"] = {"guild_id": None}
+        mock_message = MagicMock()
+        mock_message.author = MagicMock()
+        mock_message.author.send = AsyncMock()
+        result = await handler._verify_admin(mock_message, "user123", None, lambda x: True)
+        assert result is False
+        assert "user123" not in _pending_results
+
+    @pytest.mark.asyncio
+    async def test_verify_admin_guild_not_found(self, handler):
+        """Should reject when guild not found."""
+        handler.bot.get_guild.return_value = None
+        _pending_results["user123"] = {"guild_id": 111111}
+        mock_message = MagicMock()
+        mock_message.author = MagicMock()
+        mock_message.author.send = AsyncMock()
+        result = await handler._verify_admin(mock_message, "user123", 111111, lambda x: True)
+        assert result is False
+
+
+class TestHandleDM:
+    """Test suite for handle_dm method."""
+
+    @pytest.fixture
+    def handler(self, mock_bot, database):
+        """Provide a ResultsEntryHandler instance."""
+        mock_guild = MagicMock()
+        mock_guild.get_member.return_value = MagicMock()
+        mock_bot.get_guild.return_value = mock_guild
+        return ResultsEntryHandler(mock_bot, database)
+
+    @pytest.mark.asyncio
+    async def test_handle_dm_no_session(self, handler):
+        """Should return False when no active session."""
+        mock_message = MagicMock()
+        result = await handler.handle_dm(mock_message, "user123", lambda x: True)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_handle_dm_message_too_long(self, handler):
+        """Should reject messages that are too long."""
+        handler.start_session("user123", 1, 111111)
+        mock_message = MagicMock()
+        mock_message.content = "x" * 5001
+        mock_message.author = MagicMock()
+        mock_message.author.send = AsyncMock()
+        result = await handler.handle_dm(mock_message, "user123", lambda x: True)
+        assert result is True
+        mock_message.author.send.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_handle_dm_fixture_not_found(self, handler):
+        """Should handle when fixture is deleted mid-session."""
+        handler.start_session("user123", 999, 111111)
+        mock_message = MagicMock()
+        mock_message.content = "Game 1 2-1"
+        mock_message.author = MagicMock()
+        mock_message.author.send = AsyncMock()
+        result = await handler.handle_dm(mock_message, "user123", lambda x: True)
+        assert result is True
+        assert "user123" not in _pending_results
+
+
+class TestSaveResults:
+    """Test suite for save_results method."""
+
+    @pytest.fixture
+    def handler(self, mock_bot, database):
+        """Provide a ResultsEntryHandler instance."""
+        return ResultsEntryHandler(mock_bot, database)
+
+    @pytest.mark.asyncio
+    async def test_save_results_saves_to_database(self, handler, database, sample_games):
+        """Should save results to database."""
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        fixture_id = await database.create_fixture(1, sample_games, deadline)
+        _pending_results["user123"] = {"some": "data"}
+        await handler.save_results("user123", fixture_id, ["2-1", "1-1", "0-2"])
+        results = await database.get_results(fixture_id)
+        assert results is not None
+        assert "user123" not in _pending_results
+
+
+class TestResultsConfirmView:
+    """Test suite for ResultsConfirmView interactions."""
+
+    @pytest.fixture
+    def confirm_view(self, handler):
+        """Provide a ResultsConfirmView instance."""
+        _pending_results["user123"] = {"fixture_id": 1}
+        return ResultsConfirmView(
+            handler, "user123", 1, ["2-1", "1-1", "0-2"], "Results Preview"
+        )
+
+    @pytest.mark.asyncio
+    async def test_confirm_saves_results(self, confirm_view, handler, database, sample_games):
+        """Should save results when confirmed."""
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        fixture_id = await database.create_fixture(1, sample_games, deadline)
+        confirm_view.fixture_id = fixture_id
+        _pending_results["user123"] = {"fixture_id": fixture_id}
+        mock_interaction = MagicMock()
+        mock_interaction.response = MagicMock()
+        mock_interaction.response.edit_message = AsyncMock()
+        await confirm_view.confirm(mock_interaction, MagicMock())
+        results = await database.get_results(fixture_id)
+        assert results is not None
+        mock_interaction.response.edit_message.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cancel_removes_session(self, confirm_view, handler):
+        """Should cancel and remove session."""
+        mock_interaction = MagicMock()
+        mock_interaction.response = MagicMock()
+        mock_interaction.response.edit_message = AsyncMock()
+        await confirm_view.cancel(mock_interaction, MagicMock())
+        assert "user123" not in _pending_results
