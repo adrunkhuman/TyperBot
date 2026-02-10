@@ -25,27 +25,26 @@ class TestAdminOnlyDecorator:
 
     @pytest.mark.asyncio
     async def test_rejects_non_admin_users(self, mock_interaction):
-        """Should reject users without admin role."""
+        """Non-admin users are blocked from admin commands."""
         result = is_admin(mock_interaction)
         assert result is False
 
     @pytest.mark.asyncio
     async def test_accepts_admin_users(self, mock_interaction_admin):
-        """Should accept users with admin role."""
+        """Admin users have access to league management commands."""
         result = is_admin(mock_interaction_admin)
         assert result is True
 
     @pytest.mark.asyncio
     async def test_rejects_dm_interactions(self, mock_interaction_admin):
-        """Should reject interactions from DMs (no guild)."""
+        """DM interactions without guild context are rejected - role verification requires server membership."""
         mock_interaction_admin.guild = None
         result = is_admin(mock_interaction_admin)
         assert result is False
 
     @pytest.mark.asyncio
     async def test_accepts_typer_admin_role(self, mock_interaction_admin):
-        """Should accept users with typer-admin role."""
-        # Get the member and update its roles
+        """The typer-admin role grants league management access without requiring full server admin privileges."""
         member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
         mock_role = MagicMock()
         mock_role.name = "typer-admin"
@@ -59,20 +58,19 @@ class TestFixtureCreateLogic:
 
     @pytest.fixture
     def admin_cog(self, mock_bot, database):
-        """Provide an AdminCommands cog instance."""
         mock_bot.db = database
         return AdminCommands(mock_bot)
 
     @pytest.mark.asyncio
     async def test_fixture_create_starts_session(self, admin_cog, mock_interaction_admin):
-        """Should start fixture creation session."""
+        """DM session prevents spamming public channels during fixture creation."""
         user_id = str(mock_interaction_admin.user.id)
         admin_cog.fixture_handler.start_session(user_id, 123456, 111111)
         assert admin_cog.fixture_handler.has_session(user_id)
 
     @pytest.mark.asyncio
     async def test_fixture_create_session_has_correct_data(self, admin_cog, mock_interaction_admin):
-        """Session should have correct channel and guild IDs."""
+        """Session metadata includes guild and channel context for permissions and announcements."""
         user_id = str(mock_interaction_admin.user.id)
         admin_cog.fixture_handler.start_session(user_id, 123456, 111111)
 
@@ -89,19 +87,18 @@ class TestFixtureDeleteLogic:
 
     @pytest.fixture
     def admin_cog(self, mock_bot, database):
-        """Provide an AdminCommands cog instance."""
         mock_bot.db = database
         return AdminCommands(mock_bot)
 
     @pytest.mark.asyncio
     async def test_fixture_delete_no_active_fixture(self, admin_cog, database):
-        """Should return None when no active fixture exists."""
+        """Deleting without an active fixture fails gracefully."""
         fixture = await database.get_current_fixture()
         assert fixture is None
 
     @pytest.mark.asyncio
     async def test_fixture_delete_deletes_fixture(self, admin_cog, database, sample_games):
-        """Should delete fixture from database."""
+        """Fixture deletion cascades to predictions and results."""
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
 
@@ -119,20 +116,19 @@ class TestResultsEnterLogic:
 
     @pytest.fixture
     def admin_cog(self, mock_bot, database):
-        """Provide an AdminCommands cog instance."""
         mock_bot.db = database
         return AdminCommands(mock_bot)
 
     @pytest.mark.asyncio
     async def test_results_enter_starts_session(self, admin_cog, mock_interaction_admin):
-        """Should start results entry session."""
+        """DM session keeps results private before public announcement."""
         user_id = str(mock_interaction_admin.user.id)
         admin_cog.results_handler.start_session(user_id, 1, 111111)
         assert admin_cog.results_handler.has_session(user_id)
 
     @pytest.mark.asyncio
     async def test_results_enter_session_has_correct_data(self, admin_cog, mock_interaction_admin):
-        """Session should have correct fixture and guild IDs."""
+        """Session tracks fixture ID for result-to-match mapping."""
         user_id = str(mock_interaction_admin.user.id)
         admin_cog.results_handler.start_session(user_id, 42, 111111)
 
@@ -148,19 +144,18 @@ class TestResultsCalculateLogic:
 
     @pytest.fixture
     def admin_cog(self, mock_bot, database):
-        """Provide an AdminCommands cog instance."""
         mock_bot.db = database
         return AdminCommands(mock_bot)
 
     @pytest.mark.asyncio
     async def test_calculate_no_active_fixture(self, admin_cog, database):
-        """Should return None when no active fixture exists."""
+        """Score calculation requires an active fixture."""
         fixture = await database.get_current_fixture()
         assert fixture is None
 
     @pytest.mark.asyncio
     async def test_calculate_no_results(self, admin_cog, database, sample_games):
-        """Should return None when no results entered."""
+        """Missing results block leaderboard updates."""
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
 
@@ -169,7 +164,7 @@ class TestResultsCalculateLogic:
 
     @pytest.mark.asyncio
     async def test_calculate_no_predictions(self, admin_cog, database, sample_games):
-        """Should return empty list when no predictions exist."""
+        """Empty predictions yield empty scores without crashing."""
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
@@ -181,11 +176,10 @@ class TestResultsCalculateLogic:
     async def test_calculate_successfully_calculates_scores(
         self, admin_cog, database, sample_games
     ):
-        """Should calculate and save scores successfully."""
+        """Point calculation: 3 for exact, 1 for outcome."""
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
-        # save_prediction expects a list, not a string
         await database.save_prediction(fixture_id, "123", "User1", ["2-1", "1-1", "0-2"], False)
 
         from typer_bot.utils.scoring import calculate_points
@@ -218,17 +212,15 @@ class TestCooldownLogic:
     """Test suite for rate limiting cooldown."""
 
     def test_cooldown_enforced(self):
-        """Should enforce 30 second cooldown."""
+        """Rate limiting prevents leaderboard recalculation spam."""
         import time
 
         user_id = "user123"
         current_time = time.time()
         _calculate_cooldowns[user_id] = current_time
 
-        # Check cooldown is active
         assert user_id in _calculate_cooldowns
 
-        # Calculate remaining time
         if user_id in _calculate_cooldowns:
             last_used = _calculate_cooldowns[user_id]
             if current_time - last_used < 30.0:
@@ -236,14 +228,13 @@ class TestCooldownLogic:
                 assert remaining > 0
 
     def test_cooldown_expires(self):
-        """Should allow calculation after cooldown expires."""
+        """Cooldown expires after 30 seconds."""
         import time
 
         user_id = "user123"
         current_time = time.time()
         _calculate_cooldowns[user_id] = current_time - 31  # 31 seconds ago
 
-        # Should not be on cooldown anymore
         last_used = _calculate_cooldowns[user_id]
         assert current_time - last_used >= 30.0
 
@@ -253,13 +244,12 @@ class TestOnMessageListener:
 
     @pytest.fixture
     def admin_cog(self, mock_bot, database):
-        """Provide an AdminCommands cog instance."""
         mock_bot.db = database
         return AdminCommands(mock_bot)
 
     @pytest.mark.asyncio
     async def test_ignores_bot_messages(self, admin_cog):
-        """Should ignore messages from bots."""
+        """Bot messages are ignored to prevent infinite loops."""
         mock_message = MagicMock()
         mock_message.author.bot = True
         mock_message.guild = None
@@ -269,7 +259,7 @@ class TestOnMessageListener:
 
     @pytest.mark.asyncio
     async def test_ignores_guild_messages(self, admin_cog):
-        """Should ignore messages in guild channels."""
+        """Guild messages are ignored - admin workflows require DMs."""
         mock_message = MagicMock()
         mock_message.guild = MagicMock()  # Has guild
 
@@ -278,7 +268,7 @@ class TestOnMessageListener:
 
     @pytest.mark.asyncio
     async def test_handles_fixture_creation_dm(self, admin_cog):
-        """Should route fixture creation DMs to handler."""
+        """Fixture creation DMs route to the correct handler."""
         mock_message = MagicMock()
         mock_message.guild = None
         user_id = "123456"
@@ -291,12 +281,11 @@ class TestOnMessageListener:
 
         await admin_cog.on_message(mock_message)
 
-        # Verify handler was checked
         assert admin_cog.fixture_handler.has_session(user_id)
 
     @pytest.mark.asyncio
     async def test_handles_results_entry_dm(self, admin_cog):
-        """Should route results entry DMs to handler."""
+        """Results entry DMs route to the correct handler."""
         mock_message = MagicMock()
         mock_message.guild = None
         user_id = "123456"
@@ -309,5 +298,4 @@ class TestOnMessageListener:
 
         await admin_cog.on_message(mock_message)
 
-        # Verify handler was checked
         assert admin_cog.results_handler.has_session(user_id)

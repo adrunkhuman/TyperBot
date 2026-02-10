@@ -21,8 +21,7 @@ class TestFullWorkflow:
 
     @pytest.mark.asyncio
     async def test_full_workflow_create_predict_results_calculate(self, database):
-        """Complete workflow: create fixture → predict → enter results → calculate."""
-        # Step 1: Create fixture
+        """End-to-end workflow produces correct standings."""
         games = ["Team A - Team B", "Team C - Team D", "Team E - Team F"]
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, games, deadline)
@@ -32,19 +31,16 @@ class TestFullWorkflow:
         assert fixture["week_number"] == 1
         assert len(fixture["games"]) == 3
 
-        # Step 2: Submit predictions (pass as list, not string)
         await database.save_prediction(fixture_id, "user1", "User1", ["2-1", "1-1", "0-2"], False)
         await database.save_prediction(fixture_id, "user2", "User2", ["1-0", "2-2", "1-1"], False)
 
         predictions = await database.get_all_predictions(fixture_id)
         assert len(predictions) == 2
 
-        # Step 3: Enter results
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
         results = await database.get_results(fixture_id)
         assert results == ["2-1", "1-1", "0-2"]
 
-        # Step 4: Calculate scores
         from typer_bot.utils.scoring import calculate_points
 
         scores = []
@@ -63,27 +59,22 @@ class TestFullWorkflow:
         scores.sort(key=lambda x: x["points"], reverse=True)
         await database.save_scores(fixture_id, scores)
 
-        # Verify User1 got 9 points (3 exact scores * 3 points)
         assert scores[0]["user_name"] == "User1"
         assert scores[0]["points"] == 9
         assert scores[0]["exact_scores"] == 3
 
     @pytest.mark.asyncio
     async def test_multi_user_late_predictions(self, database):
-        """Test workflow with late predictions."""
-        # Create fixture with past deadline
+        """Late predictions receive 0 points (100% penalty)."""
         games = ["Team A - Team B", "Team C - Team D", "Team E - Team F"]
-        deadline = datetime.now(UTC) - timedelta(hours=1)  # Past deadline
+        deadline = datetime.now(UTC) - timedelta(hours=1)
         fixture_id = await database.create_fixture(1, games, deadline)
 
-        # User submits on-time (before deadline in DB, but we simulate late)
         await database.save_prediction(fixture_id, "user1", "User1", ["2-1", "1-1", "0-2"], True)
 
         predictions = await database.get_all_predictions(fixture_id)
-        # SQLite BOOLEAN returns int (1), not Python bool (True)
-        assert predictions[0]["is_late"] == 1
+        assert predictions[0]["is_late"] == 1  # SQLite BOOLEAN returns int, not bool
 
-        # Results and scoring
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
 
         from typer_bot.utils.scoring import calculate_points
@@ -105,25 +96,20 @@ class TestFullWorkflow:
 
         await database.save_scores(fixture_id, scores)
 
-        # Late predictions get 0 points (100% penalty)
         assert scores[0]["points"] == 0
 
     @pytest.mark.asyncio
     async def test_prediction_edits_update_correctly(self, database):
-        """Test that prediction edits are properly tracked."""
+        """Prediction edits update the existing record."""
         games = ["Team A - Team B", "Team C - Team D"]
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, games, deadline)
 
-        # Initial prediction (pass as list, not string)
         await database.save_prediction(fixture_id, "user1", "User1", ["2-1", "1-0"], False)
-
-        # Edit prediction (pass as list, not string)
         await database.save_prediction(fixture_id, "user1", "User1", ["3-0", "2-1"], False)
 
         predictions = await database.get_all_predictions(fixture_id)
         assert len(predictions) == 1
-        # Database returns predictions as a list (split by \n)
         assert predictions[0]["predictions"] == ["3-0", "2-1"]
 
 
@@ -132,26 +118,22 @@ class TestEdgeCases:
 
     @pytest.mark.asyncio
     async def test_delete_fixture_with_predictions(self, database):
-        """Should delete fixture and all associated data."""
+        """Cascading deletion removes predictions and results."""
         games = ["Team A - Team B"]
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, games, deadline)
 
-        # Add predictions and results
         await database.save_prediction(fixture_id, "user1", "User1", "2-1", False)
         await database.save_results(fixture_id, ["2-1"])
 
-        # Delete fixture
         await database.delete_fixture(fixture_id)
 
-        # Verify everything is gone
         assert await database.get_fixture_by_id(fixture_id) is None
         assert len(await database.get_all_predictions(fixture_id)) == 0
 
     @pytest.mark.asyncio
     async def test_standings_accumulate_across_fixtures(self, database):
-        """Standings should accumulate across multiple fixtures."""
-        # Fixture 1
+        """Standings accumulate across multiple fixtures."""
         games = ["Team A - Team B"]
         deadline = datetime.now(UTC) - timedelta(days=2)
         fixture1_id = await database.create_fixture(1, games, deadline)
@@ -170,7 +152,6 @@ class TestEdgeCases:
             ],
         )
 
-        # Fixture 2
         deadline = datetime.now(UTC) - timedelta(days=1)
         fixture2_id = await database.create_fixture(2, games, deadline)
         await database.save_prediction(fixture2_id, "user1", "User1", "1-0", False)
@@ -190,15 +171,14 @@ class TestEdgeCases:
 
         standings = await database.get_standings()
         assert len(standings) == 1
-        assert standings[0]["total_points"] == 6  # 3 + 3
+        assert standings[0]["total_points"] == 6
 
     @pytest.mark.asyncio
     async def test_max_week_number_increment(self, database):
-        """New fixtures should auto-increment week number."""
+        """Week numbers are tracked for chronological ordering."""
         games = ["Team A - Team B"]
         deadline = datetime.now(UTC) + timedelta(days=1)
 
-        # Create fixtures out of order
         await database.create_fixture(5, games, deadline)
         await database.create_fixture(3, games, deadline)
 
@@ -211,16 +191,14 @@ class TestDatabaseIntegrity:
 
     @pytest.mark.asyncio
     async def test_prediction_uniqueness_per_user_fixture(self, database):
-        """User should only have one prediction per fixture."""
+        """One prediction per user per fixture - edits update existing record."""
         games = ["Team A - Team B"]
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, games, deadline)
 
-        # Save prediction twice (simulating edit) - pass as list
         await database.save_prediction(fixture_id, "user1", "User1", ["2-1"], False)
         await database.save_prediction(fixture_id, "user1", "User1", ["1-0"], False)
 
         predictions = await database.get_all_predictions(fixture_id)
-        assert len(predictions) == 1  # Should still be one, updated
-        # Database returns predictions as a list (split by \n)
+        assert len(predictions) == 1
         assert predictions[0]["predictions"] == ["1-0"]

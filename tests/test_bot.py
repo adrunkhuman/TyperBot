@@ -19,17 +19,16 @@ class TestBotInitialization:
 
     @pytest.mark.asyncio
     async def test_bot_creates_database_instance(self):
-        """Should create database instance on init."""
+        """Database is initialized at startup."""
         with patch.object(TyperBot, "__init__", lambda self: None):
             bot = TyperBot.__new__(TyperBot)
-            # Manually set required attributes
             bot.db = MagicMock()
             bot.thread_handler = MagicMock()
             assert bot.db is not None
 
     @pytest.mark.asyncio
     async def test_bot_has_required_intents(self):
-        """Should have required Discord intents enabled."""
+        """Message content and member intents are required for prediction processing and permission verification."""
         with (
             patch("typer_bot.bot.commands.Bot.__init__") as mock_super,
             patch("typer_bot.bot.discord.Intents") as mock_intents,
@@ -44,7 +43,6 @@ class TestBotInitialization:
             except Exception:
                 pass  # Expected to fail due to mocking
 
-            # Verify intents were configured
             assert mock_intent_instance.message_content is True
             assert mock_intent_instance.members is True
 
@@ -54,7 +52,6 @@ class TestSetupHook:
 
     @pytest.fixture
     async def bot_instance(self):
-        """Provide a TyperBot instance with mocked dependencies."""
         mock_tree = MagicMock()
         mock_tree.sync = AsyncMock(return_value=[])
         with (
@@ -72,43 +69,43 @@ class TestSetupHook:
 
     @pytest.mark.asyncio
     async def test_setup_hook_initializes_database(self, bot_instance):
-        """Should initialize database during setup."""
+        """Database is initialized during setup_hook."""
         await bot_instance.setup_hook()
         bot_instance.db.initialize.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_setup_hook_loads_user_commands(self, bot_instance):
-        """Should load user_commands cog."""
+        """User commands cog provides /predict and /standings."""
         await bot_instance.setup_hook()
         bot_instance.load_extension.assert_any_call("typer_bot.commands.user_commands")
 
     @pytest.mark.asyncio
     async def test_setup_hook_loads_admin_commands(self, bot_instance):
-        """Should load admin_commands cog."""
+        """Admin commands cog provides league management via DM workflows."""
         await bot_instance.setup_hook()
         bot_instance.load_extension.assert_any_call("typer_bot.commands.admin_commands")
 
     @pytest.mark.asyncio
     async def test_setup_hook_syncs_commands(self, bot_instance):
-        """Should sync slash commands."""
+        """Commands are synchronized with Discord."""
         await bot_instance.setup_hook()
         bot_instance.tree.sync.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_setup_hook_starts_reminder_task(self, bot_instance):
-        """Should start reminder background task."""
+        """Reminder task starts automatically."""
         await bot_instance.setup_hook()
         bot_instance.reminder_task.start.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_setup_hook_runs_archive_import(self, bot_instance):
-        """Should run archive imports during setup."""
+        """Archive import runs on first boot."""
         await bot_instance.setup_hook()
         bot_instance._run_archive_imports.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_setup_hook_raises_on_db_failure(self, bot_instance):
-        """Should raise exception when database initialization fails."""
+        """Database failure halts startup."""
         bot_instance.db.initialize.side_effect = Exception("DB Error")
 
         with pytest.raises(Exception, match="DB Error"):
@@ -120,7 +117,6 @@ class TestOnReady:
 
     @pytest.fixture
     def bot_instance(self):
-        """Provide a TyperBot instance with mocked dependencies."""
         mock_user = MagicMock()
         mock_user.id = 123456
         mock_user.name = "TestBot"
@@ -136,7 +132,7 @@ class TestOnReady:
 
     @pytest.mark.asyncio
     async def test_on_ready_logs_bot_info(self, bot_instance, caplog):
-        """Should log bot connection info."""
+        """Connection logging provides deployment visibility."""
         with patch("typer_bot.bot.logger") as mock_logger:
             await bot_instance.on_ready()
             mock_logger.info.assert_any_call(
@@ -145,13 +141,13 @@ class TestOnReady:
 
     @pytest.mark.asyncio
     async def test_on_ready_checks_permissions(self, bot_instance):
-        """Should check bot permissions on all guilds."""
+        """Permission verification at startup alerts admins to missing rights."""
         await bot_instance.on_ready()
         bot_instance._check_permissions.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_on_ready_syncs_fixture_threads(self, bot_instance):
-        """Should sync fixture threads on startup."""
+        """Thread synchronization restores prediction listening after restarts."""
         await bot_instance.on_ready()
         bot_instance._sync_fixture_thread.assert_called_once()
 
@@ -161,7 +157,6 @@ class TestPermissionCheck:
 
     @pytest.fixture
     def bot_instance(self):
-        """Provide a TyperBot instance with mocked dependencies."""
         with (
             patch("typer_bot.bot.commands.Bot.__init__", return_value=None),
             patch.object(TyperBot, "guilds", []),
@@ -171,7 +166,7 @@ class TestPermissionCheck:
 
     @pytest.mark.asyncio
     async def test_check_permissions_logs_missing_permissions(self, bot_instance, caplog):
-        """Should log warning for missing permissions."""
+        """Missing permission warnings help admins identify configuration issues."""
         mock_guild = MagicMock()
         mock_guild.name = "Test Guild"
         mock_guild.id = 123456
@@ -188,7 +183,7 @@ class TestPermissionCheck:
 
     @pytest.mark.asyncio
     async def test_check_permissions_logs_all_permissions_ok(self, bot_instance):
-        """Should log success when all permissions present."""
+        """Permission success logging confirms proper bot configuration."""
         mock_guild = MagicMock()
         mock_guild.name = "Test Guild"
         mock_guild.id = 123456
@@ -211,7 +206,6 @@ class TestReminderSystem:
 
     @pytest.fixture
     def bot_instance(self):
-        """Provide a TyperBot instance with mocked dependencies."""
         with patch("typer_bot.bot.commands.Bot.__init__", return_value=None):
             bot = TyperBot.__new__(TyperBot)
             bot.db = MagicMock()
@@ -221,8 +215,7 @@ class TestReminderSystem:
     @pytest.mark.asyncio
     @patch("typer_bot.bot.now")
     async def test_reminder_24h_triggered_at_correct_time(self, mock_now, bot_instance):
-        """Should send 24h reminder at exact minute."""
-        # Set current time to match 24h before deadline
+        """24-hour reminder triggers at correct time."""
         deadline = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
         current_time = deadline - timedelta(hours=24)
         mock_now.return_value = current_time
@@ -244,7 +237,7 @@ class TestReminderSystem:
     @pytest.mark.asyncio
     @patch("typer_bot.bot.now")
     async def test_reminder_1h_triggered_at_correct_time(self, mock_now, bot_instance):
-        """Should send 1h reminder at exact minute."""
+        """1-hour reminder triggers at correct time."""
         deadline = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
         current_time = deadline - timedelta(hours=1)
         mock_now.return_value = current_time
@@ -265,7 +258,7 @@ class TestReminderSystem:
 
     @pytest.mark.asyncio
     async def test_reminder_sent_at_exact_time(self, bot_instance):
-        """Should send reminder when called at exact reminder time."""
+        """Minute-precision triggering prevents duplicate reminders."""
         from freezegun import freeze_time
 
         deadline = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
@@ -280,20 +273,17 @@ class TestReminderSystem:
         )
 
         with freeze_time(current_time):
-            # Should send reminder at exact 24h mark
             await bot_instance.reminder_task()
             assert bot_instance.send_reminder.call_count == 1
 
-        # Advancing to next minute should not trigger again
         with freeze_time(current_time + timedelta(minutes=1)):
             await bot_instance.reminder_task()
-            # Time is now different minute, so no reminder sent
             assert bot_instance.send_reminder.call_count == 1
 
     @pytest.mark.asyncio
     @patch("typer_bot.bot.now")
     async def test_reminder_skips_if_no_fixture(self, mock_now, bot_instance):
-        """Should skip reminders when no active fixture."""
+        """Reminders are skipped when no fixture is active."""
         mock_now.return_value = datetime.now(UTC)
         bot_instance.db.get_current_fixture = AsyncMock(return_value=None)
 
@@ -307,7 +297,6 @@ class TestSendReminder:
 
     @pytest.fixture
     def bot_instance(self):
-        """Provide a TyperBot instance with mocked dependencies."""
         with patch("typer_bot.bot.commands.Bot.__init__", return_value=None):
             bot = TyperBot.__new__(TyperBot)
             bot.get_channel = MagicMock()
@@ -316,7 +305,7 @@ class TestSendReminder:
     @pytest.mark.asyncio
     @patch.dict(os.environ, {"REMINDER_CHANNEL_ID": "123456"})
     async def test_send_reminder_to_configured_channel(self, bot_instance):
-        """Should send reminder to configured channel."""
+        """Reminders route to the configured channel."""
         mock_channel = MagicMock()
         mock_channel.send = AsyncMock()
         bot_instance.get_channel.return_value = mock_channel
@@ -335,7 +324,7 @@ class TestSendReminder:
 
     @pytest.mark.asyncio
     async def test_send_reminder_missing_channel_id(self, bot_instance):
-        """Should log warning when REMINDER_CHANNEL_ID not set."""
+        """Missing channel configuration logs a warning."""
         with patch.dict(os.environ, {}, clear=True), patch("typer_bot.bot.logger") as mock_logger:
             fixture = {"deadline": datetime.now(UTC), "week_number": 1}
             await bot_instance.send_reminder(fixture, "24 hours remaining")
@@ -347,7 +336,6 @@ class TestArchiveImport:
 
     @pytest.fixture
     def bot_instance(self, tmp_path):
-        """Provide a TyperBot instance with mocked dependencies."""
         with patch("typer_bot.bot.commands.Bot.__init__", return_value=None):
             bot = TyperBot.__new__(TyperBot)
             bot.db = MagicMock()
@@ -356,7 +344,7 @@ class TestArchiveImport:
 
     @pytest.mark.asyncio
     async def test_archive_import_disabled_by_default(self, bot_instance):
-        """Should skip import when IMPORT_ARCHIVE not set."""
+        """Archive import is opt-in to prevent accidental data overwrites."""
         with patch.dict(os.environ, {}, clear=True), patch("typer_bot.bot.logger") as mock_logger:
             await bot_instance._run_archive_imports()
             mock_logger.info.assert_any_call(
@@ -366,10 +354,9 @@ class TestArchiveImport:
     @pytest.mark.asyncio
     @patch.dict(os.environ, {"IMPORT_ARCHIVE": "true"})
     async def test_archive_import_skips_if_fixtures_exist(self, bot_instance, tmp_path):
-        """Should skip import if database already has fixtures."""
+        """Import is skipped when fixtures already exist."""
         import aiosqlite
 
-        # Create database with a fixture
         async with aiosqlite.connect(bot_instance.db.db_path) as db:
             await db.execute("""
                 CREATE TABLE fixtures (
@@ -394,7 +381,7 @@ class TestArchiveImport:
 
     @pytest.mark.asyncio
     async def test_validate_archive_sql_blocks_dangerous_statements(self, bot_instance):
-        """Should reject SQL with ATTACH/DETACH/VACUUM/PRAGMA."""
+        """Dangerous SQL statements are blocked to prevent malicious archive files."""
         dangerous_sqls = [
             "ATTACH DATABASE 'evil.db' AS evil;",
             "DETACH DATABASE evil;",
@@ -412,14 +399,14 @@ class TestMainFunction:
 
     @patch.dict(os.environ, {}, clear=True)
     def test_main_exits_without_token(self):
-        """Should exit when DISCORD_TOKEN not set."""
+        """Exiting without a token provides clear failure signal."""
         with pytest.raises(SystemExit) as exc_info:
             main()
         assert exc_info.value.code == 1
 
     @patch.dict(os.environ, {"DISCORD_TOKEN": "your_bot_token_here"})
     def test_main_exits_with_placeholder_token(self):
-        """Should exit when DISCORD_TOKEN is placeholder."""
+        """Placeholder token detection prevents accidental deployment."""
         with pytest.raises(SystemExit) as exc_info:
             main()
         assert exc_info.value.code == 1
@@ -427,7 +414,7 @@ class TestMainFunction:
     @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token", "ENVIRONMENT": "development"})
     @patch("typer_bot.bot.logger")
     def test_main_smoke_test_mode(self, mock_logger):
-        """Should run smoke test mode when not production."""
+        """Smoke test mode validates configuration without connecting."""
         with pytest.raises(SystemExit) as exc_info:
             main()
         assert exc_info.value.code == 0
@@ -441,7 +428,6 @@ class TestOnMessage:
 
     @pytest.fixture
     def bot_instance(self):
-        """Provide a TyperBot instance with mocked dependencies."""
         with patch("typer_bot.bot.commands.Bot.__init__", return_value=None):
             bot = TyperBot.__new__(TyperBot)
             bot.thread_handler = MagicMock()
@@ -450,7 +436,7 @@ class TestOnMessage:
 
     @pytest.mark.asyncio
     async def test_on_message_ignores_bots(self, bot_instance):
-        """Should ignore messages from bots by returning early."""
+        """Bot messages are ignored to prevent response loops."""
         mock_message = MagicMock()
         mock_message.author.bot = True
 
@@ -459,12 +445,11 @@ class TestOnMessage:
             patch.object(bot_instance, "process_commands") as mock_process,
         ):
             await bot_instance.on_message(mock_message)
-            # Bot messages should NOT set trace ID (returns early)
             mock_set_trace.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_on_message_sets_trace_id(self, bot_instance):
-        """Should set trace ID for message processing."""
+        """Trace ID assignment enables request correlation across logs."""
         mock_message = MagicMock()
         mock_message.author.bot = False
         mock_message.id = 123456
@@ -482,7 +467,6 @@ class TestOnMessageEdit:
 
     @pytest.fixture
     def bot_instance(self):
-        """Provide a TyperBot instance with mocked dependencies."""
         with patch("typer_bot.bot.commands.Bot.__init__", return_value=None):
             bot = TyperBot.__new__(TyperBot)
             bot.thread_handler = MagicMock()
@@ -491,33 +475,29 @@ class TestOnMessageEdit:
 
     @pytest.mark.asyncio
     async def test_on_message_edit_ignores_bots(self, bot_instance):
-        """Should ignore edits from bots by returning early."""
+        """Bot edits are ignored."""
         mock_before = MagicMock()
         mock_after = MagicMock()
         mock_after.author.bot = True
 
         with patch("typer_bot.bot.set_trace_id") as mock_set_trace:
             await bot_instance.on_message_edit(mock_before, mock_after)
-            # Bot edits should NOT set trace ID (returns early)
             mock_set_trace.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_on_message_edit_sets_trace_id(self, bot_instance):
-        """Should set trace ID for edit processing."""
+        """Trace ID on edits enables observability for prediction corrections."""
         mock_before = MagicMock()
         mock_after = MagicMock()
         mock_after.author.bot = False
         mock_after.id = 123456
 
         with patch("typer_bot.bot.set_trace_id") as mock_set_trace:
-            # The method will fail on super().on_message_edit, but that's okay
-            # We just want to verify the trace ID is set before that
             try:
                 await bot_instance.on_message_edit(mock_before, mock_after)
             except AttributeError:
                 pass  # Expected - parent doesn't have on_message_edit
 
-            # Trace ID should be set before the super() call
             mock_set_trace.assert_called_once_with("edit-123456")
 
 
@@ -526,14 +506,13 @@ class TestOnInteraction:
 
     @pytest.fixture
     def bot_instance(self):
-        """Provide a TyperBot instance."""
         with patch("typer_bot.bot.commands.Bot.__init__", return_value=None):
             bot = TyperBot.__new__(TyperBot)
             return bot
 
     @pytest.mark.asyncio
     async def test_on_interaction_sets_trace_id(self, bot_instance):
-        """Should set trace ID for interaction processing."""
+        """Trace ID on slash commands enables workflow tracking."""
         mock_interaction = MagicMock()
         mock_interaction.id = 123456
 
