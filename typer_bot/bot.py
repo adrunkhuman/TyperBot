@@ -291,11 +291,6 @@ class TyperBot(commands.Bot):
         except Exception:
             logger.exception("Failed to send reminder")
 
-    def is_admin(self, user: discord.Member) -> bool:
-        """Check if user has admin role (case-insensitive)."""
-        admin_roles = {"admin", "typer-admin"}
-        return any(role.name.lower() in admin_roles for role in user.roles)
-
     async def _sync_fixture_thread(self):
         """Sync manually-created thread on startup.
 

@@ -196,7 +196,7 @@ class UserCommands(commands.Cog):
     @app_commands.command(name="help", description="Show help information")
     async def help(self, interaction: discord.Interaction):
         """Display help for users and admins."""
-        is_admin_user = self._is_admin(interaction.user)
+        is_admin_user = self._is_admin(interaction)
 
         user_help = """## 📖 User Commands
 
@@ -287,8 +287,13 @@ class UserCommands(commands.Cog):
         if is_admin_user:
             await interaction.followup.send(admin_help, ephemeral=True)
 
-    def _is_admin(self, member: discord.Member) -> bool:
-        """Check if member has admin role (case-insensitive)."""
+    def _is_admin(self, interaction: discord.Interaction) -> bool:
+        """Check if interaction user has admin role on the originating guild."""
+        if not interaction.guild:
+            return False
+        member = interaction.guild.get_member(interaction.user.id)
+        if not member:
+            return False
         admin_roles = {"admin", "typer-admin"}
         return any(role.name.lower() in admin_roles for role in member.roles)
 
