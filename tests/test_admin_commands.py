@@ -7,13 +7,17 @@ import discord
 import pytest
 
 from typer_bot.commands.admin_commands import AdminCommands, _calculate_cooldowns
+from typer_bot.handlers.fixture_handler import _pending_fixtures
+from typer_bot.handlers.results_handler import _pending_results
 from typer_bot.utils.permissions import is_admin
 
 
 @pytest.fixture(autouse=True)
-def clear_rate_limits():
-    """Clear rate limiting cooldowns before each test."""
+def clear_sessions_and_rate_limits():
+    """Clear sessions and rate limiting cooldowns before each test."""
     _calculate_cooldowns.clear()
+    _pending_fixtures.clear()
+    _pending_results.clear()
 
 
 class TestAdminOnlyDecorator:
