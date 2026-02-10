@@ -86,6 +86,35 @@ scores (
 - **Archive Import:** Set `IMPORT_ARCHIVE=true` to enable automatic import of historical data on fresh database.
 - **Database Restore:** Use `scripts/restore_db.py` from Railway console for manual database restoration from backups.
 
+## 5.5 Testing Guidelines
+
+When modifying code, ensure tests pass and add tests for new functionality.
+
+**Test Organization:**
+- `tests/test_*.py` - Unit tests mirroring source structure
+- `tests/test_integration.py` - End-to-end workflows (fixture → predictions → results → scores)
+- `tests/conftest.py` - Shared fixtures (mock Discord objects, temp database)
+
+**Key Patterns:**
+- **Async tests:** Use `@pytest.mark.asyncio` decorator
+- **Discord mocking:** Use fixtures from `conftest.py` (`mock_interaction`, `mock_user`, `mock_thread`, etc.)
+- **Database:** The `database` fixture provides isolated temp database per test
+- **Time:** Use `freezegun` for time-sensitive tests
+
+**Adding Tests:**
+- Mirror the source file structure (e.g., `commands/admin_commands.py` → `tests/test_admin_commands.py`)
+- Use descriptive test names: `test_rejects_non_admin_users` not `test_admin_1`
+- Group related tests in classes (e.g., `class TestAdminOnlyDecorator`)
+- Mock external dependencies (Discord API, time) - never hit real services
+
+**Running Tests:**
+```bash
+uv run pytest                    # All tests
+uv run pytest -x                 # Stop on first failure
+uv run pytest -v -k "admin"      # Run tests matching "admin"
+uv run pytest --tb=short         # Shorter traceback output
+```
+
 ## 6. Known Quirks
 - **Double Digits:** Scores like `10-0` are allowed.
 - **Format:** Users provide flexible separators (`-`, `:`, `–`).

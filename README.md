@@ -107,6 +107,23 @@ uv run pytest
 uv run ruff check .
 ```
 
+## Testing
+
+The project has comprehensive test coverage (200+ tests) covering admin commands, core bot logic, handlers, and integration workflows.
+
+```bash
+# Run all tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=typer_bot
+
+# Run specific test file
+uv run pytest tests/test_admin_commands.py -v
+```
+
+Tests run automatically on pull requests via GitHub Actions.
+
 ## Importing History
 If you have a bunch of old scores you want to keep:
 1. Put `.sql` files in `archive/` folder (check `example_import.sql` for format).
