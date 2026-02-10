@@ -23,8 +23,13 @@ CALCULATE_COOLDOWN = 30.0
 logger = logging.getLogger(__name__)
 
 
-def is_admin(member: discord.Member) -> bool:
-    """Check if member has admin role (case-insensitive)."""
+def is_admin(interaction: discord.Interaction) -> bool:
+    """Check if interaction user has admin role on the originating guild."""
+    if not interaction.guild:
+        return False
+    member = interaction.guild.get_member(interaction.user.id)
+    if not member:
+        return False
     admin_roles = {"admin", "typer-admin"}
     return any(role.name.lower() in admin_roles for role in member.roles)
 
@@ -33,12 +38,12 @@ def admin_only():
     """Decorator to check if user has admin permissions."""
 
     async def predicate(interaction: discord.Interaction) -> bool:
-        if not isinstance(interaction.user, discord.Member):
+        if not interaction.guild:
             await interaction.response.send_message(
                 "This command can only be used in a server.", ephemeral=True
             )
             return False
-        if not is_admin(interaction.user):
+        if not is_admin(interaction):
             await interaction.response.send_message(
                 "You don't have permission to use admin commands.", ephemeral=True
             )
