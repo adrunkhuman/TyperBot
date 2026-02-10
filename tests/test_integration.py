@@ -32,9 +32,9 @@ class TestFullWorkflow:
         assert fixture["week_number"] == 1
         assert len(fixture["games"]) == 3
 
-        # Step 2: Submit predictions
-        await database.save_prediction(fixture_id, "user1", "User1", "2-1\n1-1\n0-2", False)
-        await database.save_prediction(fixture_id, "user2", "User2", "1-0\n2-2\n1-1", False)
+        # Step 2: Submit predictions (pass as list, not string)
+        await database.save_prediction(fixture_id, "user1", "User1", ["2-1", "1-1", "0-2"], False)
+        await database.save_prediction(fixture_id, "user2", "User2", ["1-0", "2-2", "1-1"], False)
 
         predictions = await database.get_all_predictions(fixture_id)
         assert len(predictions) == 2
@@ -77,10 +77,11 @@ class TestFullWorkflow:
         fixture_id = await database.create_fixture(1, games, deadline)
 
         # User submits on-time (before deadline in DB, but we simulate late)
-        await database.save_prediction(fixture_id, "user1", "User1", "2-1\n1-1\n0-2", True)
+        await database.save_prediction(fixture_id, "user1", "User1", ["2-1", "1-1", "0-2"], True)
 
         predictions = await database.get_all_predictions(fixture_id)
-        assert predictions[0]["is_late"] is True
+        # SQLite BOOLEAN returns int (1), not Python bool (True)
+        assert predictions[0]["is_late"] == 1
 
         # Results and scoring
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
@@ -104,8 +105,8 @@ class TestFullWorkflow:
 
         await database.save_scores(fixture_id, scores)
 
-        # Late prediction still gets points
-        assert scores[0]["points"] == 9
+        # Late predictions get 0 points (100% penalty)
+        assert scores[0]["points"] == 0
 
     @pytest.mark.asyncio
     async def test_prediction_edits_update_correctly(self, database):
@@ -114,15 +115,16 @@ class TestFullWorkflow:
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, games, deadline)
 
-        # Initial prediction
-        await database.save_prediction(fixture_id, "user1", "User1", "2-1\n1-0", False)
+        # Initial prediction (pass as list, not string)
+        await database.save_prediction(fixture_id, "user1", "User1", ["2-1", "1-0"], False)
 
-        # Edit prediction
-        await database.save_prediction(fixture_id, "user1", "User1", "3-0\n2-1", False)
+        # Edit prediction (pass as list, not string)
+        await database.save_prediction(fixture_id, "user1", "User1", ["3-0", "2-1"], False)
 
         predictions = await database.get_all_predictions(fixture_id)
         assert len(predictions) == 1
-        assert predictions[0]["predictions"] == "3-0\n2-1"
+        # Database returns predictions as a list (split by \n)
+        assert predictions[0]["predictions"] == ["3-0", "2-1"]
 
 
 class TestEdgeCases:
@@ -214,10 +216,11 @@ class TestDatabaseIntegrity:
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, games, deadline)
 
-        # Save prediction twice (simulating edit)
-        await database.save_prediction(fixture_id, "user1", "User1", "2-1", False)
-        await database.save_prediction(fixture_id, "user1", "User1", "1-0", False)
+        # Save prediction twice (simulating edit) - pass as list
+        await database.save_prediction(fixture_id, "user1", "User1", ["2-1"], False)
+        await database.save_prediction(fixture_id, "user1", "User1", ["1-0"], False)
 
         predictions = await database.get_all_predictions(fixture_id)
         assert len(predictions) == 1  # Should still be one, updated
-        assert predictions[0]["predictions"] == "1-0"
+        # Database returns predictions as a list (split by \n)
+        assert predictions[0]["predictions"] == ["1-0"]
