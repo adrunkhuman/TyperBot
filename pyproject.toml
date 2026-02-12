@@ -19,6 +19,7 @@ dev = [
     "pytest-asyncio>=1.0.0",
     "ruff>=0.14.0",
     "freezegun>=1.5.0",
+    "ty>=0.0.16",
 ]
 
 [build-system]
@@ -39,6 +40,12 @@ ignore = ["E501"]
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[tool.ty.environment]
+# Astral's type checker (ty) configuration
+python-version = "3.13"
+# Add any type-specific ignores here once we start fixing errors
+# ignore = ["unresolved-attribute"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
