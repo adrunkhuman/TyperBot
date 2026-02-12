@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
+import discord
 import pytest
 
 from typer_bot.handlers.fixture_handler import (
@@ -262,7 +263,7 @@ class TestPreviewGeneration:
 
     @pytest.fixture
     def handler(self, mock_bot, database):
-        mock_channel = MagicMock()
+        mock_channel = MagicMock(spec=discord.TextChannel)
         mock_bot.get_channel.return_value = mock_channel
         return FixtureCreationHandler(mock_bot, database)
 

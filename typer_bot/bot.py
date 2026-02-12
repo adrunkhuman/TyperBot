@@ -44,7 +44,6 @@ class TyperBot(commands.Bot):
     async def on_interaction(self, interaction: discord.Interaction):
         """Set trace ID for every interaction before processing."""
         # Use request ID format: req-<interaction_id>
-        # This context is preserved for all async calls within this interaction
         set_trace_id(f"req-{interaction.id}")
 
     async def on_message(self, message: discord.Message):
@@ -74,7 +73,8 @@ class TyperBot(commands.Bot):
         if handled:
             return
 
-        await super().on_message_edit(before, after)
+        # discord.py typing quirk: super() doesn't resolve event handler methods
+        await super().on_message_edit(before, after)  # type: ignore
 
     async def on_message_delete(self, message: discord.Message):
         """Handle message deletions."""
@@ -82,7 +82,8 @@ class TyperBot(commands.Bot):
             return
 
         set_trace_id(f"del-{message.id}")
-        await super().on_message_delete(message)
+        # discord.py typing quirk: super() doesn't resolve event handler methods
+        await super().on_message_delete(message)  # type: ignore
 
     async def setup_hook(self):
         """Initialize database and load cogs."""
@@ -198,9 +199,11 @@ class TyperBot(commands.Bot):
                         await db.commit()
 
                         async with db.execute("SELECT COUNT(*) FROM fixtures") as cursor:
-                            fixture_count = (await cursor.fetchone())[0]
+                            row = await cursor.fetchone()
+                            fixture_count = row[0] if row else 0
                         async with db.execute("SELECT COUNT(*) FROM predictions") as cursor:
-                            prediction_count = (await cursor.fetchone())[0]
+                            row = await cursor.fetchone()
+                            prediction_count = row[0] if row else 0
 
                         async with db.execute("SELECT games FROM fixtures LIMIT 1") as cursor:
                             row = await cursor.fetchone()
@@ -387,6 +390,9 @@ def main():
         logger.error("Please update it with your actual bot token")
         sys.exit(1)
 
+    # Token is validated above; this satisfies type checker
+    if token is None:
+        raise RuntimeError("Token validation failed unexpectedly")
     logger.info("✅ Token configured")
 
     if not IS_PRODUCTION:

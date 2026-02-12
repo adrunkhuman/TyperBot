@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class Database:
     """SQLite database wrapper for football predictions."""
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str | None = None):
         self.db_path = db_path or DB_PATH
 
         from pathlib import Path
@@ -100,16 +100,20 @@ class Database:
                 (week_number, "\n".join(games), deadline.isoformat()),
             )
             await db.commit()
+            # Runtime check for type narrowing (replaces assert)
+            if cursor.lastrowid is None:
+                raise RuntimeError("Failed to create fixture: lastrowid is None")
             return cursor.lastrowid
 
     def _row_to_fixture(self, row: aiosqlite.Row) -> dict:
         """Convert database row to fixture dictionary."""
         row_dict = dict(row)
+        deadline_val = row_dict.get("deadline")
         return {
             "id": row_dict.get("id"),
             "week_number": row_dict.get("week_number"),
             "games": row_dict.get("games", "").split("\n"),
-            "deadline": parse_iso(row_dict.get("deadline")) if row_dict.get("deadline") else None,
+            "deadline": parse_iso(deadline_val) if deadline_val else None,
             "status": row_dict.get("status"),
             "message_id": row_dict.get("message_id"),
         }
@@ -158,6 +162,7 @@ class Database:
             db.execute("SELECT MAX(week_number) FROM fixtures") as cursor,
         ):
             row = await cursor.fetchone()
+            # Runtime null check for type narrowing
             return row[0] if row and row[0] is not None else 0
 
     async def save_prediction(

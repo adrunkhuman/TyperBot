@@ -52,14 +52,14 @@ def create_backup(db_path: str, backup_dir: str) -> str:
     Returns:
         Path to created backup file
     """
-    db_path = Path(db_path)
+    db_path_obj = Path(db_path)
     backup_path = Path(backup_dir)
     backup_path.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")[:-3]
     backup_file = backup_path / f"backup_{timestamp}.sql"
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path_obj)
     with backup_file.open("w", encoding="utf-8") as f:
         for line in conn.iterdump():
             f.write(f"{line}\n")

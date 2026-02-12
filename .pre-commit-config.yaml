@@ -1,13 +1,16 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
     rev: v0.15.0
     hooks:
-      - id: ruff
-        args: [--fix]
+      # Run the linter.
+      - id: ruff-check
+        args: [ --fix ]
+      # Run the formatter.
       - id: ruff-format
 
   # Type checking with ty (Astral's type checker)
-  # Note: Currently has 19 errors - fix before making required
+  # Run on push (not every commit) - balance: fast commits, catch issues before CI
   # To run manually: ty check typer_bot
   - repo: local
     hooks:
@@ -17,5 +20,5 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
-        # Change to true once all type errors are fixed
-        always_run: false
+        always_run: true
+        stages: [pre-push]
