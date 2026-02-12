@@ -292,45 +292,35 @@ class TyperBot(commands.Bot):
             logger.exception("Failed to send reminder")
 
     async def _sync_fixture_thread(self):
-        """Sync manually-created thread on startup.
+        """Verify fixture announcement exists on startup.
 
-        If an open fixture has an announcement message but no thread_id,
-        check if a thread exists on that message and sync it.
+        Checks that the open fixture's announcement message is accessible.
+        The stored message_id doubles as the thread_id since Discord
+        public threads inherit their parent message's snowflake ID.
         """
-        logger.info("Syncing fixture threads...")
+        logger.info("Verifying fixture announcement...")
 
         try:
             fixture = await self.db.get_current_fixture()
             if not fixture:
-                logger.info("No open fixture found, skipping thread sync")
+                logger.info("No open fixture found, skipping verification")
                 return
 
-            if fixture.get("thread_id"):
-                logger.info(f"Fixture {fixture['id']} already has thread_id, skipping sync")
-                return
-
-            announcement_id = fixture.get("announcement_message_id")
-            if not announcement_id:
-                logger.info(
-                    f"Fixture {fixture['id']} has no announcement_message_id, skipping sync"
-                )
+            message_id = fixture.get("message_id")
+            if not message_id:
+                logger.info(f"Fixture {fixture['id']} has no message_id, skipping verification")
                 return
 
             # Search channels for the announcement message
             for guild in self.guilds:
                 for channel in guild.text_channels:
                     try:
-                        message = await channel.fetch_message(int(announcement_id))
+                        message = await channel.fetch_message(int(message_id))
                         if message.thread:
-                            await self.db.update_fixture_announcement(
-                                fixture["id"], thread_id=str(message.thread.id)
-                            )
-                            logger.info(
-                                f"Synced thread {message.thread.id} to fixture {fixture['id']}"
-                            )
+                            logger.info(f"Fixture {fixture['id']} has thread {message.thread.id}")
                         else:
                             logger.info(
-                                f"Message {announcement_id} has no thread for fixture {fixture['id']}"
+                                f"Fixture {fixture['id']} has no thread (users can use /predict)"
                             )
                         return
                     except discord.NotFound:
@@ -339,15 +329,15 @@ class TyperBot(commands.Bot):
                         logger.warning(f"No permission to read channel {channel.id}")
                         continue
                     except Exception as e:
-                        logger.warning(f"Could not sync thread in {channel.id}: {e}")
+                        logger.warning(f"Could not verify fixture in {channel.id}: {e}")
                         continue
 
             logger.warning(
-                f"Could not find announcement message {announcement_id} for fixture {fixture['id']}"
+                f"Could not find announcement message {message_id} for fixture {fixture['id']}"
             )
 
         except Exception as e:
-            logger.exception(f"Error during thread sync: {e}")
+            logger.exception(f"Error during fixture verification: {e}")
 
     async def _check_permissions(self):
         """Check bot permissions on all guilds.

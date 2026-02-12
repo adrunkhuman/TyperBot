@@ -323,20 +323,19 @@ class FixtureConfirmView(ui.View):
                 f"• You can edit your prediction anytime before the deadline"
             )
 
+            fixture = await self.handler.db.get_current_fixture()
+            if fixture:
+                await self.handler.db.update_fixture_announcement(
+                    fixture["id"],
+                    message_id=str(announcement.id),
+                )
+
             # Create a thread for predictions
             try:
                 thread = await announcement.create_thread(
                     name=f"Week {self.week_number} Predictions",
                     auto_archive_duration=1440,  # 24 hours
                 )
-                # Update fixture with announcement and thread IDs
-                fixture = await self.handler.db.get_current_fixture()
-                if fixture:
-                    await self.handler.db.update_fixture_announcement(
-                        fixture["id"],
-                        announcement_message_id=str(announcement.id),
-                        thread_id=str(thread.id),
-                    )
                 await thread.send(
                     "💬 **Post your predictions here!**\n"
                     "Reply with your scores (one per line or comma-separated).\n"

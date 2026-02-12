@@ -89,8 +89,7 @@ class TestDefensiveColumnAccess:
         # This should not crash even if columns were missing
         fixture = await db.get_current_fixture()
         assert fixture is not None
-        assert fixture["announcement_message_id"] is None
-        assert fixture["thread_id"] is None
+        assert fixture["message_id"] is None
 
     @pytest.mark.asyncio
     async def test_get_fixture_by_id_handles_missing_columns(self, temp_db_path):
@@ -104,24 +103,22 @@ class TestDefensiveColumnAccess:
         # This should not crash even if columns were missing
         fixture = await db.get_fixture_by_id(fixture_id)
         assert fixture is not None
-        assert fixture["announcement_message_id"] is None
-        assert fixture["thread_id"] is None
+        assert fixture["message_id"] is None
 
     @pytest.mark.asyncio
-    async def test_get_fixture_by_thread_id_handles_missing_columns(self, temp_db_path):
+    async def test_get_fixture_by_message_id_handles_missing_columns(self, temp_db_path):
         """Should gracefully handle missing optional columns using .get()."""
         db = Database(temp_db_path)
         await db.initialize()
 
-        # Create a fixture with thread_id
+        # Create a fixture with message_id
         fixture_id = await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
-        await db.update_fixture_announcement(fixture_id, thread_id="123456")
+        await db.update_fixture_announcement(fixture_id, message_id="123456")
 
         # This should not crash
-        fixture = await db.get_fixture_by_thread_id("123456")
+        fixture = await db.get_fixture_by_message_id("123456")
         assert fixture is not None
-        assert fixture["announcement_message_id"] is None
-        assert fixture["thread_id"] == "123456"
+        assert fixture["message_id"] == "123456"
 
 
 class TestSchemaMigration:
@@ -153,5 +150,4 @@ class TestSchemaMigration:
         await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
         fixture = await db.get_current_fixture()
         assert fixture is not None
-        assert "announcement_message_id" in fixture
-        assert "thread_id" in fixture
+        assert "message_id" in fixture
