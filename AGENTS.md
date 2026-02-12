@@ -126,11 +126,11 @@ uv run pytest --tb=short         # Shorter traceback output
 
 **Setup (one-time):**
 ```bash
+# Install dependencies (includes ty as dev dependency)
+uv sync --group dev
+
 # Install prek (Rust-based pre-commit hooks, 10-100x faster than pre-commit)
 uv tool install prek
-
-# Install ty type checker
-uv tool install ty
 
 # Install the git hooks
 prek install

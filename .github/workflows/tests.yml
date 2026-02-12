@@ -31,3 +31,7 @@ jobs:
     
     - name: Run linting
       run: uv run ruff check typer_bot tests
+    
+    - name: Run type checking
+      run: uv run ty check typer_bot
+      continue-on-error: true
