@@ -17,6 +17,7 @@ A Discord bot for running weekly football prediction games. I built this because
 Bot requires:
 - **Send Messages** & **Read Message History**
 - **Add Reactions**: To confirm predictions.
+- **Create Public Threads**: Auto-creates prediction threads on fixture announcements.
 - **Use Slash Commands**
 
 ## How to use
