@@ -7,7 +7,7 @@ repos:
       - id: ruff-format
 
   # Type checking with ty (Astral's type checker)
-  # Note: Currently has 19 errors - fix before making required
+  # All errors fixed - runs on push to catch issues before CI
   # To run manually: ty check typer_bot
   - repo: local
     hooks:
@@ -17,5 +17,5 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
-        # Change to true once all type errors are fixed
-        always_run: false
+        always_run: true
+        stages: [push]
