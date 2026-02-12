@@ -48,6 +48,7 @@ class AdminCommands(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        # TyperBot sets db attr dynamically; discord.py typing doesn't track custom attrs
         self.db: Database = bot.db  # type: ignore
         self.fixture_handler = FixtureCreationHandler(bot, self.db)
         self.results_handler = ResultsEntryHandler(bot, self.db)
@@ -81,8 +82,12 @@ class AdminCommands(commands.Cog):
     async def fixture_create(self, interaction: discord.Interaction):
         """Initiate fixture creation via DM."""
         user_id = str(interaction.user.id)
-        assert interaction.channel_id is not None, "channel_id is required"
-        assert interaction.guild_id is not None, "guild_id is required"
+        # admin_only() decorator ensures guild context, so these should always exist
+        if interaction.channel_id is None or interaction.guild_id is None:
+            await interaction.response.send_message(
+                "Error: Invalid interaction context.", ephemeral=True
+            )
+            return
         self.fixture_handler.start_session(user_id, interaction.channel_id, interaction.guild_id)
 
         await interaction.response.send_message(
@@ -159,7 +164,12 @@ class AdminCommands(commands.Cog):
             return
 
         user_id = str(interaction.user.id)
-        assert interaction.guild_id is not None, "guild_id is required"
+        # admin_only() decorator ensures guild context, so this should always exist
+        if interaction.guild_id is None:
+            await interaction.response.send_message(
+                "Error: Invalid interaction context.", ephemeral=True
+            )
+            return
         self.results_handler.start_session(user_id, fixture["id"], interaction.guild_id)
 
         await interaction.response.send_message(

@@ -24,6 +24,7 @@ class UserCommands(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        # TyperBot sets db attr dynamically; discord.py typing doesn't track custom attrs
         self.db: Database = bot.db  # type: ignore
 
     @commands.Cog.listener()

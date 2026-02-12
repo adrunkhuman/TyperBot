@@ -100,7 +100,8 @@ class Database:
                 (week_number, "\n".join(games), deadline.isoformat()),
             )
             await db.commit()
-            assert cursor.lastrowid is not None, "Failed to create fixture: lastrowid is None"
+            if cursor.lastrowid is None:
+                raise RuntimeError("Failed to create fixture: lastrowid is None")
             return cursor.lastrowid
 
     def _row_to_fixture(self, row: aiosqlite.Row) -> dict:

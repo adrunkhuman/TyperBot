@@ -143,7 +143,7 @@ ls .git/hooks/pre-commit  # Should exist (not .sample)
 Configured in `.pre-commit-config.yaml`:
 - **ruff check --fix** - Linting with auto-fix
 - **ruff format** - Code formatting
-- **ty check** - Type checking (currently optional, 19 errors to fix)
+- **ty check** - Type checking (blocking in CI)
 
 **Running manually:**
 ```bash
@@ -153,19 +153,13 @@ prek run ruff            # Run specific hook
 
 **Type Checking:**
 - Tool: `ty` (Astral's type checker, 10-100x faster than mypy)
-- Current status: **22 errors** (see below)
+- Current status: **0 errors** (complete)
 - Run: `ty check typer_bot`
 
-**Current Type Errors:**
-```bash
-$ ty check typer_bot 2>&1 | grep -E "^error" | wc -l
-22
-```
-
-Most errors are:
-- Discord.py typing quirks (unresolved super() calls)
-- Missing None checks on fetchone() results
-- Union type narrowing issues
+**Fixed Issues:**
+- Discord.py typing quirks (unresolved super() calls) - added `# type: ignore`
+- Missing None checks on fetchone() results - added null checks
+- Union type narrowing issues - added runtime type checks
 
 **Fix incrementally** - type checking is non-blocking until all errors are resolved.
 

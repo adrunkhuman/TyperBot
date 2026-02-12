@@ -74,6 +74,7 @@ class TyperBot(commands.Bot):
         if handled:
             return
 
+        # discord.py typing quirk: super() doesn't resolve event handler methods
         await super().on_message_edit(before, after)  # type: ignore
 
     async def on_message_delete(self, message: discord.Message):
@@ -82,6 +83,7 @@ class TyperBot(commands.Bot):
             return
 
         set_trace_id(f"del-{message.id}")
+        # discord.py typing quirk: super() doesn't resolve event handler methods
         await super().on_message_delete(message)  # type: ignore
 
     async def setup_hook(self):
@@ -389,7 +391,9 @@ def main():
         logger.error("Please update it with your actual bot token")
         sys.exit(1)
 
-    assert token is not None, "Token should be validated by this point"
+    # Token is validated above; this satisfies type checker
+    if token is None:
+        raise RuntimeError("Token validation failed unexpectedly")
     logger.info("✅ Token configured")
 
     if not IS_PRODUCTION:
