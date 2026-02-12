@@ -143,7 +143,7 @@ ls .git/hooks/pre-commit  # Should exist (not .sample)
 Configured in `.pre-commit-config.yaml`:
 - **ruff check --fix** - Linting with auto-fix
 - **ruff format** - Code formatting
-- **ty check** - Type checking (currently optional, 22 errors to fix)
+- **ty check** - Type checking (currently optional, 19 errors to fix)
 
 **Running manually:**
 ```bash
