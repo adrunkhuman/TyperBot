@@ -122,7 +122,54 @@ uv run pytest --tb=short         # Shorter traceback output
 - **Session Timeouts:** Fixture creation and results entry DM flows auto-expire after 1 hour of inactivity.
 - **Token Safety:** Bot validates DISCORD_TOKEN at startup (rejects placeholders like "your_bot_token_here"). Token values are never logged.
 
-## 7. Deployment Environment
+## 7. Code Quality & Pre-commit Hooks
+
+**Setup (one-time):**
+```bash
+# Install prek (Rust-based pre-commit hooks, 10-100x faster than pre-commit)
+uv tool install prek
+
+# Install ty type checker
+uv tool install ty
+
+# Install the git hooks
+prek install
+
+# Verify hooks are active
+ls .git/hooks/pre-commit  # Should exist (not .sample)
+```
+
+**Pre-commit Hooks:**
+Configured in `.pre-commit-config.yaml`:
+- **ruff check --fix** - Linting with auto-fix
+- **ruff format** - Code formatting
+- **ty check** - Type checking (currently optional, 22 errors to fix)
+
+**Running manually:**
+```bash
+prek run --all-files     # Run all hooks on all files
+prek run ruff            # Run specific hook
+```
+
+**Type Checking:**
+- Tool: `ty` (Astral's type checker, 10-100x faster than mypy)
+- Current status: **22 errors** (see below)
+- Run: `ty check typer_bot`
+
+**Current Type Errors:**
+```bash
+$ ty check typer_bot 2>&1 | grep -E "^error" | wc -l
+22
+```
+
+Most errors are:
+- Discord.py typing quirks (unresolved super() calls)
+- Missing None checks on fetchone() results
+- Union type narrowing issues
+
+**Fix incrementally** - type checking is non-blocking until all errors are resolved.
+
+## 8. Deployment Environment
 - **Configuration:** The `ENVIRONMENT` variable controls bot behavior:
   - `production`: Bot connects to Discord and runs normally
   - Not set/`development`: Bot runs in "smoke test" mode - validates config then exits

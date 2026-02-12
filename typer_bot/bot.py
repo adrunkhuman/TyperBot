@@ -166,6 +166,9 @@ class TyperBot(commands.Bot):
                     logger.info("Database already has fixtures, skipping archive import")
                     return
 
+            # noqa: ASYNC240
+            # Path.glob() does string matching only, not file I/O.
+            # Actual file reads are wrapped in run_in_executor below.
             archive_files = sorted(Path("archive").glob("*.sql"))
             if not archive_files:
                 logger.info("No archive SQL files found")
