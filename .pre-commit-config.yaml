@@ -2,14 +2,12 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.0
     hooks:
-      # Run the linter
       - id: ruff
         args: [--fix]
-      # Run the formatter
       - id: ruff-format
 
   # Type checking with ty (Astral's type checker)
-  # Note: Currently has 22 errors - fix before making required
+  # Note: Currently has 19 errors - fix before making required
   # To run manually: ty check typer_bot
   - repo: local
     hooks:
