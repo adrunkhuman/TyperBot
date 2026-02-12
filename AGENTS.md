@@ -36,8 +36,7 @@ fixtures (
     games TEXT,                      -- Newline separated: "Team A - Team B\nTeam C - Team D"
     deadline DATETIME,
     status TEXT DEFAULT 'open',      -- 'open' or 'closed'
-    announcement_message_id TEXT,    -- Discord message ID of fixture announcement
-    thread_id TEXT                   -- Discord thread ID for public predictions
+    message_id TEXT                  -- Discord message ID (thread shares same snowflake ID)
 )
 
 predictions (
