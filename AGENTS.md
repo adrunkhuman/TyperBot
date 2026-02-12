@@ -156,13 +156,6 @@ prek run ruff            # Run specific hook
 - Current status: **0 errors** (complete)
 - Run: `ty check typer_bot`
 
-**Fixed Issues:**
-- Discord.py typing quirks (unresolved super() calls) - added `# type: ignore`
-- Missing None checks on fetchone() results - added null checks
-- Union type narrowing issues - added runtime type checks
-
-**Fix incrementally** - type checking is non-blocking until all errors are resolved.
-
 ## 8. Deployment Environment
 - **Configuration:** The `ENVIRONMENT` variable controls bot behavior:
   - `production`: Bot connects to Discord and runs normally

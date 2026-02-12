@@ -7,7 +7,7 @@ repos:
       - id: ruff-format
 
   # Type checking with ty (Astral's type checker)
-  # All errors fixed - runs on push to catch issues before CI
+  # Run on push (not every commit) - balance: fast commits, catch issues before CI
   # To run manually: ty check typer_bot
   - repo: local
     hooks:

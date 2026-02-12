@@ -100,6 +100,7 @@ class Database:
                 (week_number, "\n".join(games), deadline.isoformat()),
             )
             await db.commit()
+            # Runtime check for type narrowing (replaces assert)
             if cursor.lastrowid is None:
                 raise RuntimeError("Failed to create fixture: lastrowid is None")
             return cursor.lastrowid
@@ -161,6 +162,7 @@ class Database:
             db.execute("SELECT MAX(week_number) FROM fixtures") as cursor,
         ):
             row = await cursor.fetchone()
+            # Runtime null check for type narrowing
             return row[0] if row and row[0] is not None else 0
 
     async def save_prediction(

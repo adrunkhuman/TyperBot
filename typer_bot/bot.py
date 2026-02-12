@@ -44,7 +44,6 @@ class TyperBot(commands.Bot):
     async def on_interaction(self, interaction: discord.Interaction):
         """Set trace ID for every interaction before processing."""
         # Use request ID format: req-<interaction_id>
-        # This context is preserved for all async calls within this interaction
         set_trace_id(f"req-{interaction.id}")
 
     async def on_message(self, message: discord.Message):
