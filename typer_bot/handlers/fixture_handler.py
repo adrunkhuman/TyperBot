@@ -323,7 +323,6 @@ class FixtureConfirmView(ui.View):
                 f"• You can edit your prediction anytime before the deadline"
             )
 
-            # Save announcement message ID immediately
             fixture = await self.handler.db.get_current_fixture()
             if fixture:
                 await self.handler.db.update_fixture_announcement(
