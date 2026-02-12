@@ -34,4 +34,3 @@ jobs:
     
     - name: Run type checking
       run: uv run ty check typer_bot
-      continue-on-error: true

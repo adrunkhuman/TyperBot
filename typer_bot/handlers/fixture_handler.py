@@ -196,14 +196,14 @@ class FixtureCreationHandler:
         state["deadline"] = deadline
         await self._show_preview(message.author, user_id)
 
-    async def _show_preview(self, user: discord.User, user_id: str) -> None:
+    async def _show_preview(self, user: discord.User | discord.Member, user_id: str) -> None:
         """Show fixture preview with confirmation."""
         state = _pending_fixtures[user_id]
         games = state["games"]
         deadline = state.get("deadline", state["default_deadline"])
         channel = self.bot.get_channel(state["channel_id"])
 
-        if not channel:
+        if not channel or not isinstance(channel, discord.TextChannel):
             await user.send("Error: Could not find the original channel.")
             _pending_fixtures.pop(user_id, None)
             return

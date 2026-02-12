@@ -24,7 +24,7 @@ class UserCommands(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.db: Database = bot.db
+        self.db: Database = bot.db  # type: ignore
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):

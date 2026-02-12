@@ -74,7 +74,7 @@ class TyperBot(commands.Bot):
         if handled:
             return
 
-        await super().on_message_edit(before, after)
+        await super().on_message_edit(before, after)  # type: ignore
 
     async def on_message_delete(self, message: discord.Message):
         """Handle message deletions."""
@@ -82,7 +82,7 @@ class TyperBot(commands.Bot):
             return
 
         set_trace_id(f"del-{message.id}")
-        await super().on_message_delete(message)
+        await super().on_message_delete(message)  # type: ignore
 
     async def setup_hook(self):
         """Initialize database and load cogs."""
@@ -198,9 +198,11 @@ class TyperBot(commands.Bot):
                         await db.commit()
 
                         async with db.execute("SELECT COUNT(*) FROM fixtures") as cursor:
-                            fixture_count = (await cursor.fetchone())[0]
+                            row = await cursor.fetchone()
+                            fixture_count = row[0] if row else 0
                         async with db.execute("SELECT COUNT(*) FROM predictions") as cursor:
-                            prediction_count = (await cursor.fetchone())[0]
+                            row = await cursor.fetchone()
+                            prediction_count = row[0] if row else 0
 
                         async with db.execute("SELECT games FROM fixtures LIMIT 1") as cursor:
                             row = await cursor.fetchone()
@@ -387,6 +389,7 @@ def main():
         logger.error("Please update it with your actual bot token")
         sys.exit(1)
 
+    assert token is not None, "Token should be validated by this point"
     logger.info("✅ Token configured")
 
     if not IS_PRODUCTION:
