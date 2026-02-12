@@ -295,7 +295,8 @@ class TyperBot(commands.Bot):
         """Verify fixture announcement exists on startup.
 
         Checks that the open fixture's announcement message is accessible.
-        Thread existence is checked dynamically via Discord API when needed.
+        The stored message_id doubles as the thread_id since Discord
+        public threads inherit their parent message's snowflake ID.
         """
         logger.info("Verifying fixture announcement...")
 

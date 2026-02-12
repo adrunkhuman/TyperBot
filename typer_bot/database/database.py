@@ -33,7 +33,7 @@ class Database:
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
                     status TEXT DEFAULT 'open',
-                    message_id TEXT,
+                    message_id TEXT,                 -- Discord message/ thread snowflake (threads share parent message ID)
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -133,7 +133,12 @@ class Database:
                 return self._row_to_fixture(row) if row else None
 
     async def get_fixture_by_message_id(self, message_id: str) -> dict | None:
-        """Get a fixture by its Discord message ID."""
+        """Get a fixture by its Discord message ID.
+
+        Args:
+            message_id: Discord message/thread snowflake ID.
+                Public threads share the same ID as their parent message.
+        """
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
@@ -352,7 +357,12 @@ class Database:
         fixture_id: int,
         message_id: str | None = None,
     ):
-        """Update announcement message ID for a fixture."""
+        """Update the Discord message ID for a fixture.
+
+        Stores the parent message ID. When a thread is created from this
+        message, it shares the same snowflake ID, so no separate thread_id
+        column is needed.
+        """
         async with aiosqlite.connect(self.db_path) as db:
             if message_id is not None:
                 await db.execute(
