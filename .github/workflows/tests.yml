@@ -13,13 +13,8 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.13'
-    
     - name: Install uv
-      uses: astral-sh/setup-uv@v5
+      uses: astral-sh/setup-uv@v7
       with:
         version: 'latest'
     
@@ -29,8 +24,11 @@ jobs:
     - name: Run tests
       run: uv run pytest tests/ -v
     
-    - name: Run linting
+    - name: Run ruff check
       run: uv run ruff check typer_bot tests
-    
+
+    - name: Run ruff format check
+      run: uv run ruff format --check typer_bot tests
+
     - name: Run type checking
       run: uv run ty check typer_bot
