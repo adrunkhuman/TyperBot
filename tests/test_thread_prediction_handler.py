@@ -120,7 +120,7 @@ class TestOnMessage:
         # Create fixture with past deadline
         deadline = datetime.now(UTC) - timedelta(hours=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
-        await database.update_fixture_announcement(fixture_id, thread_id="789012")
+        await database.update_fixture_announcement(fixture_id, message_id="789012")
 
         mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
         mock_message.channel.id = 789012
@@ -193,7 +193,7 @@ class TestOnMessageEdit:
         # Create fixture with past deadline
         deadline = datetime.now(UTC) - timedelta(hours=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
-        await database.update_fixture_announcement(fixture_id, thread_id="789012")
+        await database.update_fixture_announcement(fixture_id, message_id="789012")
 
         mock_message.channel.id = 789012
         mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
@@ -398,7 +398,7 @@ class TestIntegration:
         # Create fixture
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
-        await database.update_fixture_announcement(fixture_id, thread_id="789012")
+        await database.update_fixture_announcement(fixture_id, message_id="789012")
 
         mock_message.channel.id = 789012
 
@@ -432,7 +432,7 @@ class TestIntegration:
         # Create fixture
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
-        await database.update_fixture_announcement(fixture_id, thread_id="789012")
+        await database.update_fixture_announcement(fixture_id, message_id="789012")
 
         # User 1 predicts
         user1 = MockUser(user_id="111", name="User1")
@@ -473,7 +473,7 @@ class TestIntegration:
         # Create fixture with past deadline
         deadline = datetime.now(UTC) - timedelta(hours=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
-        await database.update_fixture_announcement(fixture_id, thread_id="789012")
+        await database.update_fixture_announcement(fixture_id, message_id="789012")
 
         mock_message.channel.id = 789012
 

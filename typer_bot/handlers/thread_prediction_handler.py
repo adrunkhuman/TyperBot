@@ -38,9 +38,9 @@ class ThreadPredictionHandler:
         if not isinstance(message.channel, discord.Thread):
             return False
 
-        # Check if this thread belongs to a fixture
-        thread_id = str(message.channel.id)
-        fixture = await self.db.get_fixture_by_thread_id(thread_id)
+        # Check if this thread belongs to a fixture (thread ID == parent message ID)
+        message_id = str(message.channel.id)
+        fixture = await self.db.get_fixture_by_message_id(message_id)
         if not fixture:
             return False
 
@@ -161,9 +161,9 @@ class ThreadPredictionHandler:
         if not isinstance(after.channel, discord.Thread):
             return False
 
-        # Check if this thread belongs to a fixture
-        thread_id = str(after.channel.id)
-        fixture = await self.db.get_fixture_by_thread_id(thread_id)
+        # Check if this thread belongs to a fixture (thread ID == parent message ID)
+        message_id = str(after.channel.id)
+        fixture = await self.db.get_fixture_by_message_id(message_id)
         if not fixture:
             return False
 

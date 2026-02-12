@@ -33,8 +33,7 @@ class Database:
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
                     status TEXT DEFAULT 'open',
-                    announcement_message_id TEXT,
-                    thread_id TEXT,
+                    message_id TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -82,13 +81,9 @@ class Database:
                 columns = await cursor.fetchall()
                 column_names = {col[1] for col in columns}
 
-            if "announcement_message_id" not in column_names:
-                logger.info("Adding announcement_message_id column to fixtures table")
-                await db.execute("ALTER TABLE fixtures ADD COLUMN announcement_message_id TEXT")
-
-            if "thread_id" not in column_names:
-                logger.info("Adding thread_id column to fixtures table")
-                await db.execute("ALTER TABLE fixtures ADD COLUMN thread_id TEXT")
+            if "message_id" not in column_names:
+                logger.info("Adding message_id column to fixtures table")
+                await db.execute("ALTER TABLE fixtures ADD COLUMN message_id TEXT")
 
             await db.commit()
 
@@ -116,8 +111,7 @@ class Database:
             "games": row_dict.get("games", "").split("\n"),
             "deadline": parse_iso(row_dict.get("deadline")) if row_dict.get("deadline") else None,
             "status": row_dict.get("status"),
-            "announcement_message_id": row_dict.get("announcement_message_id"),
-            "thread_id": row_dict.get("thread_id"),
+            "message_id": row_dict.get("message_id"),
         }
 
     async def get_current_fixture(self) -> dict | None:
@@ -138,12 +132,12 @@ class Database:
                 row = await cursor.fetchone()
                 return self._row_to_fixture(row) if row else None
 
-    async def get_fixture_by_thread_id(self, thread_id: str) -> dict | None:
-        """Get a fixture by its Discord thread ID."""
+    async def get_fixture_by_message_id(self, message_id: str) -> dict | None:
+        """Get a fixture by its Discord message ID."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT * FROM fixtures WHERE thread_id = ? AND status = 'open'", (thread_id,)
+                "SELECT * FROM fixtures WHERE message_id = ? AND status = 'open'", (message_id,)
             ) as cursor:
                 row = await cursor.fetchone()
                 return self._row_to_fixture(row) if row else None
@@ -356,21 +350,12 @@ class Database:
     async def update_fixture_announcement(
         self,
         fixture_id: int,
-        announcement_message_id: str | None = None,
-        thread_id: str | None = None,
+        message_id: str | None = None,
     ):
-        """Update announcement message and thread IDs for a fixture."""
+        """Update announcement message ID for a fixture."""
         async with aiosqlite.connect(self.db_path) as db:
-            updates = []
-            params = []
-            if announcement_message_id is not None:
-                updates.append("announcement_message_id = ?")
-                params.append(announcement_message_id)
-            if thread_id is not None:
-                updates.append("thread_id = ?")
-                params.append(thread_id)
-
-            if updates:
-                params.append(fixture_id)
-                await db.execute(f"UPDATE fixtures SET {', '.join(updates)} WHERE id = ?", params)
+            if message_id is not None:
+                await db.execute(
+                    "UPDATE fixtures SET message_id = ? WHERE id = ?", (message_id, fixture_id)
+                )
                 await db.commit()
