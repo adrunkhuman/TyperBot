@@ -73,17 +73,12 @@ class TyperBot(commands.Bot):
         if handled:
             return
 
-        # discord.py typing quirk: super() doesn't resolve event handler methods
-        await super().on_message_edit(before, after)  # type: ignore
-
     async def on_message_delete(self, message: discord.Message):
         """Handle message deletions."""
         if message.author.bot:
             return
 
         set_trace_id(f"del-{message.id}")
-        # discord.py typing quirk: super() doesn't resolve event handler methods
-        await super().on_message_delete(message)  # type: ignore
 
     async def setup_hook(self):
         """Initialize database and load cogs."""
