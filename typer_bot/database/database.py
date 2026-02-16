@@ -290,13 +290,17 @@ class Database:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                """SELECT user_id, user_name,
-                          SUM(points) as total_points,
-                          SUM(exact_scores) as total_exact,
-                          SUM(correct_results) as total_correct,
-                          COUNT(DISTINCT fixture_id) as weeks_played
-                   FROM scores
-                   GROUP BY user_id, user_name
+                """SELECT
+                          s.user_id,
+                          (SELECT user_name FROM scores s2
+                           WHERE s2.user_id = s.user_id
+                           ORDER BY fixture_id DESC LIMIT 1) as user_name,
+                          SUM(s.points) as total_points,
+                          SUM(s.exact_scores) as total_exact,
+                          SUM(s.correct_results) as total_correct,
+                          COUNT(DISTINCT s.fixture_id) as weeks_played
+                   FROM scores s
+                   GROUP BY s.user_id
                    ORDER BY total_points DESC"""
             ) as cursor:
                 rows = await cursor.fetchall()
