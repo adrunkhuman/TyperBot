@@ -201,3 +201,114 @@ class TestDatabaseIntegrity:
         predictions = await database.get_all_predictions(fixture_id)
         assert len(predictions) == 1
         assert predictions[0]["predictions"] == ["1-0"]
+
+
+class TestUsernameChangeHandling:
+    """Test handling of users changing Discord display names between fixtures."""
+
+    @pytest.mark.asyncio
+    async def test_standings_aggregates_same_user_with_different_names(self, database):
+        """Users changing display names should appear once in standings with latest name."""
+        games = ["Team A - Team B"]
+        deadline = datetime.now(UTC) - timedelta(days=2)
+
+        # Week 1: User is "st4chu"
+        fixture1_id = await database.create_fixture(1, games, deadline)
+        await database.save_prediction(fixture1_id, "user1", "st4chu", ["2-1"], False)
+        await database.save_results(fixture1_id, ["2-1"])
+        await database.save_scores(
+            fixture1_id,
+            [
+                {
+                    "user_id": "user1",
+                    "user_name": "st4chu",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+
+        # Week 2: Same user is now "Stachu"
+        deadline = datetime.now(UTC) - timedelta(days=1)
+        fixture2_id = await database.create_fixture(2, games, deadline)
+        await database.save_prediction(fixture2_id, "user1", "Stachu", ["1-0"], False)
+        await database.save_results(fixture2_id, ["1-0"])
+        await database.save_scores(
+            fixture2_id,
+            [
+                {
+                    "user_id": "user1",
+                    "user_name": "Stachu",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+
+        standings = await database.get_standings()
+        assert len(standings) == 1  # Should NOT be 2 separate entries
+        assert standings[0]["total_points"] == 6
+        assert standings[0]["weeks_played"] == 2
+        # Should show most recent name (from fixture 2)
+        assert standings[0]["user_name"] == "Stachu"
+
+    @pytest.mark.asyncio
+    async def test_standings_shows_latest_name_when_changed_multiple_times(self, database):
+        """Should show the most recent username from latest fixture."""
+        games = ["Team A - Team B"]
+
+        # Week 1: "OldName"
+        fixture1_id = await database.create_fixture(1, games, datetime.now(UTC) - timedelta(days=3))
+        await database.save_results(fixture1_id, ["2-1"])
+        await database.save_scores(
+            fixture1_id,
+            [
+                {
+                    "user_id": "user1",
+                    "user_name": "OldName",
+                    "points": 1,
+                    "exact_scores": 0,
+                    "correct_results": 1,
+                }
+            ],
+        )
+
+        # Week 2: "MiddleName"
+        fixture2_id = await database.create_fixture(2, games, datetime.now(UTC) - timedelta(days=2))
+        await database.save_results(fixture2_id, ["2-1"])
+        await database.save_scores(
+            fixture2_id,
+            [
+                {
+                    "user_id": "user1",
+                    "user_name": "MiddleName",
+                    "points": 1,
+                    "exact_scores": 0,
+                    "correct_results": 1,
+                }
+            ],
+        )
+
+        # Week 3: "NewName" (latest)
+        fixture3_id = await database.create_fixture(3, games, datetime.now(UTC) - timedelta(days=1))
+        await database.save_results(fixture3_id, ["2-1"])
+        await database.save_scores(
+            fixture3_id,
+            [
+                {
+                    "user_id": "user1",
+                    "user_name": "NewName",
+                    "points": 1,
+                    "exact_scores": 0,
+                    "correct_results": 1,
+                }
+            ],
+        )
+
+        standings = await database.get_standings()
+        assert len(standings) == 1
+        # Should show name from most recent fixture (fixture 3)
+        assert standings[0]["user_name"] == "NewName"
+        assert standings[0]["total_points"] == 3
