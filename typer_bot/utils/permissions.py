@@ -3,6 +3,12 @@
 import discord
 
 
+def _has_admin_role(member: discord.Member) -> bool:
+    """Check if member has an admin role."""
+    admin_roles = {"admin", "typer-admin"}
+    return any(role.name.lower() in admin_roles for role in member.roles)
+
+
 def is_admin(interaction: discord.Interaction) -> bool:
     """Check if interaction user has admin role on the originating guild.
 
@@ -16,7 +22,9 @@ def is_admin(interaction: discord.Interaction) -> bool:
     if not interaction.guild:
         return False
     member = interaction.guild.get_member(interaction.user.id)
-    if not member:
-        return False
-    admin_roles = {"admin", "typer-admin"}
-    return any(role.name.lower() in admin_roles for role in member.roles)
+    return _has_admin_role(member) if member else False
+
+
+def is_admin_member(member: discord.Member | None) -> bool:
+    """Check if member has admin role (for DM workflows)."""
+    return _has_admin_role(member) if member else False

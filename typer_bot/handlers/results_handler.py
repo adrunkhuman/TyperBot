@@ -1,6 +1,7 @@
 """Handler for results entry DM workflow."""
 
 import logging
+from collections.abc import Callable
 from datetime import timedelta
 
 import discord
@@ -53,7 +54,12 @@ class ResultsEntryHandler:
         _cleanup_expired_sessions()
         return user_id in _pending_results
 
-    async def handle_dm(self, message: discord.Message, user_id: str, is_admin_fn) -> bool:
+    async def handle_dm(
+        self,
+        message: discord.Message,
+        user_id: str,
+        is_admin_fn: Callable[[discord.Member | None], bool],
+    ) -> bool:
         """Handle a DM message for results entry.
 
         Args:
@@ -123,7 +129,11 @@ class ResultsEntryHandler:
         return True
 
     async def _verify_admin(
-        self, message: discord.Message, user_id: str, guild_id: int | None, is_admin_fn
+        self,
+        message: discord.Message,
+        user_id: str,
+        guild_id: int | None,
+        is_admin_fn: Callable[[discord.Member | None], bool],
     ) -> bool:
         """Verify user is still an admin."""
         if not guild_id:
