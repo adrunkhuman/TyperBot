@@ -12,6 +12,7 @@ from typer_bot.utils import (
     calculate_points,
     format_standings,
     is_admin,
+    is_admin_member,
     now,
 )
 from typer_bot.utils.config import BACKUP_DIR
@@ -63,12 +64,12 @@ class AdminCommands(commands.Cog):
 
         # Check if this is a fixture creation DM
         if self.fixture_handler.has_session(user_id):
-            await self.fixture_handler.handle_dm(message, user_id, is_admin)
+            await self.fixture_handler.handle_dm(message, user_id, is_admin_member)
             return
 
         # Check if this is a results entry DM
         if self.results_handler.has_session(user_id):
-            await self.results_handler.handle_dm(message, user_id, is_admin)
+            await self.results_handler.handle_dm(message, user_id, is_admin_member)
             return
 
     # Admin group
