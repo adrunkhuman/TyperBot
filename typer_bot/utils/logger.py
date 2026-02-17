@@ -8,7 +8,6 @@ Event Type Naming Convention:
 
     Examples:
         - prediction.saved: User prediction was saved successfully
-        - prediction.updated: Existing prediction was modified
         - prediction.save_failed: Error saving prediction
         - prediction.parse_failed: User input couldn't be parsed
         - prediction.duplicate_blocked: Race condition prevented duplicate
@@ -56,7 +55,6 @@ def set_trace_id(trace_id: str | None) -> None:
         trace_id: Unique identifier for the request/message. Format:
             - Interactions: "req-<interaction_id>"
             - Messages: "msg-<message_id>"
-            - Edits: "edit-<message_id>"
             - Deletions: "del-<message_id>"
             Pass None to clear the trace ID.
     """

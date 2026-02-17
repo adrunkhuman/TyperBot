@@ -33,12 +33,12 @@ Bot requires:
    Team E - Team F 3:2
    ...
    ```
-3. Bot reacts ✅ when saved. Edit your message anytime before the deadline to update.
+ 3. Bot reacts ✅ when saved. To change, just post again.
 
 **Method 2: DM Predictions**
 1. Type `/predict` (or DM the bot directly) -> Bot DMs you the games
 2. Reply with scores (same format as above) -> Predictions saved immediately!
-3. Edit your message anytime before the deadline to update
+3. To change, just send a new message
 
 **Check**: `/mypredictions` to see what you sent.
 **Flex**: `/standings` to see the table.

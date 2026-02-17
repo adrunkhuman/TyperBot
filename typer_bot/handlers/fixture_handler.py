@@ -356,8 +356,7 @@ class FixtureConfirmView(ui.View):
                 f"{self.preview}\n\n"
                 f"💬 **How to predict:**\n"
                 f"• Reply in this thread with your scores (one per line)\n"
-                f"• Or use `/predict` for DM mode\n"
-                f"• You can edit your prediction anytime before the deadline"
+                f"• Or use `/predict` for DM mode"
             )
 
             fixture = await self.handler.db.get_current_fixture()
@@ -376,7 +375,7 @@ class FixtureConfirmView(ui.View):
                 await thread.send(
                     "💬 **Post your predictions here!**\n"
                     "Reply with your scores (one per line or comma-separated).\n"
-                    "You can edit your message anytime before the deadline."
+                    "To change your prediction, just post again."
                 )
             except Exception as e:
                 logger.warning(f"Could not create thread for fixture: {e}")

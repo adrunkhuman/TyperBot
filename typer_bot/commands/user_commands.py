@@ -29,16 +29,12 @@ class UserCommands(commands.Cog):
         # TyperBot sets db attr dynamically; discord.py typing doesn't track custom attrs
         self.db: Database = bot.db  # type: ignore
 
-    async def _process_prediction_message(self, message: discord.Message, is_edit: bool = False):
-        """Process predictions from DMs (new messages or edits).
-
-        For edits with invalid format, keeps old prediction and asks to resubmit.
-        """
+    async def _process_prediction_message(self, message: discord.Message):
+        """Process predictions from DMs."""
         if message.author.bot or message.guild is not None:
             return
 
         user_id = str(message.author.id)
-        action = "edit" if is_edit else "message"
 
         # Check message length first (before fetching fixture)
         if len(message.content) > MAX_MESSAGE_LENGTH:
@@ -57,7 +53,7 @@ class UserCommands(commands.Cog):
         fixture_id = fixture["id"]
 
         with LogContextManager(user_id=user_id, fixture_id=fixture_id, source="dm"):
-            logger.debug(f"Processing DM {action} from user {user_id}")
+            logger.debug(f"Processing DM from user {user_id}")
 
             processing_msg = await message.author.send("⏳ Processing your predictions...")
 
@@ -79,19 +75,11 @@ class UserCommands(commands.Cog):
                         source="dm",
                         errors_count=len(errors),
                     )
-                    if is_edit:
-                        await processing_msg.edit(
-                            content=f"❌ **Invalid predictions - your previous predictions are kept:**\n"
-                            f"```{error_msg}```\n\n"
-                            f"Please edit your message again with valid predictions:\n"
-                            f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
-                        )
-                    else:
-                        await processing_msg.edit(
-                            content=f"❌ **Invalid predictions:**\n```{error_msg}```\n\n"
-                            f"Please send your predictions again in this format:\n"
-                            f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
-                        )
+                    await processing_msg.edit(
+                        content=f"❌ **Invalid predictions:**\n```{error_msg}```\n\n"
+                        f"Please send your predictions again in this format:\n"
+                        f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
+                    )
                     return
 
                 await self.db.save_prediction(
@@ -102,11 +90,11 @@ class UserCommands(commands.Cog):
                     is_late,
                 )
 
-                event_type = "prediction.updated" if is_edit else "prediction.saved"
+                event_type = "prediction.saved"
                 log_event(
                     logger,
                     event_type=event_type,
-                    message=f"DM prediction {action}d successfully",
+                    message="DM prediction saved successfully",
                     user_id=user_id,
                     fixture_id=fixture_id,
                     source="dm",
@@ -121,7 +109,6 @@ class UserCommands(commands.Cog):
                 deadline_str = format_for_discord(fixture["deadline"], "F")
                 relative_str = format_for_discord(fixture["deadline"], "R")
                 preview_lines.append(f"\n**Deadline:** {deadline_str} ({relative_str})")
-                preview_lines.append("\n*Edit your message to update before deadline.*")
 
                 late_warning = ""
                 if is_late:
@@ -152,14 +139,7 @@ class UserCommands(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Listen for DMs with predictions."""
-        await self._process_prediction_message(message, is_edit=False)
-
-    @commands.Cog.listener()
-    async def on_message_edit(self, before: discord.Message, after: discord.Message):
-        """Listen for DM edits to update predictions."""
-        if before.content == after.content:
-            return
-        await self._process_prediction_message(after, is_edit=True)
+        await self._process_prediction_message(message)
 
     @app_commands.command(
         name="predict", description="Submit your predictions for this week's fixtures"
@@ -243,13 +223,11 @@ class UserCommands(commands.Cog):
    ...
    ```
 3. Bot will react ✅ when saved
-4. Edit your message anytime before deadline to update
 
 **Method 2: DM Predictions**
 1. Type `/predict` in the channel (or DM the bot directly)
 2. Bot sends you a DM with the fixture list
 3. Reply with your predictions - they are saved immediately!
-4. Edit your message to update before deadline
 
 **Scoring:**
 • Exact score: 3 points
@@ -259,7 +237,7 @@ class UserCommands(commands.Cog):
 
 **Input formats:** Use `2:0`, `2-0`, or `2 : 0`
 
-**Editing:** You can edit your prediction message before the deadline."""
+**To change a prediction:** Just post again (it replaces your old one)."""
 
         admin_help = """\n\n## 🔧 Admin Commands
 

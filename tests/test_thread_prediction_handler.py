@@ -5,7 +5,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from tests.conftest import MockMessage
 from typer_bot.handlers.thread_prediction_handler import _prediction_cooldowns
 
 
@@ -137,119 +136,8 @@ class TestOnMessage:
         assert "Late prediction" in mock_message.author.dm_sent[0]
 
 
-class TestOnMessageEdit:
-    """Test suite for on_message_edit handler."""
-
-    @pytest.mark.asyncio
-    async def test_ignores_bot_messages(self, handler, mock_message):
-        """Should ignore edits from bots."""
-        mock_message.author.bot = True
-
-        result = await handler.on_message_edit(mock_message, mock_message)
-
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_ignores_non_thread_channels(self, handler, mock_message):
-        """Should ignore edits not in threads."""
-        mock_message.channel = object()
-
-        result = await handler.on_message_edit(mock_message, mock_message)
-
-        assert result is False
-
-    @pytest.mark.asyncio
-    @pytest.mark.usefixtures("fixture_with_thread")
-    async def test_updates_existing_prediction(self, handler, mock_message):
-        """Should update prediction when user edits message."""
-        mock_message.channel.id = 789012
-
-        # First, save initial prediction
-        mock_message.content = "Team A - Team B 1-0\nTeam C - Team D 0-0\nTeam E - Team F 1-2"
-        await handler.on_message(mock_message)
-
-        # Now edit the message - handler passes 'after' to clear_reactions
-        edited_message = MockMessage(
-            content="Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-1",
-            author=mock_message.author,
-            channel=mock_message.channel,
-            guild=mock_message.guild,
-        )
-
-        result = await handler.on_message_edit(mock_message, edited_message)
-
-        assert result is True
-        # Verify remove_reaction was called for bot's reactions
-        assert len(edited_message.reactions_removed) == 2
-        removed_emojis = {emoji for emoji, _ in edited_message.reactions_removed}
-        assert removed_emojis == {"✅", "❌"}
-        # After removing, only the new ✅ should be present
-        assert len(edited_message.reactions_added) == 1
-        assert "✅" in edited_message.reactions_added
-
-    @pytest.mark.asyncio
-    async def test_enforces_deadline_on_edit(self, handler, database, mock_message, sample_games):
-        """Should mark edited prediction as late when past deadline (sneaky edit fix)."""
-        # Create fixture with past deadline
-        deadline = datetime.now(UTC) - timedelta(hours=1)
-        fixture_id = await database.create_fixture(1, sample_games, deadline)
-        await database.update_fixture_announcement(fixture_id, message_id="789012")
-
-        mock_message.channel.id = 789012
-        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
-
-        result = await handler.on_message_edit(mock_message, mock_message)
-
-        assert result is True
-
-        # Verify prediction was updated as late
-        predictions = await handler.db.get_all_predictions(fixture_id)
-        assert len(predictions) == 1
-        assert predictions[0]["is_late"]
-
-    @pytest.mark.asyncio
-    @pytest.mark.usefixtures("fixture_with_thread")
-    async def test_handles_invalid_format_on_edit(self, handler, mock_message):
-        """Should DM user when edited predictions have format errors."""
-        mock_message.channel.id = 789012
-        # Must provide exactly 3 lines for 3 games
-        mock_message.content = "Team A - Team B invalid\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
-
-        result = await handler.on_message_edit(mock_message, mock_message)
-
-        assert result is True
-        assert "❌" in mock_message.reactions_added
-        assert len(mock_message.author.dm_sent) == 1
-        assert "Invalid predictions" in mock_message.author.dm_sent[0]
-
-
 class TestEdgeCases:
     """Test suite for edge cases and boundary conditions."""
-
-    @pytest.mark.asyncio
-    @pytest.mark.usefixtures("fixture_with_thread")
-    async def test_handles_reaction_not_found(self, handler, mock_message, monkeypatch):
-        """Should handle NotFound exception when removing reactions (e.g. not present)."""
-        import discord
-
-        async def raise_not_found(*_args, **_kwargs):
-            raise discord.NotFound(MagicMock(), "Reaction not found")
-
-        mock_message.channel.id = 789012
-        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
-
-        # We need to test on_message_edit specifically as that's where remove_reaction is called
-        # Mock remove_reaction to raise NotFound
-        monkeypatch.setattr(mock_message, "remove_reaction", raise_not_found)
-
-        # Should return True and SUCCEED (suppressing NotFound)
-        result = await handler.on_message_edit(mock_message, mock_message)
-        assert result is True
-
-        # Verify NO error DM was sent
-        assert len(mock_message.author.dm_sent) == 0
-        # Verify success reaction was added
-        assert "✅" in mock_message.reactions_added
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_thread")
@@ -391,38 +279,6 @@ class TestIntegration:
     """Integration tests for full workflow scenarios."""
 
     @pytest.mark.asyncio
-    async def test_full_workflow_create_predict_edit(
-        self, handler, database, mock_message, sample_games
-    ):
-        """Test complete workflow: create fixture → predict → edit."""
-        # Create fixture
-        deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_id = await database.create_fixture(1, sample_games, deadline)
-        await database.update_fixture_announcement(fixture_id, message_id="789012")
-
-        mock_message.channel.id = 789012
-
-        # Step 1: Submit prediction
-        mock_message.content = "Team A - Team B 1-0\nTeam C - Team D 0-0\nTeam E - Team F 1-2"
-        result = await handler.on_message(mock_message)
-        assert result is True
-        assert "✅" in mock_message.reactions_added
-
-        predictions = await database.get_all_predictions(fixture_id)
-        assert len(predictions) == 1
-        initial_pred = predictions[0]
-        assert initial_pred["user_id"] == "123456"
-
-        # Step 2: Edit prediction
-        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-0"
-        result = await handler.on_message_edit(mock_message, mock_message)
-        assert result is True
-
-        predictions = await database.get_all_predictions(fixture_id)
-        assert len(predictions) == 1
-        # Prediction should be updated
-
-    @pytest.mark.asyncio
     async def test_multiple_users_same_thread(
         self, handler, database, sample_games, mock_thread, mock_guild
     ):
@@ -464,31 +320,3 @@ class TestIntegration:
         assert len(predictions) == 2
         user_ids = {p["user_id"] for p in predictions}
         assert user_ids == {"111", "222"}
-
-    @pytest.mark.asyncio
-    async def test_late_prediction_then_on_time_edit(
-        self, handler, database, mock_message, sample_games
-    ):
-        """Test scenario: late prediction submitted, then edited after deadline still late."""
-        # Create fixture with past deadline
-        deadline = datetime.now(UTC) - timedelta(hours=1)
-        fixture_id = await database.create_fixture(1, sample_games, deadline)
-        await database.update_fixture_announcement(fixture_id, message_id="789012")
-
-        mock_message.channel.id = 789012
-
-        # Submit late prediction
-        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
-        result = await handler.on_message(mock_message)
-        assert result is True
-
-        predictions = await database.get_all_predictions(fixture_id)
-        assert predictions[0]["is_late"]
-
-        # Edit prediction (still late)
-        mock_message.content = "Team A - Team B 3-0\nTeam C - Team D 2-1\nTeam E - Team F 1-1"
-        result = await handler.on_message_edit(mock_message, mock_message)
-        assert result is True
-
-        predictions = await database.get_all_predictions(fixture_id)
-        assert predictions[0]["is_late"]  # Still marked as late

@@ -456,43 +456,6 @@ class TestOnMessage:
             mock_set_trace.assert_called_once_with("msg-123456")
 
 
-class TestOnMessageEdit:
-    """Test suite for on_message_edit event handler."""
-
-    @pytest.fixture
-    def bot_instance(self):
-        with patch("typer_bot.bot.commands.Bot.__init__", return_value=None):
-            bot = TyperBot.__new__(TyperBot)
-            bot.thread_handler = MagicMock()
-            bot.thread_handler.on_message_edit = AsyncMock(return_value=False)
-            yield bot
-
-    @pytest.mark.asyncio
-    async def test_on_message_edit_ignores_bots(self, bot_instance):
-        """Bot edits are ignored."""
-        mock_before = MagicMock()
-        mock_after = MagicMock()
-        mock_after.author.bot = True
-
-        with patch("typer_bot.bot.set_trace_id") as mock_set_trace:
-            await bot_instance.on_message_edit(mock_before, mock_after)
-            mock_set_trace.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_on_message_edit_sets_trace_id(self, bot_instance):
-        """Trace ID on edits enables observability for prediction corrections."""
-        mock_before = MagicMock()
-        mock_after = MagicMock()
-        mock_after.author.bot = False
-        mock_after.id = 123456
-
-        with patch("typer_bot.bot.set_trace_id") as mock_set_trace:
-            with suppress(AttributeError):  # Expected - parent doesn't have on_message_edit
-                await bot_instance.on_message_edit(mock_before, mock_after)
-
-            mock_set_trace.assert_called_once_with("edit-123456")
-
-
 class TestOnInteraction:
     """Test suite for on_interaction event handler."""
 

@@ -75,28 +75,6 @@ class TyperBot(commands.Bot):
             clear_log_context()
             clear_trace_id()
 
-    async def on_message_edit(self, before: discord.Message, after: discord.Message):
-        """Handle message edits, including thread prediction updates."""
-        if after.author.bot:
-            return
-
-        set_trace_id(f"edit-{after.id}")
-
-        user_id = str(after.author.id)
-        guild_id = str(after.guild.id) if after.guild else None
-        source = "thread" if isinstance(after.channel, discord.Thread) else "dm"
-        set_log_context(user_id=user_id, guild_id=guild_id, source=source)
-
-        try:
-            handled = await self.thread_handler.on_message_edit(before, after)
-            if handled:
-                return
-        finally:
-            from typer_bot.utils.logger import clear_log_context, clear_trace_id
-
-            clear_log_context()
-            clear_trace_id()
-
     async def on_message_delete(self, message: discord.Message):
         """Handle message deletions."""
         if message.author.bot:
