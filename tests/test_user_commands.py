@@ -249,7 +249,10 @@ class TestOnMessageEdit:
 
     @pytest.mark.asyncio
     async def test_edit_ignored_if_content_unchanged(
-        self, user_commands, _fixture_with_dm, mock_message
+        self,
+        user_commands,
+        fixture_with_dm,  # noqa: ARG002
+        mock_message,
     ):
         """Test that edit with same content is ignored."""
         mock_message.guild = None  # DM message
