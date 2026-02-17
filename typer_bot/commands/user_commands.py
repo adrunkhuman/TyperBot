@@ -1,5 +1,7 @@
 """User-facing Discord commands."""
 
+import logging
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -13,8 +15,7 @@ from typer_bot.utils import (
     parse_line_predictions,
 )
 
-# user_id -> (fixture_id, games)
-pending_predictions = {}
+logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_LENGTH = 5000
 
@@ -27,44 +28,32 @@ class UserCommands(commands.Cog):
         # TyperBot sets db attr dynamically; discord.py typing doesn't track custom attrs
         self.db: Database = bot.db  # type: ignore
 
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        """Listen for DMs with predictions."""
-        import logging
+    async def _process_prediction_message(self, message: discord.Message, is_edit: bool = False):
+        """Process predictions from DMs (new messages or edits).
 
-        logger = logging.getLogger(__name__)
-
+        For edits with invalid format, keeps old prediction and asks to resubmit.
+        """
         if message.author.bot or message.guild is not None:
             return
 
         user_id = str(message.author.id)
-        logger.info(
-            f"[USER] on_message from user {user_id}, pending_predictions={user_id in pending_predictions}"
-        )
-        if user_id not in pending_predictions:
-            return
+        action = "edit" if is_edit else "message"
+        logger.info(f"[USER] on_{action} from user {user_id}")
 
         if len(message.content) > MAX_MESSAGE_LENGTH:
             await message.author.send(f"❌ Message too long! (max {MAX_MESSAGE_LENGTH} characters)")
-            pending_predictions.pop(user_id, None)
             return
 
-        fixture_id, games = pending_predictions.pop(user_id)
-
-        # Check if already submitted via thread (race condition prevention)
-        existing = await self.db.get_prediction(fixture_id, user_id)
-        if existing:
+        fixture = await self.db.get_current_fixture()
+        if not fixture:
             await message.author.send(
-                "ℹ️ You already submitted predictions for this fixture. "
-                "Use `/predict` if you want to update them."
+                "ℹ️ No active fixture at the moment. "
+                "Ask an admin to create one, or check back later!"
             )
             return
 
-        fixture = await self.db.get_fixture_by_id(fixture_id)
-
-        if not fixture:
-            await message.author.send("❌ Error: Fixture no longer exists.")
-            return
+        games = fixture["games"]
+        fixture_id = fixture["id"]
 
         processing_msg = await message.author.send("⏳ Processing your predictions...")
 
@@ -76,21 +65,37 @@ class UserCommands(commands.Cog):
 
             if errors:
                 error_msg = "\n".join(errors)
-                await processing_msg.edit(
-                    content=f"❌ **Invalid predictions:**\n```{error_msg}```\n\n"
-                    f"Please send your predictions again in this format:\n"
-                    f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
-                )
-                pending_predictions[user_id] = (fixture_id, games)
+                if is_edit:
+                    await processing_msg.edit(
+                        content=f"❌ **Invalid predictions - your previous predictions are kept:**\n"
+                        f"```{error_msg}```\n\n"
+                        f"Please edit your message again with valid predictions:\n"
+                        f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
+                    )
+                else:
+                    await processing_msg.edit(
+                        content=f"❌ **Invalid predictions:**\n```{error_msg}```\n\n"
+                        f"Please send your predictions again in this format:\n"
+                        f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
+                    )
                 return
 
-            preview_lines = ["**Your Predictions:**\n"]
+            await self.db.save_prediction(
+                fixture_id,
+                user_id,
+                message.author.display_name,
+                predictions,
+                is_late,
+            )
+
+            preview_lines = ["**Predictions saved!**\n"]
             for i, (game, pred) in enumerate(zip(games, predictions, strict=False), 1):
                 preview_lines.append(f"{i}. {game} **{pred}**")
 
             deadline_str = format_for_discord(fixture["deadline"], "F")
             relative_str = format_for_discord(fixture["deadline"], "R")
             preview_lines.append(f"\n**Deadline:** {deadline_str} ({relative_str})")
+            preview_lines.append("\n*Edit your message to update before deadline.*")
 
             late_warning = ""
             if is_late:
@@ -100,53 +105,38 @@ class UserCommands(commands.Cog):
 
             preview_text = "\n".join(preview_lines)
 
-            view = PredictionConfirmView(
-                self.db,
-                fixture_id,
-                message.author.id,
-                message.author.display_name,
-                predictions,
-                is_late,
-                preview_text,
-            )
-
-            await processing_msg.edit(
-                content=f"{preview_text}{late_warning}\n\nSubmit these predictions?", view=view
-            )
+            await processing_msg.edit(content=f"{preview_text}{late_warning}", view=None)
 
         except Exception as e:
-            import logging
-
-            logger = logging.getLogger(__name__)
             logger.error(f"Error processing predictions: {e}", exc_info=True)
             await processing_msg.edit(
                 content=f"❌ Error processing predictions: {e}\n\nPlease try again."
             )
-            pending_predictions[user_id] = (fixture_id, games)
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """Listen for DMs with predictions."""
+        await self._process_prediction_message(message, is_edit=False)
+
+    @commands.Cog.listener()
+    async def on_message_edit(self, before: discord.Message, after: discord.Message):
+        """Listen for DM edits to update predictions."""
+        if before.content == after.content:
+            return
+        await self._process_prediction_message(after, is_edit=True)
 
     @app_commands.command(
         name="predict", description="Submit your predictions for this week's fixtures"
     )
     @app_commands.checks.cooldown(1, 1.0)
     async def predict(self, interaction: discord.Interaction):
-        """Initiate prediction submission via DM."""
+        """Send fixture list to user via DM."""
         fixture = await self.db.get_current_fixture()
         if not fixture:
             await interaction.response.send_message(
                 "❌ No active fixture found! Ask an admin to create one.", ephemeral=True
             )
             return
-
-        existing = await self.db.get_prediction(fixture["id"], str(interaction.user.id))
-        if existing:
-            await interaction.response.send_message(
-                "You already submitted predictions for this week!\n"
-                "Use `/mypredictions` to view them.",
-                ephemeral=True,
-            )
-            return
-
-        pending_predictions[str(interaction.user.id)] = (fixture["id"], fixture["games"])
 
         await interaction.response.send_message(
             "📩 Check your DMs! I've sent you the fixture list to predict.", ephemeral=True
@@ -170,7 +160,6 @@ class UserCommands(commands.Cog):
                 "```",
             ]
         )
-        # Show comma-separated example
         example_games = fixture["games"][:2] if len(fixture["games"]) >= 2 else fixture["games"]
         example_preds = [f"{game} 2:0" for game in example_games]
         if len(fixture["games"]) > 2:
@@ -189,7 +178,6 @@ class UserCommands(commands.Cog):
         try:
             await interaction.user.send("\n".join(lines))
         except discord.Forbidden:
-            pending_predictions.pop(str(interaction.user.id), None)
             await interaction.followup.send(
                 "❌ I can't send you DMs. Please enable DMs from server members and try again.",
                 ephemeral=True,
@@ -222,10 +210,10 @@ class UserCommands(commands.Cog):
 4. Edit your message anytime before deadline to update
 
 **Method 2: DM Predictions**
-1. Type `/predict` in the channel
+1. Type `/predict` in the channel (or DM the bot directly)
 2. Bot sends you a DM with the fixture list
-3. Reply with your predictions
-4. Confirm to save
+3. Reply with your predictions - they are saved immediately!
+4. Edit your message to update before deadline
 
 **Scoring:**
 • Exact score: 3 points
@@ -235,7 +223,7 @@ class UserCommands(commands.Cog):
 
 **Input formats:** Use `2:0`, `2-0`, or `2 : 0`
 
-**Editing:** You can edit your prediction message before the deadline. Deleting your message removes your prediction."""
+**Editing:** You can edit your prediction message before the deadline."""
 
         admin_help = """\n\n## 🔧 Admin Commands
 
@@ -357,60 +345,6 @@ class UserCommands(commands.Cog):
                 f"**Status:** {late_status}",
                 f"**Submitted:** {submitted}",
             ]
-        )
-
-        await interaction.response.send_message("\n".join(lines), ephemeral=True)
-
-
-class PredictionConfirmView(discord.ui.View):
-    """View for confirming predictions."""
-
-    def __init__(
-        self,
-        db: Database,
-        fixture_id: int,
-        user_id: int,
-        user_name: str,
-        predictions: list[str],
-        is_late: bool,
-        preview: str,
-    ):
-        super().__init__(timeout=120)
-        self.db = db
-        self.fixture_id = fixture_id
-        self.user_id = user_id
-        self.user_name = user_name
-        self.predictions = predictions
-        self.is_late = is_late
-        self.preview = preview
-
-    async def on_timeout(self):
-        pending_predictions.pop(str(self.user_id), None)
-
-    @discord.ui.button(label="✅ Submit Predictions", style=discord.ButtonStyle.green)
-    async def confirm(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        """Save predictions with fresh username from Discord."""
-        pending_predictions.pop(str(self.user_id), None)
-
-        # Use fresh username from Discord instead of cached value
-        fresh_user_name = interaction.user.display_name
-
-        await self.db.save_prediction(
-            self.fixture_id, str(self.user_id), fresh_user_name, self.predictions, self.is_late
-        )
-
-        status = " (late penalty applied)" if self.is_late else ""
-        await interaction.response.edit_message(
-            content=f"✅ **Predictions saved{status}!**\n\n{self.preview}", view=None
-        )
-
-    @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red)
-    async def cancel(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        """Cancel predictions."""
-        pending_predictions.pop(str(self.user_id), None)
-
-        await interaction.response.edit_message(
-            content="❌ Predictions cancelled. Use `/predict` to try again.", view=None
         )
 
 

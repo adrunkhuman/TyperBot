@@ -118,7 +118,7 @@ uv run pytest --tb=short         # Shorter traceback output
 - **Double Digits:** Scores like `10-0` are allowed.
 - **Format:** Users provide flexible separators (`-`, `:`, `–`).
 - **History:** `archive/` folder contains SQL files auto-imported on first run (empty DB).
-- **Rate Limiting:** Thread predictions limited to 1/second per user. DM predictions use confirmation buttons (no rate limit needed).
+- **Rate Limiting:** Thread predictions limited to 1/second per user. DM predictions have no rate limit.
 - **Session Timeouts:** Fixture creation and results entry DM flows auto-expire after 1 hour of inactivity.
 - **Token Safety:** Bot validates DISCORD_TOKEN at startup (rejects placeholders like "your_bot_token_here"). Token values are never logged.
 
