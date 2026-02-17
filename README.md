@@ -36,9 +36,9 @@ Bot requires:
 3. Bot reacts ✅ when saved. Edit your message anytime before the deadline to update.
 
 **Method 2: DM Predictions**
-1. Type `/predict` -> Bot DMs you the games
-2. Reply with scores (same format as above)
-3. Confirm via the button
+1. Type `/predict` (or DM the bot directly) -> Bot DMs you the games
+2. Reply with scores (same format as above) -> Predictions saved immediately!
+3. Edit your message anytime before the deadline to update
 
 **Check**: `/mypredictions` to see what you sent.
 **Flex**: `/standings` to see the table.
