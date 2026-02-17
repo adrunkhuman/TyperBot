@@ -9,6 +9,7 @@ from discord import ui
 
 from typer_bot.database import Database
 from typer_bot.utils import APP_TZ, format_for_discord, now
+from typer_bot.utils.logger import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,15 @@ class FixtureCreationHandler:
             "step": "games",
             "created_at": now(),
         }
+        log_event(
+            logger,
+            event_type="session.fixture.started",
+            message="Fixture creation session started",
+            level=logging.DEBUG,
+            user_id=user_id,
+            guild_id=guild_id,
+            step="games",
+        )
 
     def has_session(self, user_id: str) -> bool:
         """Check if user has an active fixture creation session."""
@@ -247,12 +257,29 @@ class FixtureCreationHandler:
         self, user_id: str, week_number: int, games: list, deadline: datetime
     ) -> None:
         """Create the fixture in the database."""
-        await self.db.create_fixture(week_number, games, deadline)
+        fixture_id = await self.db.create_fixture(week_number, games, deadline)
         _pending_fixtures.pop(user_id, None)
+        log_event(
+            logger,
+            event_type="fixture.created",
+            message=f"Fixture created: Week {week_number}",
+            user_id=user_id,
+            fixture_id=fixture_id,
+            week_number=week_number,
+            games_count=len(games),
+        )
 
-    def cancel_session(self, user_id: str) -> None:
+    def cancel_session(self, user_id: str, reason: str = "cancelled") -> None:
         """Cancel the fixture creation session."""
         _pending_fixtures.pop(user_id, None)
+        log_event(
+            logger,
+            event_type="session.fixture.completed",
+            message=f"Fixture creation session {reason}",
+            level=logging.DEBUG,
+            user_id=user_id,
+            reason=reason,
+        )
 
 
 class DeadlineChoiceView(ui.View):
@@ -366,5 +393,5 @@ class FixtureConfirmView(ui.View):
     @ui.button(label="Cancel", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, _button: ui.Button):
         """Cancel fixture creation."""
-        self.handler.cancel_session(self.user_id)
+        self.handler.cancel_session(self.user_id, reason="user_cancelled")
         await interaction.response.edit_message(content="Fixture creation cancelled.", view=None)

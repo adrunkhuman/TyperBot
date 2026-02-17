@@ -1,6 +1,7 @@
 """SQLite database operations for the prediction bot."""
 
 import logging
+import time
 from datetime import datetime
 
 import aiosqlite
@@ -94,6 +95,7 @@ class Database:
             from typer_bot.utils import APP_TZ
 
             deadline = deadline.replace(tzinfo=APP_TZ)
+        start_time = time.perf_counter()
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
                 "INSERT INTO fixtures (week_number, games, deadline) VALUES (?, ?, ?)",
@@ -103,6 +105,18 @@ class Database:
             # Runtime check for type narrowing (replaces assert)
             if cursor.lastrowid is None:
                 raise RuntimeError("Failed to create fixture: lastrowid is None")
+
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.debug(
+                "db.create_fixture completed",
+                extra={
+                    "operation": "db.create_fixture",
+                    "week_number": week_number,
+                    "fixture_id": cursor.lastrowid,
+                    "duration_ms": round(duration_ms, 2),
+                    "games_count": len(games),
+                },
+            )
             return cursor.lastrowid
 
     def _row_to_fixture(self, row: aiosqlite.Row) -> dict:
@@ -174,8 +188,9 @@ class Database:
         is_late: bool = False,
     ):
         """Save or update a user's predictions."""
+        start_time = time.perf_counter()
         async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(
+            cursor = await db.execute(
                 """INSERT INTO predictions (fixture_id, user_id, user_name, predictions, is_late)
                    VALUES (?, ?, ?, ?, ?)
                    ON CONFLICT(fixture_id, user_id)
@@ -185,6 +200,19 @@ class Database:
                 (fixture_id, user_id, user_name, "\n".join(predictions), is_late),
             )
             await db.commit()
+
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.debug(
+                "db.save_prediction completed",
+                extra={
+                    "operation": "db.save_prediction",
+                    "fixture_id": fixture_id,
+                    "user_id": user_id,
+                    "duration_ms": round(duration_ms, 2),
+                    "rows_affected": cursor.rowcount,
+                    "is_late": is_late,
+                },
+            )
 
     async def get_prediction(self, fixture_id: int, user_id: str) -> dict | None:
         """Get a user's predictions for a fixture."""
@@ -236,12 +264,24 @@ class Database:
 
     async def save_results(self, fixture_id: int, results: list[str]):
         """Save actual results for a fixture."""
+        start_time = time.perf_counter()
         async with aiosqlite.connect(self.db_path) as db:
-            await db.execute(
+            cursor = await db.execute(
                 "INSERT OR REPLACE INTO results (fixture_id, results) VALUES (?, ?)",
                 (fixture_id, "\n".join(results)),
             )
             await db.commit()
+
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.debug(
+                "db.save_results completed",
+                extra={
+                    "operation": "db.save_results",
+                    "fixture_id": fixture_id,
+                    "duration_ms": round(duration_ms, 2),
+                    "rows_affected": cursor.rowcount,
+                },
+            )
 
     async def get_results(self, fixture_id: int) -> list[str] | None:
         """Get results for a fixture."""
@@ -256,6 +296,18 @@ class Database:
 
     async def save_scores(self, fixture_id: int, scores: list[dict]):
         """Save calculated scores for a fixture atomically."""
+        start_time = time.perf_counter()
+        operation = "db.save_scores.transaction"
+
+        logger.debug(
+            "Transaction started",
+            extra={
+                "operation": operation,
+                "fixture_id": fixture_id,
+                "event_type": "transaction.begin",
+            },
+        )
+
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("BEGIN")
             try:
@@ -278,11 +330,42 @@ class Database:
                     "UPDATE fixtures SET status = 'closed' WHERE id = ?", (fixture_id,)
                 )
                 await db.commit()
-            except aiosqlite.Error:
+
+                duration_ms = (time.perf_counter() - start_time) * 1000
+                logger.debug(
+                    "Transaction committed",
+                    extra={
+                        "operation": operation,
+                        "fixture_id": fixture_id,
+                        "duration_ms": round(duration_ms, 2),
+                        "scores_count": len(scores),
+                        "event_type": "transaction.commit",
+                    },
+                )
+            except aiosqlite.Error as e:
+                duration_ms = (time.perf_counter() - start_time) * 1000
                 try:
                     await db.rollback()
+                    logger.debug(
+                        "Transaction rolled back",
+                        extra={
+                            "operation": operation,
+                            "fixture_id": fixture_id,
+                            "duration_ms": round(duration_ms, 2),
+                            "event_type": "transaction.rollback",
+                        },
+                    )
                 except aiosqlite.Error as rb_err:
-                    logger.warning(f"Rollback failed after save_scores error: {rb_err}")
+                    logger.warning(
+                        "Rollback failed after save_scores error",
+                        extra={
+                            "operation": operation,
+                            "fixture_id": fixture_id,
+                            "rollback_error": str(rb_err),
+                            "original_error": str(e),
+                            "event_type": "transaction.rollback_failed",
+                        },
+                    )
                 raise
 
     async def get_standings(self) -> list[dict]:

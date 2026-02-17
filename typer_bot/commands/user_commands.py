@@ -14,6 +14,7 @@ from typer_bot.utils import (
     now,
     parse_line_predictions,
 )
+from typer_bot.utils.logger import LogContextManager, log_event
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +39,8 @@ class UserCommands(commands.Cog):
 
         user_id = str(message.author.id)
         action = "edit" if is_edit else "message"
-        logger.info(f"[USER] on_{action} from user {user_id}")
 
+        # Check message length first (before fetching fixture)
         if len(message.content) > MAX_MESSAGE_LENGTH:
             await message.author.send(f"❌ Message too long! (max {MAX_MESSAGE_LENGTH} characters)")
             return
@@ -55,63 +56,98 @@ class UserCommands(commands.Cog):
         games = fixture["games"]
         fixture_id = fixture["id"]
 
-        processing_msg = await message.author.send("⏳ Processing your predictions...")
+        with LogContextManager(user_id=user_id, fixture_id=fixture_id, source="dm"):
+            logger.debug(f"Processing DM {action} from user {user_id}")
 
-        try:
-            current_time = now()
-            is_late = current_time > fixture["deadline"]
+            processing_msg = await message.author.send("⏳ Processing your predictions...")
 
-            predictions, errors = parse_line_predictions(message.content, games)
+            try:
+                current_time = now()
+                is_late = current_time > fixture["deadline"]
 
-            if errors:
-                error_msg = "\n".join(errors)
-                if is_edit:
-                    await processing_msg.edit(
-                        content=f"❌ **Invalid predictions - your previous predictions are kept:**\n"
-                        f"```{error_msg}```\n\n"
-                        f"Please edit your message again with valid predictions:\n"
-                        f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
+                predictions, errors = parse_line_predictions(message.content, games)
+
+                if errors:
+                    error_msg = "\n".join(errors)
+                    log_event(
+                        logger,
+                        event_type="prediction.dm_parse_failed",
+                        message="Invalid prediction format in DM",
+                        level=logging.WARNING,
+                        user_id=user_id,
+                        fixture_id=fixture_id,
+                        source="dm",
+                        errors_count=len(errors),
                     )
-                else:
-                    await processing_msg.edit(
-                        content=f"❌ **Invalid predictions:**\n```{error_msg}```\n\n"
-                        f"Please send your predictions again in this format:\n"
-                        f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
-                    )
-                return
+                    if is_edit:
+                        await processing_msg.edit(
+                            content=f"❌ **Invalid predictions - your previous predictions are kept:**\n"
+                            f"```{error_msg}```\n\n"
+                            f"Please edit your message again with valid predictions:\n"
+                            f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
+                        )
+                    else:
+                        await processing_msg.edit(
+                            content=f"❌ **Invalid predictions:**\n```{error_msg}```\n\n"
+                            f"Please send your predictions again in this format:\n"
+                            f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
+                        )
+                    return
 
-            await self.db.save_prediction(
-                fixture_id,
-                user_id,
-                message.author.display_name,
-                predictions,
-                is_late,
-            )
-
-            preview_lines = ["**Predictions saved!**\n"]
-            for i, (game, pred) in enumerate(zip(games, predictions, strict=False), 1):
-                preview_lines.append(f"{i}. {game} **{pred}**")
-
-            deadline_str = format_for_discord(fixture["deadline"], "F")
-            relative_str = format_for_discord(fixture["deadline"], "R")
-            preview_lines.append(f"\n**Deadline:** {deadline_str} ({relative_str})")
-            preview_lines.append("\n*Edit your message to update before deadline.*")
-
-            late_warning = ""
-            if is_late:
-                late_warning = (
-                    "\n\n⚠️ **Late prediction!** You will receive 0 points for this round."
+                await self.db.save_prediction(
+                    fixture_id,
+                    user_id,
+                    message.author.display_name,
+                    predictions,
+                    is_late,
                 )
 
-            preview_text = "\n".join(preview_lines)
+                event_type = "prediction.updated" if is_edit else "prediction.saved"
+                log_event(
+                    logger,
+                    event_type=event_type,
+                    message=f"DM prediction {action}d successfully",
+                    user_id=user_id,
+                    fixture_id=fixture_id,
+                    source="dm",
+                    predictions_count=len(predictions),
+                    is_late=is_late,
+                )
 
-            await processing_msg.edit(content=f"{preview_text}{late_warning}", view=None)
+                preview_lines = ["**Predictions saved!**\n"]
+                for i, (game, pred) in enumerate(zip(games, predictions, strict=False), 1):
+                    preview_lines.append(f"{i}. {game} **{pred}**")
 
-        except Exception as e:
-            logger.error(f"Error processing predictions: {e}", exc_info=True)
-            await processing_msg.edit(
-                content=f"❌ Error processing predictions: {e}\n\nPlease try again."
-            )
+                deadline_str = format_for_discord(fixture["deadline"], "F")
+                relative_str = format_for_discord(fixture["deadline"], "R")
+                preview_lines.append(f"\n**Deadline:** {deadline_str} ({relative_str})")
+                preview_lines.append("\n*Edit your message to update before deadline.*")
+
+                late_warning = ""
+                if is_late:
+                    late_warning = (
+                        "\n\n⚠️ **Late prediction!** You will receive 0 points for this round."
+                    )
+
+                preview_text = "\n".join(preview_lines)
+
+                await processing_msg.edit(content=f"{preview_text}{late_warning}", view=None)
+
+            except Exception as e:
+                logger.error(
+                    f"Error processing predictions: {e}",
+                    exc_info=True,
+                    extra={
+                        "event_type": "prediction.save_failed",
+                        "user_id": user_id,
+                        "fixture_id": fixture_id,
+                        "source": "dm",
+                        "error_type": type(e).__name__,
+                    },
+                )
+                await processing_msg.edit(
+                    content=f"❌ Error processing predictions: {e}\n\nPlease try again."
+                )
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
