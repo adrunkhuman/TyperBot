@@ -101,7 +101,15 @@ class MockUser:
 
     async def send(self, content: str, **_kwargs):
         self.dm_sent.append(content)
-        return MagicMock()
+
+        dm_sent = self.dm_sent
+
+        class MockDMMessage:
+            async def edit(self, content=None, **_kwargs):
+                if content:
+                    dm_sent.append(content)
+
+        return MockDMMessage()
 
 
 class MockMessage:
@@ -183,6 +191,15 @@ async def fixture_with_thread(database, sample_games):
 
 
 @pytest.fixture
+async def fixture_with_dm(database, sample_games):
+    """Fixture for DM prediction tests (no thread needed)."""
+    deadline = datetime.now(UTC) + timedelta(days=1)
+    fixture_id = await database.create_fixture(1, sample_games, deadline)
+    fixture = await database.get_fixture_by_id(fixture_id)
+    yield fixture
+
+
+@pytest.fixture
 def handler(mock_bot, database):
     return ThreadPredictionHandler(mock_bot, database)
 
@@ -256,8 +273,20 @@ class MockInteraction:
 
         self.response = MagicMock()
         self.response.is_done.return_value = False
+        self.response.send_message = self._response_send_message
 
         self.followup = MagicMock()
+        self.followup.send = self._followup_send
+
+    async def _response_send_message(self, content: str = None, **kwargs):
+        msg = {"content": content}
+        msg.update(kwargs)
+        self.response_sent.append(msg)
+
+    async def _followup_send(self, content: str = None, **kwargs):
+        msg = {"content": content}
+        msg.update(kwargs)
+        self.followup_sent.append(msg)
 
     async def response_send_message(self, content: str = None, **kwargs):
         msg = {"content": content}
