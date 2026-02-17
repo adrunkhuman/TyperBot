@@ -71,8 +71,6 @@ class MockThread(discord.Thread):
 
 
 class MockGuild:
-    """Mock Discord guild for testing."""
-
     def __init__(self, guild_id: str = "111111"):
         self.id = int(guild_id)
         self.name = "Test Guild"
@@ -90,8 +88,6 @@ class MockGuild:
 
 
 class MockUser:
-    """Mock Discord user for testing."""
-
     def __init__(self, user_id: str = "123456", name: str = "TestUser"):
         self.id = int(user_id)
         self.name = name
@@ -113,8 +109,6 @@ class MockUser:
 
 
 class MockMessage:
-    """Mock Discord message for testing."""
-
     def __init__(
         self,
         content: str = "",
@@ -127,7 +121,8 @@ class MockMessage:
         self.content = content
         self.author = author or MockUser()
         self.channel = channel or MockThread()
-        self.guild = guild or MockGuild()
+        # Allow None guild for DM messages
+        self.guild = guild
 
         self.reactions_added = []
         self.reactions_cleared = False

@@ -28,14 +28,17 @@ class UserCommands(commands.Cog):
         # TyperBot sets db attr dynamically; discord.py typing doesn't track custom attrs
         self.db: Database = bot.db  # type: ignore
 
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        """Listen for DMs with predictions."""
+    async def _process_prediction_message(self, message: discord.Message, is_edit: bool = False):
+        """Process predictions from DMs (new messages or edits).
+
+        For edits with invalid format, keeps old prediction and asks to resubmit.
+        """
         if message.author.bot or message.guild is not None:
             return
 
         user_id = str(message.author.id)
-        logger.info(f"[USER] on_message from user {user_id}")
+        action = "edit" if is_edit else "message"
+        logger.info(f"[USER] on_{action} from user {user_id}")
 
         if len(message.content) > MAX_MESSAGE_LENGTH:
             await message.author.send(f"❌ Message too long! (max {MAX_MESSAGE_LENGTH} characters)")
@@ -62,11 +65,19 @@ class UserCommands(commands.Cog):
 
             if errors:
                 error_msg = "\n".join(errors)
-                await processing_msg.edit(
-                    content=f"❌ **Invalid predictions:**\n```{error_msg}```\n\n"
-                    f"Please send your predictions again in this format:\n"
-                    f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
-                )
+                if is_edit:
+                    await processing_msg.edit(
+                        content=f"❌ **Invalid predictions - your previous predictions are kept:**\n"
+                        f"```{error_msg}```\n\n"
+                        f"Please edit your message again with valid predictions:\n"
+                        f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
+                    )
+                else:
+                    await processing_msg.edit(
+                        content=f"❌ **Invalid predictions:**\n```{error_msg}```\n\n"
+                        f"Please send your predictions again in this format:\n"
+                        f"```\n{games[0]} 2:0\n{games[1]} 1:1\n...\n```"
+                    )
                 return
 
             await self.db.save_prediction(
@@ -101,6 +112,18 @@ class UserCommands(commands.Cog):
             await processing_msg.edit(
                 content=f"❌ Error processing predictions: {e}\n\nPlease try again."
             )
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """Listen for DMs with predictions."""
+        await self._process_prediction_message(message, is_edit=False)
+
+    @commands.Cog.listener()
+    async def on_message_edit(self, before: discord.Message, after: discord.Message):
+        """Listen for DM edits to update predictions."""
+        if before.content == after.content:
+            return
+        await self._process_prediction_message(after, is_edit=True)
 
     @app_commands.command(
         name="predict", description="Submit your predictions for this week's fixtures"
