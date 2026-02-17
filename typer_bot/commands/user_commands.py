@@ -383,6 +383,8 @@ class UserCommands(commands.Cog):
             ]
         )
 
+        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
 
 async def setup(bot: commands.Bot):
     """Add cog to bot."""
