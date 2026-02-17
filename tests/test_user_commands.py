@@ -187,8 +187,10 @@ class TestEdgeCases:
 
         await user_commands.on_message(mock_message)
 
-        # Should still send a message (error notification)
-        assert len(mock_message.author.dm_sent) >= 1
+        # Should send processing + error messages
+        assert len(mock_message.author.dm_sent) == 2
+        error_msg = mock_message.author.dm_sent[-1]
+        assert "Error processing predictions" in error_msg
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")

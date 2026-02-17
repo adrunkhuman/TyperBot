@@ -1,5 +1,7 @@
 """User-facing Discord commands."""
 
+import logging
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -12,6 +14,8 @@ from typer_bot.utils import (
     now,
     parse_line_predictions,
 )
+
+logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_LENGTH = 5000
 
@@ -27,10 +31,6 @@ class UserCommands(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Listen for DMs with predictions."""
-        import logging
-
-        logger = logging.getLogger(__name__)
-
         if message.author.bot or message.guild is not None:
             return
 
@@ -51,10 +51,6 @@ class UserCommands(commands.Cog):
 
         games = fixture["games"]
         fixture_id = fixture["id"]
-
-        if len(message.content) > MAX_MESSAGE_LENGTH:
-            await message.author.send(f"❌ Message too long! (max {MAX_MESSAGE_LENGTH} characters)")
-            return
 
         processing_msg = await message.author.send("⏳ Processing your predictions...")
 
@@ -101,7 +97,6 @@ class UserCommands(commands.Cog):
             await processing_msg.edit(content=f"{preview_text}{late_warning}", view=None)
 
         except Exception as e:
-            logger = logging.getLogger(__name__)
             logger.error(f"Error processing predictions: {e}", exc_info=True)
             await processing_msg.edit(
                 content=f"❌ Error processing predictions: {e}\n\nPlease try again."
