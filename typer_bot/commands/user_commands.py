@@ -223,7 +223,7 @@ class UserCommands(commands.Cog):
 
 **Input formats:** Use `2:0`, `2-0`, or `2 : 0`
 
-**Editing:** You can edit your prediction message before the deadline. Deleting your message removes your prediction."""
+**Editing:** You can edit your prediction message before the deadline."""
 
         admin_help = """\n\n## 🔧 Admin Commands
 
