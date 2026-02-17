@@ -98,8 +98,8 @@ class TestFullWorkflow:
         assert scores[0]["points"] == 0
 
     @pytest.mark.asyncio
-    async def test_prediction_edits_update_correctly(self, database):
-        """Prediction edits update the existing record."""
+    async def test_prediction_resubmission_replaces_existing(self, database):
+        """Re-submitting a prediction replaces the existing one (upsert behavior)."""
         games = ["Team A - Team B", "Team C - Team D"]
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, games, deadline)
@@ -190,7 +190,7 @@ class TestDatabaseIntegrity:
 
     @pytest.mark.asyncio
     async def test_prediction_uniqueness_per_user_fixture(self, database):
-        """One prediction per user per fixture - edits update existing record."""
+        """One prediction per user per fixture - re-submission replaces existing."""
         games = ["Team A - Team B"]
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, games, deadline)
