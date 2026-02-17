@@ -21,8 +21,18 @@ from typer_bot.utils.db_backup import cleanup_old_backups, create_backup
 # Rate limiting: user_id -> timestamp
 _calculate_cooldowns: dict = {}
 CALCULATE_COOLDOWN = 30.0
+COOLDOWN_EXPIRY_HOURS = 1  # Cleanup entries older than this
 
 logger = logging.getLogger(__name__)
+
+
+def _cleanup_expired_cooldowns():
+    """Remove cooldown entries older than COOLDOWN_EXPIRY_HOURS."""
+    current_time = now().timestamp()
+    cutoff = current_time - (COOLDOWN_EXPIRY_HOURS * 3600)
+    expired = [uid for uid, ts in list(_calculate_cooldowns.items()) if ts < cutoff]
+    for uid in expired:
+        _calculate_cooldowns.pop(uid, None)
 
 
 def admin_only():
@@ -109,7 +119,7 @@ class AdminCommands(commands.Cog):
                 "One game per line."
             )
         except discord.Forbidden:
-            self.fixture_handler.cancel_session(user_id)
+            self.fixture_handler.cancel_session(user_id, reason="dm_forbidden")
             await interaction.followup.send(
                 "I can't send you DMs. Please enable DMs from server members and try again.",
                 ephemeral=True,
@@ -197,7 +207,7 @@ class AdminCommands(commands.Cog):
             )
             await interaction.user.send("\n".join(lines))
         except discord.Forbidden:
-            self.results_handler.cancel_session(user_id)
+            self.results_handler.cancel_session(user_id, reason="dm_forbidden")
             await interaction.followup.send(
                 "I can't send you DMs. Please enable DMs from server members and try again.",
                 ephemeral=True,
@@ -207,6 +217,8 @@ class AdminCommands(commands.Cog):
     @admin_only()
     async def results_calculate(self, interaction: discord.Interaction):
         """Calculate scores for current fixture and post results."""
+        _cleanup_expired_cooldowns()
+
         user_id = str(interaction.user.id)
         current_time = now().timestamp()
 

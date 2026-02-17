@@ -15,7 +15,7 @@ from typer_bot.database import Database
 from typer_bot.handlers.thread_prediction_handler import ThreadPredictionHandler
 from typer_bot.utils import format_for_discord, now
 from typer_bot.utils.config import IS_PRODUCTION
-from typer_bot.utils.logger import set_trace_id
+from typer_bot.utils.logger import set_log_context, set_trace_id
 
 logger = logging.getLogger(__name__)
 
@@ -42,24 +42,38 @@ class TyperBot(commands.Bot):
         logger.info("Database instance created")
 
     async def on_interaction(self, interaction: discord.Interaction):
-        """Set trace ID for every interaction before processing."""
-        # Use request ID format: req-<interaction_id>
+        """Set trace ID and context for every interaction before processing."""
         set_trace_id(f"req-{interaction.id}")
 
+        user_id = str(interaction.user.id) if interaction.user else None
+        guild_id = str(interaction.guild_id) if interaction.guild_id else None
+        set_log_context(user_id=user_id, guild_id=guild_id, source="command")
+
+        # ContextVars are task-local, so each interaction gets isolated context.
+
     async def on_message(self, message: discord.Message):
-        """Set trace ID for every message before processing."""
-        # Use message ID format: msg-<message_id>
+        """Set trace ID and context for every message before processing."""
         if message.author.bot:
             return
 
         set_trace_id(f"msg-{message.id}")
 
-        # Handle thread predictions first
-        handled = await self.thread_handler.on_message(message)
-        if handled:
-            return
+        user_id = str(message.author.id)
+        guild_id = str(message.guild.id) if message.guild else None
+        source = "thread" if isinstance(message.channel, discord.Thread) else "dm"
+        set_log_context(user_id=user_id, guild_id=guild_id, source=source)
 
-        await super().on_message(message)
+        try:
+            handled = await self.thread_handler.on_message(message)
+            if handled:
+                return
+
+            await super().on_message(message)
+        finally:
+            from typer_bot.utils.logger import clear_log_context, clear_trace_id
+
+            clear_log_context()
+            clear_trace_id()
 
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
         """Handle message edits, including thread prediction updates."""
@@ -68,10 +82,20 @@ class TyperBot(commands.Bot):
 
         set_trace_id(f"edit-{after.id}")
 
-        # Handle thread prediction edits
-        handled = await self.thread_handler.on_message_edit(before, after)
-        if handled:
-            return
+        user_id = str(after.author.id)
+        guild_id = str(after.guild.id) if after.guild else None
+        source = "thread" if isinstance(after.channel, discord.Thread) else "dm"
+        set_log_context(user_id=user_id, guild_id=guild_id, source=source)
+
+        try:
+            handled = await self.thread_handler.on_message_edit(before, after)
+            if handled:
+                return
+        finally:
+            from typer_bot.utils.logger import clear_log_context, clear_trace_id
+
+            clear_log_context()
+            clear_trace_id()
 
     async def on_message_delete(self, message: discord.Message):
         """Handle message deletions."""
@@ -79,6 +103,8 @@ class TyperBot(commands.Bot):
             return
 
         set_trace_id(f"del-{message.id}")
+        # ContextVars are task-local; cleanup automatic when task completes.
+        # No log_context set, so no cleanup needed.
 
     async def setup_hook(self):
         """Initialize database and load cogs."""
@@ -235,7 +261,20 @@ class TyperBot(commands.Bot):
 
     async def on_error(self, event_method, *_args, **_kwargs):
         """Handle uncaught errors."""
-        logger.exception(f"Error in {event_method}")
+        from typer_bot.utils.logger import get_log_context, get_trace_id
+
+        context = get_log_context()
+        trace_id = get_trace_id()
+
+        logger.exception(
+            f"Error in {event_method}",
+            extra={
+                "event_type": "error.unhandled",
+                "event_method": event_method,
+                "trace_id": trace_id,
+                **context,
+            },
+        )
 
     def cog_unload(self):
         """Clean up when bot shuts down."""

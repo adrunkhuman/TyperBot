@@ -9,6 +9,7 @@ from discord import ui
 
 from typer_bot.database import Database
 from typer_bot.utils import now, parse_line_predictions
+from typer_bot.utils.logger import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,15 @@ class ResultsEntryHandler:
             "guild_id": guild_id,
             "created_at": now(),
         }
+        log_event(
+            logger,
+            event_type="session.results.started",
+            message="Results entry session started",
+            level=logging.DEBUG,
+            user_id=user_id,
+            fixture_id=fixture_id,
+            guild_id=guild_id,
+        )
 
     def has_session(self, user_id: str) -> bool:
         """Check if user has an active results entry session."""
@@ -171,10 +181,26 @@ class ResultsEntryHandler:
         """Save results to the database."""
         await self.db.save_results(fixture_id, results)
         _pending_results.pop(user_id, None)
+        log_event(
+            logger,
+            event_type="results.entered",
+            message=f"Results entered for fixture {fixture_id}",
+            user_id=user_id,
+            fixture_id=fixture_id,
+            results_count=len(results),
+        )
 
-    def cancel_session(self, user_id: str) -> None:
+    def cancel_session(self, user_id: str, reason: str = "cancelled") -> None:
         """Cancel the results entry session."""
         _pending_results.pop(user_id, None)
+        logger.debug(
+            f"Results session {reason}",
+            extra={
+                "event_type": "session.results.completed",
+                "user_id": user_id,
+                "reason": reason,
+            },
+        )
 
 
 class ResultsConfirmView(ui.View):
@@ -210,7 +236,7 @@ class ResultsConfirmView(ui.View):
     @ui.button(label="Cancel", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, _button: ui.Button):
         """Cancel results entry."""
-        self.handler.cancel_session(self.user_id)
+        self.handler.cancel_session(self.user_id, reason="user_cancelled")
         await interaction.response.edit_message(
             content="Results entry cancelled. Use `/admin results enter` to try again.", view=None
         )
