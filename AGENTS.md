@@ -115,6 +115,7 @@ uv run pytest --tb=short         # Shorter traceback output
 ```
 
 ## 6. Known Quirks
+- **Handler Coordination:** The prediction handler (`user_commands.py`) checks `results_handler.has_results_session()` before processing DMs. This prevents admin's own predictions from being overwritten when they're entering results. Always check for conflicting sessions before processing DMs.
 - **Double Digits:** Scores like `10-0` are allowed.
 - **Format:** Users provide flexible separators (`-`, `:`, `–`).
 - **History:** `archive/` folder contains SQL files auto-imported on first run (empty DB).

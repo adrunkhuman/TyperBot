@@ -31,6 +31,26 @@ class TestOnMessage:
         assert len(mock_message.author.dm_sent) == 0
 
     @pytest.mark.asyncio
+    async def test_ignores_dms_during_results_entry(self, user_commands, mock_message):
+        """Prevent admin's existing predictions being marked late during results entry."""
+        from typer_bot.handlers.results_handler import _pending_results
+
+        mock_message.guild = None  # DM message
+        user_id = str(mock_message.author.id)
+
+        # Simulate active results entry session for this user
+        _pending_results[user_id] = {
+            "fixture_id": 1,
+            "guild_id": 123456,
+            "created_at": datetime.now(UTC),
+        }
+
+        await user_commands.on_message(mock_message)
+
+        # Should not send any response - message is handled by results handler
+        assert len(mock_message.author.dm_sent) == 0
+
+    @pytest.mark.asyncio
     async def test_rejects_message_too_long(self, user_commands, mock_message):
         mock_message.guild = None  # DM message
         mock_message.content = "x" * 5001
