@@ -406,15 +406,18 @@ class PostResultsConfirmView(discord.ui.View):
         message = format_standings(self.standings, self.fixture_data)
 
         try:
-            await self.channel.send(message)
             await interaction.response.edit_message(
                 content="Results posted without mentions!", view=None
             )
+            await self.channel.send(message)
         except Exception as e:
             logger.error(f"Failed to post results: {e}")
-            await interaction.response.edit_message(
-                content=f"Failed to post results: {e}", view=None
-            )
+            if not interaction.response.is_done():
+                await interaction.response.edit_message(
+                    content=f"Failed to post results: {e}", view=None
+                )
+            else:
+                await interaction.followup.send(f"Failed to post results: {e}")
 
     @discord.ui.button(label="YES", style=discord.ButtonStyle.green)
     async def with_mentions(self, interaction: discord.Interaction, _button: discord.ui.Button):
@@ -429,15 +432,18 @@ class PostResultsConfirmView(discord.ui.View):
         message += f"\n\n**Participants:**\n{' '.join(mentions)}"
 
         try:
-            await self.channel.send(message)
             await interaction.response.edit_message(
                 content="Results posted with mentions!", view=None
             )
+            await self.channel.send(message)
         except Exception as e:
             logger.error(f"Failed to post results: {e}")
-            await interaction.response.edit_message(
-                content=f"Failed to post results: {e}", view=None
-            )
+            if not interaction.response.is_done():
+                await interaction.response.edit_message(
+                    content=f"Failed to post results: {e}", view=None
+                )
+            else:
+                await interaction.followup.send(f"Failed to post results: {e}")
 
 
 async def setup(bot: commands.Bot):
