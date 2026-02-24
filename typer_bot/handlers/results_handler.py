@@ -34,6 +34,19 @@ def _cleanup_expired_sessions():
         logger.debug(f"Cleaned up expired results session for {user_id}")
 
 
+def has_results_session(user_id: str) -> bool:
+    """Check if user has an active results entry session.
+
+    Used by prediction handler to distinguish admin entering results
+    from regular predictions. Prevents bug where admin's own predictions
+    would be overwritten and marked late during results entry.
+
+    Side effect: Cleans up expired sessions older than SESSION_TIMEOUT_HOURS.
+    """
+    _cleanup_expired_sessions()
+    return user_id in _pending_results
+
+
 class ResultsEntryHandler:
     """Handles the DM workflow for entering results."""
 
@@ -61,8 +74,7 @@ class ResultsEntryHandler:
 
     def has_session(self, user_id: str) -> bool:
         """Check if user has an active results entry session."""
-        _cleanup_expired_sessions()
-        return user_id in _pending_results
+        return has_results_session(user_id)  # Delegate to module function
 
     async def handle_dm(
         self,

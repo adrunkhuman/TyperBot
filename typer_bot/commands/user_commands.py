@@ -7,6 +7,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from typer_bot.database import Database
+from typer_bot.handlers.results_handler import has_results_session
 from typer_bot.utils import (
     format_for_discord,
     format_standings,
@@ -35,6 +36,10 @@ class UserCommands(commands.Cog):
             return
 
         user_id = str(message.author.id)
+
+        # Prevent admin's existing predictions being marked late during results entry
+        if has_results_session(user_id):
+            return
 
         # Check message length first (before fetching fixture)
         if len(message.content) > MAX_MESSAGE_LENGTH:

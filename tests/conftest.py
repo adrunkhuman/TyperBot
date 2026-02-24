@@ -9,7 +9,14 @@ import discord
 import pytest
 
 from typer_bot.database import Database
+from typer_bot.handlers.results_handler import _pending_results
 from typer_bot.handlers.thread_prediction_handler import ThreadPredictionHandler
+
+
+@pytest.fixture(autouse=True)
+def clear_results_sessions():
+    _pending_results.clear()
+    yield
 
 
 @pytest.fixture
