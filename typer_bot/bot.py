@@ -261,28 +261,29 @@ class TyperBot(commands.Bot):
 
     @tasks.loop(minutes=1)
     async def reminder_task(self):
-        """Send reminders 24h and 1h before fixture deadline."""
+        """Send reminders 24h and 1h before each open fixture deadline."""
         current_time = now()
-        fixture = await self.db.get_current_fixture()
+        open_fixtures = await self.db.get_open_fixtures()
 
-        if not fixture:
+        if not open_fixtures:
             return
-
-        deadline = fixture["deadline"]
 
         # Compare minute-level precision to avoid double-sending
         def is_same_minute(t1, t2):
             return t1.replace(second=0, microsecond=0) == t2.replace(second=0, microsecond=0)
 
-        reminder_24h = deadline - timedelta(hours=24)
-        if is_same_minute(current_time, reminder_24h):
-            logger.info("Sending 24h reminder...")
-            await self.send_reminder(fixture, "24 hours remaining")
+        for fixture in open_fixtures:
+            deadline = fixture["deadline"]
 
-        reminder_1h = deadline - timedelta(hours=1)
-        if is_same_minute(current_time, reminder_1h):
-            logger.info("Sending 1h reminder...")
-            await self.send_reminder(fixture, "1 hour remaining")
+            reminder_24h = deadline - timedelta(hours=24)
+            if is_same_minute(current_time, reminder_24h):
+                logger.info(f"Sending 24h reminder for week {fixture['week_number']}...")
+                await self.send_reminder(fixture, "24 hours remaining")
+
+            reminder_1h = deadline - timedelta(hours=1)
+            if is_same_minute(current_time, reminder_1h):
+                logger.info(f"Sending 1h reminder for week {fixture['week_number']}...")
+                await self.send_reminder(fixture, "1 hour remaining")
 
     async def send_reminder(self, fixture: dict, time_description: str):
         """Send prediction reminder to configured channel."""
@@ -318,40 +319,48 @@ class TyperBot(commands.Bot):
         logger.info("Verifying fixture announcement...")
 
         try:
-            fixture = await self.db.get_current_fixture()
-            if not fixture:
+            open_fixtures = await self.db.get_open_fixtures()
+            if not open_fixtures:
                 logger.info("No open fixture found, skipping verification")
                 return
 
-            message_id = fixture.get("message_id")
-            if not message_id:
-                logger.info(f"Fixture {fixture['id']} has no message_id, skipping verification")
-                return
+            for fixture in open_fixtures:
+                message_id = fixture.get("message_id")
+                if not message_id:
+                    logger.info(f"Fixture {fixture['id']} has no message_id, skipping verification")
+                    continue
 
-            # Search channels for the announcement message
-            for guild in self.guilds:
-                for channel in guild.text_channels:
-                    try:
-                        message = await channel.fetch_message(int(message_id))
-                        if message.thread:
-                            logger.info(f"Fixture {fixture['id']} has thread {message.thread.id}")
-                        else:
-                            logger.info(
-                                f"Fixture {fixture['id']} has no thread (users can use /predict)"
-                            )
-                        return
-                    except discord.NotFound:
-                        continue
-                    except discord.Forbidden:
-                        logger.warning(f"No permission to read channel {channel.id}")
-                        continue
-                    except Exception as e:
-                        logger.warning(f"Could not verify fixture in {channel.id}: {e}")
-                        continue
+                found = False
+                # Search channels for the announcement message
+                for guild in self.guilds:
+                    for channel in guild.text_channels:
+                        try:
+                            message = await channel.fetch_message(int(message_id))
+                            if message.thread:
+                                logger.info(
+                                    f"Fixture {fixture['id']} has thread {message.thread.id}"
+                                )
+                            else:
+                                logger.info(
+                                    f"Fixture {fixture['id']} has no thread (users can use /predict)"
+                                )
+                            found = True
+                            break
+                        except discord.NotFound:
+                            continue
+                        except discord.Forbidden:
+                            logger.warning(f"No permission to read channel {channel.id}")
+                            continue
+                        except Exception as e:
+                            logger.warning(f"Could not verify fixture in {channel.id}: {e}")
+                            continue
+                    if found:
+                        break
 
-            logger.warning(
-                f"Could not find announcement message {message_id} for fixture {fixture['id']}"
-            )
+                if not found:
+                    logger.warning(
+                        f"Could not find announcement message {message_id} for fixture {fixture['id']}"
+                    )
 
         except Exception as e:
             logger.exception(f"Error during fixture verification: {e}")

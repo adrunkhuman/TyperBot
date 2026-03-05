@@ -64,6 +64,62 @@ class AdminCommands(commands.Cog):
         self.fixture_handler = FixtureCreationHandler(bot, self.db)
         self.results_handler = ResultsEntryHandler(bot, self.db)
 
+    @staticmethod
+    def _format_open_weeks(open_fixtures: list[dict]) -> str:
+        """Format open fixture weeks for short user-facing messages."""
+        return ", ".join(str(fixture["week_number"]) for fixture in open_fixtures)
+
+    async def _resolve_open_fixture(
+        self,
+        interaction: discord.Interaction,
+        week: int | None,
+        command_example: str,
+    ) -> dict | None:
+        """Resolve target open fixture for admin commands.
+
+        If multiple fixtures are open and no week is provided, the command is
+        rejected to avoid acting on the wrong fixture.
+        """
+        open_fixtures = await self.db.get_open_fixtures()
+
+        if not open_fixtures:
+            await interaction.response.send_message("No open fixtures found!", ephemeral=True)
+            return None
+
+        if week is None:
+            if len(open_fixtures) == 1:
+                return open_fixtures[0]
+
+            open_weeks = self._format_open_weeks(open_fixtures)
+            await interaction.response.send_message(
+                "Multiple fixtures are currently open. "
+                "Please specify the `week` argument to choose one.\n"
+                f"Open weeks: {open_weeks}\n"
+                f"Example: `{command_example}`",
+                ephemeral=True,
+            )
+            return None
+
+        matching = [
+            open_fixture for open_fixture in open_fixtures if open_fixture["week_number"] == week
+        ]
+        if len(matching) == 1:
+            return matching[0]
+        if len(matching) > 1:
+            await interaction.response.send_message(
+                f"More than one open fixture was found for week {week}. "
+                "Please resolve duplicate week numbers in the database before continuing.",
+                ephemeral=True,
+            )
+            return None
+
+        open_weeks = self._format_open_weeks(open_fixtures)
+        await interaction.response.send_message(
+            f"No open fixture found for week {week}.\nOpen weeks: {open_weeks}",
+            ephemeral=True,
+        )
+        return None
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Listen for DMs from admins."""
@@ -125,15 +181,16 @@ class AdminCommands(commands.Cog):
                 ephemeral=True,
             )
 
-    @fixture.command(name="delete", description="Delete the current fixture")
+    @fixture.command(name="delete", description="Delete an open fixture")
     @admin_only()
-    async def fixture_delete(self, interaction: discord.Interaction):
-        """Delete current fixture."""
-        fixture = await self.db.get_current_fixture()
+    async def fixture_delete(self, interaction: discord.Interaction, week: int | None = None):
+        """Delete a selected open fixture."""
+        fixture = await self._resolve_open_fixture(
+            interaction,
+            week,
+            "/admin fixture delete week:12",
+        )
         if not fixture:
-            await interaction.response.send_message(
-                "No active fixture found to delete!", ephemeral=True
-            )
             return
 
         view = DeleteConfirmView(
@@ -154,22 +211,23 @@ class AdminCommands(commands.Cog):
     # Results subgroup
     results = app_commands.Group(name="results", description="Manage results", parent=admin)
 
-    @results.command(
-        name="enter", description="Enter results for the current fixture (DM workflow)"
-    )
+    @results.command(name="enter", description="Enter results for an open fixture (DM workflow)")
     @admin_only()
-    async def results_enter(self, interaction: discord.Interaction):
+    async def results_enter(self, interaction: discord.Interaction, week: int | None = None):
         """Initiate results entry via DM."""
-        fixture = await self.db.get_current_fixture()
+        fixture = await self._resolve_open_fixture(
+            interaction,
+            week,
+            "/admin results enter week:12",
+        )
         if not fixture:
-            await interaction.response.send_message("No active fixture found!", ephemeral=True)
             return
 
         existing_results = await self.db.get_results(fixture["id"])
         if existing_results:
             await interaction.response.send_message(
                 "Results already entered for this fixture!\n"
-                "Use `/admin results calculate` to calculate scores.",
+                f"Use `/admin results calculate week:{fixture['week_number']}` to calculate scores.",
                 ephemeral=True,
             )
             return
@@ -215,8 +273,8 @@ class AdminCommands(commands.Cog):
 
     @results.command(name="calculate", description="Calculate scores and post results")
     @admin_only()
-    async def results_calculate(self, interaction: discord.Interaction):
-        """Calculate scores for current fixture and post results."""
+    async def results_calculate(self, interaction: discord.Interaction, week: int | None = None):
+        """Calculate scores for a selected open fixture and post results."""
         _cleanup_expired_cooldowns()
 
         user_id = str(interaction.user.id)
@@ -232,12 +290,15 @@ class AdminCommands(commands.Cog):
                 )
                 return
 
-        _calculate_cooldowns[user_id] = current_time
-
-        fixture = await self.db.get_current_fixture()
+        fixture = await self._resolve_open_fixture(
+            interaction,
+            week,
+            "/admin results calculate week:12",
+        )
         if not fixture:
-            await interaction.response.send_message("No active fixture found!", ephemeral=True)
             return
+
+        _calculate_cooldowns[user_id] = current_time
 
         results = await self.db.get_results(fixture["id"])
         if not results:

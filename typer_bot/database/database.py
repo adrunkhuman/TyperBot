@@ -119,6 +119,52 @@ class Database:
             )
             return cursor.lastrowid
 
+    async def create_next_fixture(self, games: list[str], deadline: datetime) -> tuple[int, int]:
+        """Create a new fixture with the next available week number atomically.
+
+        Returns:
+            Tuple of (fixture_id, allocated_week_number).
+        """
+        if deadline.tzinfo is None:
+            from typer_bot.utils import APP_TZ
+
+            deadline = deadline.replace(tzinfo=APP_TZ)
+
+        start_time = time.perf_counter()
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                async with db.execute(
+                    "SELECT COALESCE(MAX(week_number), 0) FROM fixtures"
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    next_week = int(row[0]) + 1 if row else 1
+
+                insert_cursor = await db.execute(
+                    "INSERT INTO fixtures (week_number, games, deadline) VALUES (?, ?, ?)",
+                    (next_week, "\n".join(games), deadline.isoformat()),
+                )
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
+
+            if insert_cursor.lastrowid is None:
+                raise RuntimeError("Failed to create fixture: lastrowid is None")
+
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.debug(
+                "db.create_next_fixture completed",
+                extra={
+                    "operation": "db.create_next_fixture",
+                    "week_number": next_week,
+                    "fixture_id": insert_cursor.lastrowid,
+                    "duration_ms": round(duration_ms, 2),
+                    "games_count": len(games),
+                },
+            )
+            return insert_cursor.lastrowid, next_week
+
     def _row_to_fixture(self, row: aiosqlite.Row) -> dict:
         """Convert database row to fixture dictionary."""
         row_dict = dict(row)
@@ -133,11 +179,36 @@ class Database:
         }
 
     async def get_current_fixture(self) -> dict | None:
-        """Get the current open fixture."""
+        """Get the most recently created open fixture.
+
+        Kept for backward compatibility with older call sites that assume a
+        single active fixture.
+        """
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 "SELECT * FROM fixtures WHERE status = 'open' ORDER BY id DESC LIMIT 1"
+            ) as cursor:
+                row = await cursor.fetchone()
+                return self._row_to_fixture(row) if row else None
+
+    async def get_open_fixtures(self) -> list[dict]:
+        """Get all open fixtures ordered by week and creation order."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM fixtures WHERE status = 'open' ORDER BY week_number ASC, id ASC"
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [self._row_to_fixture(row) for row in rows]
+
+    async def get_open_fixture_by_week(self, week_number: int) -> dict | None:
+        """Get an open fixture by week number."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM fixtures WHERE status = 'open' AND week_number = ? ORDER BY id DESC LIMIT 1",
+                (week_number,),
             ) as cursor:
                 row = await cursor.fetchone()
                 return self._row_to_fixture(row) if row else None

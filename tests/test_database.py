@@ -74,6 +74,73 @@ class TestGetMaxWeekNumber:
         assert result == 10
 
 
+class TestOpenFixturesQueries:
+    """Test suite for multi-open fixture query helpers."""
+
+    @pytest.mark.asyncio
+    async def test_get_open_fixtures_returns_all_open_ordered(self, temp_db_path):
+        """Open fixtures are returned in week order for deterministic selection prompts."""
+        db = Database(temp_db_path)
+        await db.initialize()
+
+        fixture_week_2 = await db.create_fixture(2, ["Team C - Team D"], datetime.now(UTC))
+        fixture_week_1 = await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
+        fixture_week_3 = await db.create_fixture(3, ["Team E - Team F"], datetime.now(UTC))
+
+        # Close week 3 fixture so only weeks 1 and 2 remain open
+        await db.save_scores(fixture_week_3, [])
+
+        open_fixtures = await db.get_open_fixtures()
+        open_ids = [fixture["id"] for fixture in open_fixtures]
+        open_weeks = [fixture["week_number"] for fixture in open_fixtures]
+
+        assert fixture_week_3 not in open_ids
+        assert set(open_ids) == {fixture_week_1, fixture_week_2}
+        assert open_weeks == [1, 2]
+
+    @pytest.mark.asyncio
+    async def test_get_open_fixture_by_week_ignores_closed_fixtures(self, temp_db_path):
+        """Week resolver should only return fixtures that are still open."""
+        db = Database(temp_db_path)
+        await db.initialize()
+
+        open_fixture_id = await db.create_fixture(7, ["Team A - Team B"], datetime.now(UTC))
+        closed_fixture_id = await db.create_fixture(8, ["Team C - Team D"], datetime.now(UTC))
+        await db.save_scores(closed_fixture_id, [])
+
+        open_fixture = await db.get_open_fixture_by_week(7)
+        closed_fixture = await db.get_open_fixture_by_week(8)
+
+        assert open_fixture is not None
+        assert open_fixture["id"] == open_fixture_id
+        assert closed_fixture is None
+
+    @pytest.mark.asyncio
+    async def test_create_next_fixture_allocates_incrementing_weeks(self, temp_db_path):
+        """Atomic allocator should issue increasing week numbers."""
+        db = Database(temp_db_path)
+        await db.initialize()
+
+        fixture_one_id, week_one = await db.create_next_fixture(
+            ["Team A - Team B"],
+            datetime.now(UTC),
+        )
+        fixture_two_id, week_two = await db.create_next_fixture(
+            ["Team C - Team D"],
+            datetime.now(UTC),
+        )
+
+        fixture_one = await db.get_fixture_by_id(fixture_one_id)
+        fixture_two = await db.get_fixture_by_id(fixture_two_id)
+
+        assert week_one == 1
+        assert week_two == 2
+        assert fixture_one is not None
+        assert fixture_one["week_number"] == 1
+        assert fixture_two is not None
+        assert fixture_two["week_number"] == 2
+
+
 class TestDefensiveColumnAccess:
     """Test suite for defensive .get() column access patterns."""
 

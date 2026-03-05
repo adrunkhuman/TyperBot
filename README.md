@@ -38,7 +38,8 @@ Bot requires:
 **Method 2: DM Predictions**
 1. Type `/predict` (or DM the bot directly) -> Bot DMs you the games
 2. Reply with scores (same format as above) -> Predictions saved immediately!
-3. To change, just send a new message
+3. If multiple fixtures are open, bot asks which week first and can guide you through the rest
+4. To change, just send a new message
 
 **Check**: `/mypredictions` to see what you sent.
 **Flex**: `/standings` to see the table.
@@ -48,11 +49,11 @@ You need a Discord role named `Admin` or `typer-admin`.
 
 **Fixture Management:**
 - `/admin fixture create` - Create a new fixture (DM workflow with games + deadline, auto-creates prediction thread)
-- `/admin fixture delete` - Delete the current fixture
+- `/admin fixture delete [week]` - Delete an open fixture (week required if multiple are open)
 
 **Results Management:**
-- `/admin results enter` - Enter actual game scores (DM workflow)
-- `/admin results calculate` - Calculate scores and post results (no mentions by default)
+- `/admin results enter [week]` - Enter actual game scores (DM workflow)
+- `/admin results calculate [week]` - Calculate scores and post results (no mentions by default)
 - `/admin results post` - Re-post results with option to mention users
 
 ## Hosting (The Easy Way)
