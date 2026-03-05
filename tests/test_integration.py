@@ -184,6 +184,40 @@ class TestEdgeCases:
         max_week = await database.get_max_week_number()
         assert max_week == 5
 
+    @pytest.mark.asyncio
+    async def test_calculating_one_fixture_keeps_other_fixture_open(self, database):
+        """Closing one fixture should not block another concurrently open fixture."""
+        games = ["Team A - Team B", "Team C - Team D"]
+        deadline = datetime.now(UTC) + timedelta(days=1)
+
+        fixture_one_id = await database.create_fixture(1, games, deadline)
+        fixture_two_id = await database.create_fixture(2, games, deadline)
+
+        await database.save_prediction(fixture_one_id, "user1", "User1", ["2-1", "1-1"], False)
+        await database.save_results(fixture_one_id, ["2-1", "1-1"])
+        await database.save_scores(
+            fixture_one_id,
+            [
+                {
+                    "user_id": "user1",
+                    "user_name": "User1",
+                    "points": 6,
+                    "exact_scores": 2,
+                    "correct_results": 0,
+                }
+            ],
+        )
+
+        fixture_one = await database.get_fixture_by_id(fixture_one_id)
+        fixture_two = await database.get_fixture_by_id(fixture_two_id)
+        open_fixtures = await database.get_open_fixtures()
+
+        assert fixture_one is not None
+        assert fixture_one["status"] == "closed"
+        assert fixture_two is not None
+        assert fixture_two["status"] == "open"
+        assert [fixture["id"] for fixture in open_fixtures] == [fixture_two_id]
+
 
 class TestDatabaseIntegrity:
     """Test database integrity constraints."""

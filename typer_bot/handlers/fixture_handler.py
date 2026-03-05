@@ -232,6 +232,18 @@ class FixtureCreationHandler:
         week_number = max_week + 1
         state["week_number"] = week_number
 
+        preview_text = self._build_fixture_preview_text(week_number, games, deadline)
+        state["preview"] = preview_text
+        state["step"] = "confirm"
+
+        view = FixtureConfirmView(
+            self, user_id, week_number, games, deadline, channel, preview_text
+        )
+        await user.send(f"{preview_text}\n\nCreate this fixture?", view=view)
+
+    @staticmethod
+    def _build_fixture_preview_text(week_number: int, games: list[str], deadline: datetime) -> str:
+        """Build a fixture preview block for DMs and announcements."""
         lines = [f"**Week {week_number} Fixture Preview**\n"]
         for i, game in enumerate(games, 1):
             lines.append(f"{i}. {game}")
@@ -240,34 +252,27 @@ class FixtureCreationHandler:
         relative_str = format_for_discord(deadline, "R")
         lines.append(f"\n**Deadline:** {deadline_str} ({relative_str})")
 
-        warning = ""
         if len(games) != 9:
-            warning = f"\n\n⚠️ **Warning:** Expected 9 games, got {len(games)}"
+            lines.append(f"\n⚠️ **Warning:** Expected 9 games, got {len(games)}")
 
-        preview_text = "\n".join(lines)
-        state["preview"] = preview_text + warning
-        state["step"] = "confirm"
-
-        view = FixtureConfirmView(
-            self, user_id, week_number, games, deadline, channel, preview_text + warning
-        )
-        await user.send(f"{preview_text}{warning}\n\nCreate this fixture?", view=view)
+        return "\n".join(lines)
 
     async def create_fixture(
-        self, user_id: str, week_number: int, games: list, deadline: datetime
-    ) -> None:
-        """Create the fixture in the database."""
-        fixture_id = await self.db.create_fixture(week_number, games, deadline)
+        self, user_id: str, games: list, deadline: datetime
+    ) -> tuple[int, int]:
+        """Create the fixture in the database and return ID + allocated week."""
+        fixture_id, allocated_week = await self.db.create_next_fixture(games, deadline)
         _pending_fixtures.pop(user_id, None)
         log_event(
             logger,
             event_type="fixture.created",
-            message=f"Fixture created: Week {week_number}",
+            message=f"Fixture created: Week {allocated_week}",
             user_id=user_id,
             fixture_id=fixture_id,
-            week_number=week_number,
+            week_number=allocated_week,
             games_count=len(games),
         )
+        return fixture_id, allocated_week
 
     def cancel_session(self, user_id: str, reason: str = "cancelled") -> None:
         """Cancel the fixture creation session."""
@@ -343,33 +348,49 @@ class FixtureConfirmView(ui.View):
     @ui.button(label="Create Fixture", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, _button: ui.Button):
         """Save fixture to database and announce."""
-        await self.handler.create_fixture(self.user_id, self.week_number, self.games, self.deadline)
+        fixture_id, allocated_week = await self.handler.create_fixture(
+            self.user_id,
+            self.games,
+            self.deadline,
+        )
+
+        final_preview = self.handler._build_fixture_preview_text(
+            allocated_week,
+            self.games,
+            self.deadline,
+        )
+
+        created_text = f"**Week {allocated_week} Fixture Created!**\n\n{final_preview}"
+        if allocated_week != self.week_number:
+            created_text += (
+                "\n\nℹ️ Week number was adjusted automatically because another "
+                "fixture was created at the same time."
+            )
 
         await interaction.response.edit_message(
-            content=f"**Week {self.week_number} Fixture Created!**\n\n{self.preview}", view=None
+            content=created_text,
+            view=None,
         )
 
         try:
             # Send announcement message
             announcement = await self.channel.send(
-                f"**Week {self.week_number} Fixture is now open!**\n\n"
-                f"{self.preview}\n\n"
+                f"**Week {allocated_week} Fixture is now open!**\n\n"
+                f"{final_preview}\n\n"
                 f"💬 **How to predict:**\n"
                 f"• Reply in this thread with your scores (one per line)\n"
                 f"• Or use `/predict` for DM mode"
             )
 
-            fixture = await self.handler.db.get_current_fixture()
-            if fixture:
-                await self.handler.db.update_fixture_announcement(
-                    fixture["id"],
-                    message_id=str(announcement.id),
-                )
+            await self.handler.db.update_fixture_announcement(
+                fixture_id,
+                message_id=str(announcement.id),
+            )
 
             # Create a thread for predictions
             try:
                 thread = await announcement.create_thread(
-                    name=f"Week {self.week_number} Predictions",
+                    name=f"Week {allocated_week} Predictions",
                     auto_archive_duration=1440,  # 24 hours
                 )
                 await thread.send(

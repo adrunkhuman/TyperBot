@@ -214,19 +214,16 @@ class TestReminderSystem:
         current_time = deadline - timedelta(hours=24)
         mock_now.return_value = current_time
 
-        bot_instance.db.get_current_fixture = AsyncMock(
-            return_value={
-                "id": 1,
-                "deadline": deadline,
-                "week_number": 1,
-            }
-        )
+        fixture = {
+            "id": 1,
+            "deadline": deadline,
+            "week_number": 1,
+        }
+        bot_instance.db.get_open_fixtures = AsyncMock(return_value=[fixture])
 
         await bot_instance.reminder_task()
 
-        bot_instance.send_reminder.assert_called_once_with(
-            bot_instance.db.get_current_fixture.return_value, "24 hours remaining"
-        )
+        bot_instance.send_reminder.assert_called_once_with(fixture, "24 hours remaining")
 
     @pytest.mark.asyncio
     @patch("typer_bot.bot.now")
@@ -236,19 +233,16 @@ class TestReminderSystem:
         current_time = deadline - timedelta(hours=1)
         mock_now.return_value = current_time
 
-        bot_instance.db.get_current_fixture = AsyncMock(
-            return_value={
-                "id": 1,
-                "deadline": deadline,
-                "week_number": 1,
-            }
-        )
+        fixture = {
+            "id": 1,
+            "deadline": deadline,
+            "week_number": 1,
+        }
+        bot_instance.db.get_open_fixtures = AsyncMock(return_value=[fixture])
 
         await bot_instance.reminder_task()
 
-        bot_instance.send_reminder.assert_called_once_with(
-            bot_instance.db.get_current_fixture.return_value, "1 hour remaining"
-        )
+        bot_instance.send_reminder.assert_called_once_with(fixture, "1 hour remaining")
 
     @pytest.mark.asyncio
     async def test_reminder_sent_at_exact_time(self, bot_instance):
@@ -258,13 +252,12 @@ class TestReminderSystem:
         deadline = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
         current_time = deadline - timedelta(hours=24)
 
-        bot_instance.db.get_current_fixture = AsyncMock(
-            return_value={
-                "id": 1,
-                "deadline": deadline,
-                "week_number": 1,
-            }
-        )
+        fixture = {
+            "id": 1,
+            "deadline": deadline,
+            "week_number": 1,
+        }
+        bot_instance.db.get_open_fixtures = AsyncMock(return_value=[fixture])
 
         with freeze_time(current_time):
             await bot_instance.reminder_task()
@@ -279,11 +272,26 @@ class TestReminderSystem:
     async def test_reminder_skips_if_no_fixture(self, mock_now, bot_instance):
         """Reminders are skipped when no fixture is active."""
         mock_now.return_value = datetime.now(UTC)
-        bot_instance.db.get_current_fixture = AsyncMock(return_value=None)
+        bot_instance.db.get_open_fixtures = AsyncMock(return_value=[])
 
         await bot_instance.reminder_task()
 
         bot_instance.send_reminder.assert_not_called()
+
+    @pytest.mark.asyncio
+    @patch("typer_bot.bot.now")
+    async def test_reminder_checks_all_open_fixtures(self, mock_now, bot_instance):
+        """Reminder loop should evaluate all concurrently open fixtures."""
+        deadline = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
+        mock_now.return_value = deadline - timedelta(hours=24)
+
+        fixture_a = {"id": 1, "deadline": deadline, "week_number": 1}
+        fixture_b = {"id": 2, "deadline": deadline, "week_number": 2}
+        bot_instance.db.get_open_fixtures = AsyncMock(return_value=[fixture_a, fixture_b])
+
+        await bot_instance.reminder_task()
+
+        assert bot_instance.send_reminder.call_count == 2
 
 
 class TestSendReminder:

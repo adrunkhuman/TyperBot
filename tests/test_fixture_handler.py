@@ -343,7 +343,7 @@ class TestCreateFixture:
         _pending_fixtures["123456"] = {"some": "data"}
 
         deadline = datetime.now(UTC)
-        await handler.create_fixture("123456", 1, ["Game 1", "Game 2"], deadline)
+        await handler.create_fixture("123456", ["Game 1", "Game 2"], deadline)
 
         fixture = await database.get_current_fixture()
         assert fixture is not None

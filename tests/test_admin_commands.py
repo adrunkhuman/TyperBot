@@ -298,3 +298,89 @@ class TestOnMessageListener:
         await admin_cog.on_message(mock_message)
 
         assert admin_cog.results_handler.has_session(user_id)
+
+
+class TestMultiOpenFixtureTargeting:
+    """Test suite for explicit week targeting when multiple fixtures are open."""
+
+    @pytest.fixture
+    def admin_cog(self, mock_bot, database):
+        mock_bot.db = database
+        return AdminCommands(mock_bot)
+
+    @pytest.mark.asyncio
+    async def test_fixture_delete_requires_week_when_multiple_open(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        """Delete command blocks ambiguous actions when multiple fixtures are open."""
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        await admin_cog.db.create_fixture(1, sample_games, deadline)
+        await admin_cog.db.create_fixture(2, sample_games, deadline)
+
+        await admin_cog.fixture_delete.callback(admin_cog, mock_interaction_admin, None)
+
+        assert len(mock_interaction_admin.response_sent) == 1
+        content = mock_interaction_admin.response_sent[0]["content"]
+        assert "Multiple fixtures are currently open" in content
+        assert "Open weeks: 1, 2" in content
+
+    @pytest.mark.asyncio
+    async def test_results_enter_targets_explicit_week(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        """Results entry session starts for the requested open fixture week."""
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        fixture_week_1 = await admin_cog.db.create_fixture(1, sample_games, deadline)
+        await admin_cog.db.create_fixture(2, sample_games, deadline)
+
+        mock_interaction_admin.guild_id = mock_interaction_admin.guild.id
+
+        await admin_cog.results_enter.callback(admin_cog, mock_interaction_admin, 1)
+
+        user_id = str(mock_interaction_admin.user.id)
+        assert _pending_results[user_id]["fixture_id"] == fixture_week_1
+        assert "Check your DMs" in mock_interaction_admin.response_sent[0]["content"]
+
+    @pytest.mark.asyncio
+    async def test_results_calculate_requires_week_when_multiple_open(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        """Calculate command requires explicit week when more than one fixture is open."""
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        await admin_cog.db.create_fixture(1, sample_games, deadline)
+        await admin_cog.db.create_fixture(2, sample_games, deadline)
+
+        user_id = str(mock_interaction_admin.user.id)
+        await admin_cog.results_calculate.callback(admin_cog, mock_interaction_admin, None)
+
+        assert len(mock_interaction_admin.response_sent) == 1
+        content = mock_interaction_admin.response_sent[0]["content"]
+        assert "Multiple fixtures are currently open" in content
+        assert user_id not in _calculate_cooldowns
+
+    @pytest.mark.asyncio
+    async def test_results_enter_rejects_duplicate_open_week_numbers(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        """Duplicate open week numbers are rejected to avoid targeting wrong fixture."""
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        await admin_cog.db.create_fixture(5, sample_games, deadline)
+        await admin_cog.db.create_fixture(5, sample_games, deadline)
+
+        await admin_cog.results_enter.callback(admin_cog, mock_interaction_admin, 5)
+
+        assert len(mock_interaction_admin.response_sent) == 1
+        content = mock_interaction_admin.response_sent[0]["content"]
+        assert "More than one open fixture was found for week 5" in content
