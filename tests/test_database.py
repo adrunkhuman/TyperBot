@@ -218,3 +218,141 @@ class TestSchemaMigration:
         fixture = await db.get_current_fixture()
         assert fixture is not None
         assert "message_id" in fixture
+
+    @pytest.mark.asyncio
+    async def test_initialize_migrates_legacy_results_to_unique_latest_row(self, temp_db_path):
+        """Legacy duplicate result rows should collapse to the newest saved value."""
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute(
+                """
+                CREATE TABLE fixtures (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    week_number INTEGER NOT NULL,
+                    games TEXT NOT NULL,
+                    deadline DATETIME NOT NULL,
+                    status TEXT DEFAULT 'open'
+                )
+                """
+            )
+            await conn.execute(
+                """
+                CREATE TABLE predictions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id INTEGER NOT NULL,
+                    user_id TEXT NOT NULL,
+                    user_name TEXT NOT NULL,
+                    predictions TEXT NOT NULL,
+                    submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    is_late BOOLEAN DEFAULT FALSE,
+                    UNIQUE(fixture_id, user_id)
+                )
+                """
+            )
+            await conn.execute(
+                """
+                CREATE TABLE results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id INTEGER NOT NULL,
+                    results TEXT NOT NULL,
+                    calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            await conn.execute(
+                "INSERT INTO fixtures (id, week_number, games, deadline, status) VALUES (1, 1, 'A - B', ?, 'open')",
+                (datetime.now(UTC).isoformat(),),
+            )
+            await conn.execute(
+                "INSERT INTO results (fixture_id, results, calculated_at) VALUES (1, '1-0', '2024-01-01T10:00:00+00:00')"
+            )
+            await conn.execute(
+                "INSERT INTO results (fixture_id, results, calculated_at) VALUES (1, '2-0', '2024-01-01T12:00:00+00:00')"
+            )
+            await conn.commit()
+
+        db = Database(temp_db_path)
+        await db.initialize()
+
+        assert await db.get_results(1) == ["2-0"]
+
+        async with (
+            aiosqlite.connect(temp_db_path) as conn,
+            conn.execute("SELECT COUNT(*) FROM results WHERE fixture_id = 1") as cursor,
+        ):
+            row = await cursor.fetchone()
+            assert row is not None
+            assert row[0] == 1
+
+        await db.save_results(1, ["3-0"])
+        assert await db.get_results(1) == ["3-0"]
+
+        async with (
+            aiosqlite.connect(temp_db_path) as conn,
+            conn.execute("SELECT COUNT(*) FROM results WHERE fixture_id = 1") as cursor,
+        ):
+            row = await cursor.fetchone()
+            assert row is not None
+            assert row[0] == 1
+
+    @pytest.mark.asyncio
+    async def test_initialize_adds_prediction_override_columns_with_safe_defaults(
+        self, temp_db_path
+    ):
+        """Legacy prediction rows should gain admin-override fields without mutating existing facts."""
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute(
+                """
+                CREATE TABLE fixtures (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    week_number INTEGER NOT NULL,
+                    games TEXT NOT NULL,
+                    deadline DATETIME NOT NULL,
+                    status TEXT DEFAULT 'open'
+                )
+                """
+            )
+            await conn.execute(
+                """
+                CREATE TABLE predictions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id INTEGER NOT NULL,
+                    user_id TEXT NOT NULL,
+                    user_name TEXT NOT NULL,
+                    predictions TEXT NOT NULL,
+                    submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    is_late BOOLEAN DEFAULT FALSE,
+                    UNIQUE(fixture_id, user_id)
+                )
+                """
+            )
+            await conn.execute(
+                """
+                CREATE TABLE results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id INTEGER NOT NULL,
+                    results TEXT NOT NULL,
+                    calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            await conn.execute(
+                "INSERT INTO fixtures (id, week_number, games, deadline, status) VALUES (1, 1, 'A - B', ?, 'open')",
+                (datetime.now(UTC).isoformat(),),
+            )
+            await conn.execute(
+                """
+                INSERT INTO predictions (fixture_id, user_id, user_name, predictions, submitted_at, is_late)
+                VALUES (1, 'user-1', 'User One', '1-0', '2024-01-01T10:00:00+00:00', 1)
+                """
+            )
+            await conn.commit()
+
+        db = Database(temp_db_path)
+        await db.initialize()
+
+        prediction = await db.get_prediction(1, "user-1")
+        assert prediction is not None
+        assert prediction["is_late"] == 1
+        assert prediction["late_penalty_waived"] == 0
+        assert prediction["admin_edited_at"] is None
+        assert prediction["admin_edited_by"] is None

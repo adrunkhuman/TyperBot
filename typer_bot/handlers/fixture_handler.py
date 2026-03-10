@@ -396,7 +396,7 @@ class FixtureConfirmView(ui.View):
                 await thread.send(
                     "💬 **Post your predictions here!**\n"
                     "Reply with your scores (one per line or comma-separated).\n"
-                    "To change your prediction, just post again."
+                    "Predictions are one-shot here. To change one, use `/predict`."
                 )
             except Exception as e:
                 logger.warning(f"Could not create thread for fixture: {e}")

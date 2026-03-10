@@ -564,11 +564,12 @@ class UserCommands(commands.Cog):
 
 **Input formats:** Use `2:0`, `2-0`, or `2 : 0`
 
-**To change a prediction:** Just post again (it replaces your old one)."""
+**To change a prediction:** Use `/predict` or DM the bot again. Thread posts do not edit existing picks."""
 
         admin_help = """\n\n## 🔧 Admin Commands
 
 **For Admins:**
+• `/admin panel` - Open the admin hub for fixture deletion, overrides, waivers, and result correction
 **Fixture Management:**
 • `/admin fixture create` - Create new fixture (DM workflow, auto-creates thread)
 • `/admin fixture delete [week]` - Delete an open fixture
@@ -605,6 +606,13 @@ class UserCommands(commands.Cog):
 4. **Re-post Results:**
    - `/admin results post`
    - Choose whether to mention users
+
+5. **Corrections / Exceptions:**
+   - `/admin panel`
+   - View fixture predictions
+   - Replace a stored prediction without changing original submit time
+   - Toggle a late-penalty waiver for an approved late pick
+   - Correct stored results and auto-recalculate scored fixtures
 
 **Custom Deadline Format:**
 • `2024-02-15 18:00`
@@ -691,7 +699,11 @@ class UserCommands(commands.Cog):
             ):
                 lines.append(f"{i}. {game} **{pred}**")
 
-            late_status = "⚠️ **LATE**" if prediction["is_late"] else "✅ On time"
+            late_status = "✅ On time"
+            if prediction["is_late"]:
+                late_status = "⚠️ **LATE**"
+                if prediction["late_penalty_waived"]:
+                    late_status += " (waiver active)"
             submitted = format_for_discord(prediction["submitted_at"], "f")
             deadline_str = format_for_discord(fixture["deadline"], "F")
             relative_str = format_for_discord(fixture["deadline"], "R")
@@ -730,7 +742,11 @@ class UserCommands(commands.Cog):
             ):
                 lines.append(f"{i}. {game} **{pred}**")
 
-            late_status = "⚠️ **LATE**" if prediction["is_late"] else "✅ On time"
+            late_status = "✅ On time"
+            if prediction["is_late"]:
+                late_status = "⚠️ **LATE**"
+                if prediction["late_penalty_waived"]:
+                    late_status += " (waiver active)"
             submitted = format_for_discord(prediction["submitted_at"], "f")
             lines.append(f"Status: {late_status}")
             lines.append(f"Submitted: {submitted}")

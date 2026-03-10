@@ -135,6 +135,35 @@ class TestOnMessage:
         assert predictions[0]["is_late"]
         assert "Late prediction" in mock_message.author.dm_sent[0]
 
+    @pytest.mark.asyncio
+    async def test_rejects_thread_resubmission_without_overwriting_prediction(
+        self,
+        handler,
+        fixture_with_thread,
+        mock_message,
+    ):
+        """Thread reposts stay one-shot and preserve the original stored prediction."""
+        mock_message.channel.id = 789012
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        await handler.on_message(mock_message)
+        _prediction_cooldowns.clear()
+
+        second_message = type(mock_message)(
+            content="Team A - Team B 0-0\nTeam C - Team D 0-0\nTeam E - Team F 0-0",
+            message_id="777777",
+            author=mock_message.author,
+            channel=mock_message.channel,
+            guild=mock_message.guild,
+        )
+        second_message.channel.id = 789012
+
+        result = await handler.on_message(second_message)
+
+        assert result is True
+        predictions = await handler.db.get_all_predictions(fixture_with_thread["id"])
+        assert predictions[0]["predictions"] == ["2-1", "1-1", "0-2"]
+        assert "Use `/predict`" in second_message.author.dm_sent[-1]
+
 
 class TestEdgeCases:
     """Test suite for edge cases and boundary conditions."""
