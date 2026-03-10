@@ -2,7 +2,10 @@
 
 
 def calculate_points(
-    predictions: list[str], actual_results: list[str], is_late: bool = False
+    predictions: list[str],
+    actual_results: list[str],
+    is_late: bool = False,
+    late_penalty_waived: bool = False,
 ) -> dict:
     """Calculate points.
 
@@ -12,7 +15,7 @@ def calculate_points(
 
     Returns: dict with points, exact_scores, correct_results, penalty
     """
-    if is_late:
+    if is_late and not late_penalty_waived:
         return {
             "points": 0,
             "exact_scores": 0,

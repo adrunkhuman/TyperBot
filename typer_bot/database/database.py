@@ -3,10 +3,11 @@
 import logging
 import time
 from datetime import datetime
+from pathlib import Path
 
 import aiosqlite
 
-from typer_bot.utils import parse_iso
+from typer_bot.utils import calculate_points, parse_iso
 from typer_bot.utils.config import DB_PATH
 
 logger = logging.getLogger(__name__)
@@ -18,11 +19,87 @@ class Database:
     def __init__(self, db_path: str | None = None):
         self.db_path = db_path or DB_PATH
 
-        from pathlib import Path
-
         db_dir = Path(self.db_path).parent
         if db_dir and not db_dir.exists():
             db_dir.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    async def _table_columns(db: aiosqlite.Connection, table_name: str) -> set[str]:
+        async with db.execute(f"PRAGMA table_info({table_name})") as cursor:
+            columns = await cursor.fetchall()
+        return {col[1] for col in columns}
+
+    async def _migrate_results_table(self, db: aiosqlite.Connection) -> None:
+        columns = await self._table_columns(db, "results")
+        if not columns:
+            return
+
+        async with db.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_results_fixture_id_unique'"
+        ) as cursor:
+            row = await cursor.fetchone()
+            unique_index_exists = bool(row and row[0] > 0)
+
+        if unique_index_exists and "updated_at" in columns:
+            return
+
+        logger.info("Migrating results table for deterministic result updates")
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            await db.execute("DROP TABLE IF EXISTS results_migrated")
+            await db.execute(
+                """
+                CREATE TABLE results_migrated (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id INTEGER NOT NULL,
+                    results TEXT NOT NULL,
+                    calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (fixture_id) REFERENCES fixtures(id)
+                )
+                """
+            )
+            await db.execute(
+                """
+                INSERT INTO results_migrated (fixture_id, results, calculated_at, updated_at)
+                SELECT fixture_id,
+                       results,
+                       COALESCE(calculated_at, CURRENT_TIMESTAMP),
+                       COALESCE(calculated_at, CURRENT_TIMESTAMP)
+                FROM results old
+                WHERE old.id IN (
+                    SELECT MAX(id)
+                    FROM results
+                    GROUP BY fixture_id
+                )
+                """
+            )
+            await db.execute("DROP TABLE results")
+            await db.execute("ALTER TABLE results_migrated RENAME TO results")
+            await db.execute(
+                "CREATE UNIQUE INDEX idx_results_fixture_id_unique ON results(fixture_id)"
+            )
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            raise
+
+    async def _migrate_prediction_columns(self, db: aiosqlite.Connection) -> None:
+        columns = await self._table_columns(db, "predictions")
+
+        if "late_penalty_waived" not in columns:
+            logger.info("Adding late_penalty_waived column to predictions table")
+            await db.execute(
+                "ALTER TABLE predictions ADD COLUMN late_penalty_waived BOOLEAN DEFAULT FALSE"
+            )
+
+        if "admin_edited_at" not in columns:
+            logger.info("Adding admin_edited_at column to predictions table")
+            await db.execute("ALTER TABLE predictions ADD COLUMN admin_edited_at DATETIME")
+
+        if "admin_edited_by" not in columns:
+            logger.info("Adding admin_edited_by column to predictions table")
+            await db.execute("ALTER TABLE predictions ADD COLUMN admin_edited_by TEXT")
 
     async def initialize(self):
         """Create tables if they don't exist."""
@@ -48,6 +125,9 @@ class Database:
                     predictions TEXT NOT NULL,
                     submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     is_late BOOLEAN DEFAULT FALSE,
+                    late_penalty_waived BOOLEAN DEFAULT FALSE,
+                    admin_edited_at DATETIME,
+                    admin_edited_by TEXT,
                     FOREIGN KEY (fixture_id) REFERENCES fixtures(id),
                     UNIQUE(fixture_id, user_id)
                 )
@@ -59,6 +139,7 @@ class Database:
                     fixture_id INTEGER NOT NULL,
                     results TEXT NOT NULL,
                     calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (fixture_id) REFERENCES fixtures(id)
                 )
             """)
@@ -77,14 +158,14 @@ class Database:
                 )
             """)
 
-            # Migration: Add missing columns to fixtures table
-            async with db.execute("PRAGMA table_info(fixtures)") as cursor:
-                columns = await cursor.fetchall()
-                column_names = {col[1] for col in columns}
+            column_names = await self._table_columns(db, "fixtures")
 
             if "message_id" not in column_names:
                 logger.info("Adding message_id column to fixtures table")
                 await db.execute("ALTER TABLE fixtures ADD COLUMN message_id TEXT")
+
+            await self._migrate_prediction_columns(db)
+            await self._migrate_results_table(db)
 
             await db.commit()
 
@@ -221,6 +302,28 @@ class Database:
                 row = await cursor.fetchone()
                 return self._row_to_fixture(row) if row else None
 
+    async def get_fixture_by_week(self, week_number: int) -> dict | None:
+        """Get the most recent fixture for a week, regardless of status."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM fixtures WHERE week_number = ? ORDER BY id DESC LIMIT 1",
+                (week_number,),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return self._row_to_fixture(row) if row else None
+
+    async def get_recent_fixtures(self, limit: int = 25) -> list[dict]:
+        """Get recent fixtures ordered by newest first."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM fixtures ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [self._row_to_fixture(row) for row in rows]
+
     async def get_fixture_by_message_id(self, message_id: str) -> dict | None:
         """Get a fixture by its Discord message ID.
 
@@ -265,9 +368,12 @@ class Database:
                 """INSERT INTO predictions (fixture_id, user_id, user_name, predictions, is_late)
                    VALUES (?, ?, ?, ?, ?)
                    ON CONFLICT(fixture_id, user_id)
-                   DO UPDATE SET predictions = excluded.predictions,
-                                 is_late = excluded.is_late,
-                                 submitted_at = CURRENT_TIMESTAMP""",
+                    DO UPDATE SET predictions = excluded.predictions,
+                                  is_late = excluded.is_late,
+                                  late_penalty_waived = FALSE,
+                                  admin_edited_at = NULL,
+                                  admin_edited_by = NULL,
+                                  submitted_at = CURRENT_TIMESTAMP""",
                 (fixture_id, user_id, user_name, "\n".join(predictions), is_late),
             )
             await db.commit()
@@ -301,8 +407,130 @@ class Database:
                         "predictions": row["predictions"].split("\n"),
                         "submitted_at": parse_iso(row["submitted_at"]),
                         "is_late": row["is_late"],
+                        "late_penalty_waived": row["late_penalty_waived"],
+                        "admin_edited_at": parse_iso(row["admin_edited_at"])
+                        if row["admin_edited_at"]
+                        else None,
+                        "admin_edited_by": row["admin_edited_by"],
                     }
                 return None
+
+    async def admin_update_prediction(
+        self,
+        fixture_id: int,
+        user_id: str,
+        predictions: list[str],
+        admin_user_id: str,
+    ) -> bool:
+        """Replace a stored prediction without changing original submission timing."""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                UPDATE predictions
+                SET predictions = ?,
+                    admin_edited_at = CURRENT_TIMESTAMP,
+                    admin_edited_by = ?
+                WHERE fixture_id = ? AND user_id = ?
+                """,
+                ("\n".join(predictions), admin_user_id, fixture_id, user_id),
+            )
+            await db.commit()
+            return cursor.rowcount > 0
+
+    async def admin_update_prediction_with_recalc(
+        self,
+        fixture_id: int,
+        user_id: str,
+        predictions: list[str],
+        admin_user_id: str,
+    ) -> bool:
+        """Replace a stored prediction and refresh scores atomically when needed."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await db.execute(
+                    """
+                    UPDATE predictions
+                    SET predictions = ?,
+                        admin_edited_at = CURRENT_TIMESTAMP,
+                        admin_edited_by = ?
+                    WHERE fixture_id = ? AND user_id = ?
+                    """,
+                    ("\n".join(predictions), admin_user_id, fixture_id, user_id),
+                )
+                if cursor.rowcount <= 0:
+                    await db.rollback()
+                    return False
+
+                if await self._fixture_has_scores_in_connection(db, fixture_id):
+                    await self._recalculate_scores_in_connection(db, fixture_id)
+
+                await db.commit()
+                return True
+            except Exception:
+                await db.rollback()
+                raise
+
+    async def set_late_penalty_waiver(
+        self,
+        fixture_id: int,
+        user_id: str,
+        waived: bool,
+    ) -> bool:
+        """Set late-penalty waiver for an existing prediction."""
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                """
+                UPDATE predictions
+                SET late_penalty_waived = ?
+                WHERE fixture_id = ? AND user_id = ?
+                """,
+                (waived, fixture_id, user_id),
+            )
+            await db.commit()
+            return cursor.rowcount > 0
+
+    async def toggle_late_penalty_waiver_with_recalc(
+        self,
+        fixture_id: int,
+        user_id: str,
+    ) -> bool | None:
+        """Toggle late waiver and refresh scores atomically when needed."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                async with db.execute(
+                    "SELECT late_penalty_waived FROM predictions WHERE fixture_id = ? AND user_id = ?",
+                    (fixture_id, user_id),
+                ) as cursor:
+                    row = await cursor.fetchone()
+
+                if row is None:
+                    await db.rollback()
+                    return None
+
+                waived = not bool(row["late_penalty_waived"])
+                cursor = await db.execute(
+                    """
+                    UPDATE predictions
+                    SET late_penalty_waived = ?
+                    WHERE fixture_id = ? AND user_id = ?
+                    """,
+                    (waived, fixture_id, user_id),
+                )
+                if cursor.rowcount <= 0:
+                    await db.rollback()
+                    return None
+
+                if await self._fixture_has_scores_in_connection(db, fixture_id):
+                    await self._recalculate_scores_in_connection(db, fixture_id)
+
+                await db.commit()
+                return waived
+            except Exception:
+                await db.rollback()
+                raise
 
     async def delete_prediction(self, fixture_id: int, user_id: str) -> bool:
         """Delete a user's prediction for a fixture. Returns True if deleted."""
@@ -329,6 +557,11 @@ class Database:
                         "predictions": row["predictions"].split("\n"),
                         "submitted_at": parse_iso(row["submitted_at"]),
                         "is_late": row["is_late"],
+                        "late_penalty_waived": row["late_penalty_waived"],
+                        "admin_edited_at": parse_iso(row["admin_edited_at"])
+                        if row["admin_edited_at"]
+                        else None,
+                        "admin_edited_by": row["admin_edited_by"],
                     }
                     for row in rows
                 ]
@@ -338,7 +571,13 @@ class Database:
         start_time = time.perf_counter()
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                "INSERT OR REPLACE INTO results (fixture_id, results) VALUES (?, ?)",
+                """
+                INSERT INTO results (fixture_id, results)
+                VALUES (?, ?)
+                ON CONFLICT(fixture_id)
+                DO UPDATE SET results = excluded.results,
+                              updated_at = CURRENT_TIMESTAMP
+                """,
                 (fixture_id, "\n".join(results)),
             )
             await db.commit()
@@ -354,16 +593,166 @@ class Database:
                 },
             )
 
+    async def save_results_with_recalc(self, fixture_id: int, results: list[str]) -> bool:
+        """Save results and refresh scores atomically when needed."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                await db.execute(
+                    """
+                    INSERT INTO results (fixture_id, results)
+                    VALUES (?, ?)
+                    ON CONFLICT(fixture_id)
+                    DO UPDATE SET results = excluded.results,
+                                  updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (fixture_id, "\n".join(results)),
+                )
+
+                recalculated = False
+                if await self._fixture_has_scores_in_connection(db, fixture_id):
+                    await self._recalculate_scores_in_connection(db, fixture_id)
+                    recalculated = True
+
+                await db.commit()
+                return recalculated
+            except Exception:
+                await db.rollback()
+                raise
+
     async def get_results(self, fixture_id: int) -> list[str] | None:
         """Get results for a fixture."""
         async with (
             aiosqlite.connect(self.db_path) as db,
-            db.execute("SELECT results FROM results WHERE fixture_id = ?", (fixture_id,)) as cursor,
+            db.execute(
+                "SELECT results FROM results WHERE fixture_id = ? ORDER BY id DESC LIMIT 1",
+                (fixture_id,),
+            ) as cursor,
         ):
             row = await cursor.fetchone()
             if row:
                 return row[0].split("\n")
             return None
+
+    async def fixture_has_scores(self, fixture_id: int) -> bool:
+        """Return whether a fixture already has stored scores."""
+        async with (
+            aiosqlite.connect(self.db_path) as db,
+            db.execute(
+                "SELECT 1 FROM scores WHERE fixture_id = ? LIMIT 1", (fixture_id,)
+            ) as cursor,
+        ):
+            return await cursor.fetchone() is not None
+
+    @staticmethod
+    async def _fixture_has_scores_in_connection(db: aiosqlite.Connection, fixture_id: int) -> bool:
+        async with db.execute(
+            "SELECT 1 FROM scores WHERE fixture_id = ? LIMIT 1", (fixture_id,)
+        ) as cursor:
+            return await cursor.fetchone() is not None
+
+    async def _recalculate_scores_in_connection(
+        self,
+        db: aiosqlite.Connection,
+        fixture_id: int,
+    ) -> None:
+        db.row_factory = aiosqlite.Row
+
+        async with db.execute("SELECT * FROM fixtures WHERE id = ?", (fixture_id,)) as cursor:
+            fixture_row = await cursor.fetchone()
+        if fixture_row is None:
+            raise ValueError("Fixture not found")
+
+        async with db.execute(
+            "SELECT results FROM results WHERE fixture_id = ? ORDER BY id DESC LIMIT 1",
+            (fixture_id,),
+        ) as cursor:
+            results_row = await cursor.fetchone()
+        if results_row is None:
+            raise ValueError("No results entered for this fixture")
+
+        async with db.execute(
+            "SELECT * FROM predictions WHERE fixture_id = ?", (fixture_id,)
+        ) as cursor:
+            prediction_rows = await cursor.fetchall()
+        if not prediction_rows:
+            raise ValueError("No predictions found for this fixture")
+
+        results = results_row["results"].split("\n")
+        scores = []
+        for prediction_row in prediction_rows:
+            score_data = calculate_points(
+                prediction_row["predictions"].split("\n"),
+                results,
+                bool(prediction_row["is_late"]),
+                bool(prediction_row["late_penalty_waived"]),
+            )
+            scores.append(
+                {
+                    "user_id": prediction_row["user_id"],
+                    "user_name": prediction_row["user_name"],
+                    "points": score_data["points"],
+                    "exact_scores": score_data["exact_scores"],
+                    "correct_results": score_data["correct_results"],
+                }
+            )
+
+        scores.sort(
+            key=lambda score: (
+                -score["points"],
+                -score["exact_scores"],
+                -score["correct_results"],
+                score["user_name"].lower(),
+            )
+        )
+
+        await db.execute("DELETE FROM scores WHERE fixture_id = ?", (fixture_id,))
+        for score in scores:
+            await db.execute(
+                """
+                INSERT INTO scores (fixture_id, user_id, user_name, points, exact_scores, correct_results)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    fixture_id,
+                    score["user_id"],
+                    score["user_name"],
+                    score["points"],
+                    score["exact_scores"],
+                    score["correct_results"],
+                ),
+            )
+        await db.execute("UPDATE fixtures SET status = 'closed' WHERE id = ?", (fixture_id,))
+
+    async def get_scores_for_fixture(self, fixture_id: int) -> list[dict]:
+        """Get saved scores for a single fixture ordered by points."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """
+                SELECT s.*, f.week_number
+                FROM scores s
+                JOIN fixtures f ON f.id = s.fixture_id
+                WHERE s.fixture_id = ?
+                ORDER BY s.points DESC, s.exact_scores DESC, s.correct_results DESC, s.user_name ASC
+                """,
+                (fixture_id,),
+            ) as cursor:
+                rows = await cursor.fetchall()
+
+        if not rows:
+            return []
+
+        return [
+            {
+                "user_id": row["user_id"],
+                "user_name": row["user_name"],
+                "points": row["points"],
+                "exact_scores": row["exact_scores"],
+                "correct_results": row["correct_results"],
+            }
+            for row in rows
+        ]
 
     async def save_scores(self, fixture_id: int, scores: list[dict]):
         """Save calculated scores for a fixture atomically."""
@@ -455,7 +844,7 @@ class Database:
                           COUNT(DISTINCT s.fixture_id) as weeks_played
                    FROM scores s
                    GROUP BY s.user_id
-                   ORDER BY total_points DESC"""
+                   ORDER BY total_points DESC, total_exact DESC, total_correct DESC, user_name ASC"""
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [
@@ -486,7 +875,11 @@ class Database:
                 if row:
                     fixture_id = row["fixture_id"]
                     async with db.execute(
-                        "SELECT * FROM scores WHERE fixture_id = ? ORDER BY points DESC",
+                        """
+                        SELECT * FROM scores
+                        WHERE fixture_id = ?
+                        ORDER BY points DESC, exact_scores DESC, correct_results DESC, user_name ASC
+                        """,
                         (fixture_id,),
                     ) as cursor2:
                         scores = await cursor2.fetchall()

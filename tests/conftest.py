@@ -276,6 +276,8 @@ class MockInteraction:
         self.response = MagicMock()
         self.response.is_done.return_value = False
         self.response.send_message = self._response_send_message
+        self.response.edit_message = self._response_edit_message
+        self.response.send_modal = self._response_send_modal
 
         self.followup = MagicMock()
         self.followup.send = self._followup_send
@@ -289,6 +291,14 @@ class MockInteraction:
         msg = {"content": content}
         msg.update(kwargs)
         self.followup_sent.append(msg)
+
+    async def _response_edit_message(self, content: str = None, **kwargs):
+        msg = {"content": content}
+        msg.update(kwargs)
+        self.response_sent.append(msg)
+
+    async def _response_send_modal(self, modal, **kwargs):
+        self.modal_sent = {"modal": modal, **kwargs}
 
     async def response_send_message(self, content: str = None, **kwargs):
         msg = {"content": content}

@@ -33,7 +33,7 @@ Bot requires:
    Team E - Team F 3:2
    ...
    ```
- 3. Bot reacts ✅ when saved. To change, just post again.
+ 3. Bot reacts ✅ when saved. Thread submissions are one-shot; use `/predict` or DM the bot to replace an existing prediction.
 
 **Method 2: DM Predictions**
 1. Type `/predict` (or DM the bot directly) -> Bot DMs you the games
@@ -48,6 +48,7 @@ Bot requires:
 You need a Discord role named `Admin` or `typer-admin`.
 
 **Fixture Management:**
+- `/admin panel` - Open the admin hub for fixture deletion, prediction overrides, waivers, and result correction
 - `/admin fixture create` - Create a new fixture (DM workflow with games + deadline, auto-creates prediction thread)
 - `/admin fixture delete [week]` - Delete an open fixture (week required if multiple are open)
 
