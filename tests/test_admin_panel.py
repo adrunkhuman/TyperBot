@@ -68,6 +68,26 @@ class TestPredictionPanelFlows:
         assert "no longer have permission" in mock_interaction_admin.response_sent[0]["content"]
 
     @pytest.mark.asyncio
+    async def test_prediction_panel_initializes_empty_user_select(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        await admin_cog.db.create_fixture(1, sample_games, datetime.now(UTC) + timedelta(days=1))
+
+        home_view = AdminPanelHomeView(admin_cog, str(mock_interaction_admin.user.id))
+        predictions_button = next(
+            child for child in home_view.children if getattr(child, "label", None) == "Predictions"
+        )
+        await predictions_button.callback(mock_interaction_admin)
+
+        edited_view = mock_interaction_admin.response_sent[-1]["view"]
+        assert edited_view.user_select.disabled is True
+        assert len(edited_view.user_select.options) == 1
+        assert edited_view.user_select.options[0].label == "No predictions available"
+
+    @pytest.mark.asyncio
     async def test_prediction_panel_replace_opens_modal(
         self,
         admin_cog,

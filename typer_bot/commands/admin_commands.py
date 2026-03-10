@@ -471,6 +471,7 @@ class PredictionsPanelView(OwnerRestrictedView):
         self.selection = PanelSelectionState()
         self.fixture_select = FixtureSelect(self)
         self.user_select = PredictionUserSelect(self)
+        self.user_select.update_options([])
         self._refresh_items()
 
     def _refresh_items(self) -> None:
