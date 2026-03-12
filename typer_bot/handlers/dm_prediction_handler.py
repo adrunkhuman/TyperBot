@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import timedelta
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import Literal
 
 import discord
 
@@ -22,12 +24,23 @@ YES_REPLIES = {"y", "yes"}
 NO_REPLIES = {"n", "no"}
 
 
+@dataclass(slots=True)
+class PredictionSession:
+    """Active state for one user's DM prediction flow."""
+
+    step: Literal["select", "predict", "continue"]
+    fixture_ids: list[int]
+    fixture_id: int | None
+    completed_fixture_ids: list[int]
+    created_at: datetime
+
+
 class DMPredictionHandler:
     """Handles the DM workflow for user predictions."""
 
     def __init__(self, db: Database):
         self.db = db
-        self._prediction_sessions: dict[str, dict] = {}
+        self._prediction_sessions: dict[str, PredictionSession] = {}
 
     def _cleanup_expired_prediction_sessions(self) -> None:
         """Remove prediction sessions older than SESSION_TIMEOUT_HOURS."""
@@ -36,13 +49,13 @@ class DMPredictionHandler:
         expired_users = [
             user_id
             for user_id, state in self._prediction_sessions.items()
-            if current_time - state.get("created_at", current_time) > expiry
+            if current_time - state.created_at > expiry
         ]
 
         for user_id in expired_users:
             self._prediction_sessions.pop(user_id, None)
 
-    def _get_prediction_session(self, user_id: str) -> dict | None:
+    def _get_prediction_session(self, user_id: str) -> PredictionSession | None:
         """Get active prediction session for a user."""
         self._cleanup_expired_prediction_sessions()
         return self._prediction_sessions.get(user_id)
@@ -57,13 +70,13 @@ class DMPredictionHandler:
         completed_fixture_ids: list[int] | None = None,
     ) -> None:
         """Create or update prediction flow state for a user."""
-        self._prediction_sessions[user_id] = {
-            "step": step,
-            "fixture_ids": fixture_ids or [],
-            "fixture_id": fixture_id,
-            "completed_fixture_ids": completed_fixture_ids or [],
-            "created_at": now(),
-        }
+        self._prediction_sessions[user_id] = PredictionSession(
+            step=step,
+            fixture_ids=fixture_ids or [],
+            fixture_id=fixture_id,
+            completed_fixture_ids=completed_fixture_ids or [],
+            created_at=now(),
+        )
 
     def _clear_prediction_session(self, user_id: str) -> None:
         """Clear prediction flow state for a user."""
@@ -188,10 +201,10 @@ class DMPredictionHandler:
         session = self._get_prediction_session(user_id)
         message_content = message.content.strip()
 
-        if session and session.get("step") == "continue":
+        if session and session.step == "continue":
             reply = message_content.lower()
-            completed_fixture_ids = session.get("completed_fixture_ids", [])
-            remaining_fixture_ids = session.get("fixture_ids", [])
+            completed_fixture_ids = session.completed_fixture_ids
+            remaining_fixture_ids = session.fixture_ids
             remaining_open_fixtures = [
                 fixture for fixture in open_fixtures if fixture["id"] in remaining_fixture_ids
             ]
@@ -239,9 +252,9 @@ class DMPredictionHandler:
         content_for_parsing = message.content
         completed_fixture_ids: list[int] = []
 
-        if session and session.get("step") == "select":
-            allowed_fixture_ids = set(session.get("fixture_ids", []))
-            completed_fixture_ids = session.get("completed_fixture_ids", [])
+        if session and session.step == "select":
+            allowed_fixture_ids = set(session.fixture_ids)
+            completed_fixture_ids = session.completed_fixture_ids
             selected_week, inline_predictions = self._parse_week_selection(message_content)
 
             selectable_fixtures = [
@@ -290,9 +303,9 @@ class DMPredictionHandler:
                 await message.author.send(self._build_prediction_prompt(target_fixture))
                 return True
 
-        elif session and session.get("step") == "predict":
-            completed_fixture_ids = session.get("completed_fixture_ids", [])
-            target_fixture = fixture_by_id.get(session.get("fixture_id"))
+        elif session and session.step == "predict":
+            completed_fixture_ids = session.completed_fixture_ids
+            target_fixture = fixture_by_id.get(session.fixture_id)
             if not target_fixture:
                 self._set_prediction_session(
                     user_id,

@@ -158,7 +158,7 @@ class TestStartFlow:
         assert len(mock_user.dm_sent) == 1
         assert "Week 1 - Submit Your Predictions" in mock_user.dm_sent[0]
         session = prediction_handler._prediction_sessions[str(mock_user.id)]
-        assert session["step"] == "predict"
+        assert session.step == "predict"
 
     @pytest.mark.asyncio
     async def test_multiple_open_fixtures_prompt_for_selection(
@@ -174,7 +174,7 @@ class TestStartFlow:
         assert len(mock_user.dm_sent) == 1
         assert "Multiple fixtures are open" in mock_user.dm_sent[0]
         session = prediction_handler._prediction_sessions[str(mock_user.id)]
-        assert session["step"] == "select"
+        assert session.step == "select"
 
 
 class TestMultiOpenPredictionFlow:
@@ -195,7 +195,7 @@ class TestMultiOpenPredictionFlow:
         assert len(mock_message.author.dm_sent) == 1
         assert "Multiple fixtures are open" in mock_message.author.dm_sent[0]
         session = prediction_handler._prediction_sessions[str(mock_message.author.id)]
-        assert session["step"] == "select"
+        assert session.step == "select"
 
     @pytest.mark.asyncio
     async def test_inline_week_selection_with_predictions_saves_selected_fixture(
@@ -224,7 +224,7 @@ class TestMultiOpenPredictionFlow:
         assert len(predictions) == 1
         assert predictions[0]["predictions"] == ["2-1", "1-1", "0-2"]
         session = prediction_handler._prediction_sessions[user_id]
-        assert session["step"] == "continue"
+        assert session.step == "continue"
 
     @pytest.mark.asyncio
     async def test_saving_one_fixture_prompts_for_another_when_open(
@@ -250,7 +250,7 @@ class TestMultiOpenPredictionFlow:
         assert handled
         assert "Would you like to predict another open fixture" in mock_message.author.dm_sent[-1]
         session = prediction_handler._prediction_sessions[user_id]
-        assert session["step"] == "continue"
+        assert session.step == "continue"
 
         predictions = await prediction_handler.db.get_all_predictions(fixture_one_id)
         assert len(predictions) == 1
@@ -279,8 +279,8 @@ class TestMultiOpenPredictionFlow:
         assert handled
         assert "Week 2 - Submit Your Predictions" in mock_message.author.dm_sent[-1]
         session = prediction_handler._prediction_sessions[user_id]
-        assert session["step"] == "predict"
-        assert session["fixture_id"] == fixture_two_id
+        assert session.step == "predict"
+        assert session.fixture_id == fixture_two_id
 
     @pytest.mark.asyncio
     async def test_continue_no_clears_session(self, prediction_handler, mock_message, sample_games):
@@ -328,7 +328,7 @@ class TestMultiOpenPredictionFlow:
 
         assert handled
         assert mock_message.author.dm_sent[-1] == "Please reply with `yes` or `no`."
-        assert prediction_handler._prediction_sessions[user_id]["step"] == "continue"
+        assert prediction_handler._prediction_sessions[user_id].step == "continue"
 
     @pytest.mark.asyncio
     async def test_continue_yes_with_no_remaining_fixture_clears_session(
@@ -371,7 +371,7 @@ class TestMultiOpenPredictionFlow:
             fixture_id=fixture_one_id,
             completed_fixture_ids=[],
         )
-        prediction_handler._prediction_sessions[user_id]["created_at"] = now() - timedelta(hours=2)
+        prediction_handler._prediction_sessions[user_id].created_at = now() - timedelta(hours=2)
 
         mock_message.guild = None
         mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
@@ -380,7 +380,7 @@ class TestMultiOpenPredictionFlow:
 
         assert handled
         assert mock_message.author.dm_sent[-1].startswith("Multiple fixtures are open")
-        assert prediction_handler._prediction_sessions[user_id]["step"] == "select"
+        assert prediction_handler._prediction_sessions[user_id].step == "select"
 
     @pytest.mark.asyncio
     async def test_selected_fixture_closed_mid_flow_does_not_auto_route(
