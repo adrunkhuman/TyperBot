@@ -49,7 +49,7 @@ class TyperBot(commands.Bot):
         guild_id = str(interaction.guild_id) if interaction.guild_id else None
         set_log_context(user_id=user_id, guild_id=guild_id, source="command")
 
-        # ContextVars are task-local, so each interaction gets isolated context.
+        # ContextVars are task-local, so this handler does not need explicit cleanup.
 
     async def on_message(self, message: discord.Message):
         """Set trace ID and context for every message before processing."""
@@ -81,8 +81,7 @@ class TyperBot(commands.Bot):
             return
 
         set_trace_id(f"del-{message.id}")
-        # ContextVars are task-local; cleanup automatic when task completes.
-        # No log_context set, so no cleanup needed.
+        # No cleanup needed: this handler only sets a trace ID, and ContextVars are task-local.
 
     async def setup_hook(self):
         """Initialize database and load cogs."""
@@ -132,10 +131,8 @@ class TyperBot(commands.Bot):
         for guild in self.guilds:
             logger.info(f"  - {guild.name} (ID: {guild.id})")
 
-        # Check bot permissions on all guilds
         await self._check_permissions()
 
-        # Sync any manually-created threads
         await self._sync_fixture_thread()
 
     async def on_error(self, event_method, *_args, **_kwargs):
@@ -238,7 +235,6 @@ class TyperBot(commands.Bot):
                     continue
 
                 found = False
-                # Search channels for the announcement message
                 for guild in self.guilds:
                     for channel in guild.text_channels:
                         try:
@@ -273,10 +269,7 @@ class TyperBot(commands.Bot):
             logger.exception(f"Error during fixture verification: {e}")
 
     async def _check_permissions(self):
-        """Check bot permissions on all guilds.
-
-        Logs warnings if the bot is missing critical permissions.
-        """
+        """Warn when a guild is missing permissions required for prediction workflows."""
         required_permissions = [
             ("send_messages", "Send Messages"),
             ("read_message_history", "Read Message History"),
@@ -319,7 +312,7 @@ def main():
         logger.error("Please update it with your actual bot token")
         sys.exit(1)
 
-    # Token is validated above; this satisfies type checker
+    # The guard above exits on missing/placeholder tokens; this keeps the type checker honest.
     if token is None:
         raise RuntimeError("Token validation failed unexpectedly")
     logger.info("✅ Token configured")

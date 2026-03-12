@@ -43,7 +43,7 @@ class ThreadPredictionHandler:
 
         user_id = str(message.author.id)
         with LogContextManager(user_id=user_id, fixture_id=fixture["id"], source="thread"):
-            # Rate limiting check - atomic update to prevent race conditions
+            # Update and check the cooldown in one step so rapid reposts cannot race each other.
             current_time = now()
             last_time = self.workflow_state.record_thread_prediction_attempt(user_id, current_time)
             if (
@@ -51,9 +51,8 @@ class ThreadPredictionHandler:
                 and (current_time - last_time).total_seconds() < PREDICTION_RATE_LIMIT_SECONDS
             ):
                 logger.debug(f"Rate limiting prediction from {user_id}")
-                return True  # Silently ignore rate-limited messages
+                return True
 
-            # Check message length
             if len(message.content) > MAX_MESSAGE_LENGTH:
                 await self._handle_error(
                     message,
@@ -61,15 +60,13 @@ class ThreadPredictionHandler:
                 )
                 return True
 
-            # Parse predictions
             predictions, errors = parse_line_predictions(message.content, fixture["games"])
 
-            # Chatty Thread fix: If no valid scores found, ignore silently
+            # Threads also contain chatter; only treat messages with score lines as submissions.
             if len(predictions) == 0:
                 logger.debug(f"Ignoring message with no valid scores from {message.author.id}")
                 return False
 
-            # If there are parsing errors, DM the user
             if errors:
                 error_msg = "\n".join(errors)
                 log_event(
@@ -90,11 +87,10 @@ class ThreadPredictionHandler:
                 )
                 return True
 
-            # Check deadline
             current_time = now()
             is_late = current_time > fixture["deadline"]
 
-            # Check if already submitted via DM (race condition prevention)
+            # DM and thread submissions can land at the same time; keep the first stored pick.
             existing = await self.db.get_prediction(fixture["id"], user_id)
             if existing:
                 log_event(
@@ -112,7 +108,6 @@ class ThreadPredictionHandler:
                 return True
 
         try:
-            # Save prediction
             await self.db.save_prediction(
                 fixture["id"],
                 user_id,
@@ -121,7 +116,6 @@ class ThreadPredictionHandler:
                 is_late,
             )
 
-            # Add success reaction
             try:
                 await message.add_reaction("✅")
             except discord.Forbidden:
@@ -129,7 +123,7 @@ class ThreadPredictionHandler:
                     f"Could not add reaction to thread prediction from {message.author.id}. "
                     "Missing 'Add Reactions' permission."
                 )
-                # Fallback: DM the user so they know it worked
+                # Fall back to DM so the user still gets confirmation.
                 with suppress(discord.Forbidden):
                     await message.author.send(
                         "✅ **Prediction saved!**\n"
@@ -179,7 +173,7 @@ class ThreadPredictionHandler:
         """Handle errors by DMing the user and optionally reacting to the message."""
         with suppress(discord.Forbidden):
             await message.author.send(error_text)
-        # If DM failed (DMs disabled), add reaction to indicate error
+        # Fall back to a reaction when DMs are closed.
         with suppress(discord.Forbidden):
             await message.add_reaction("❌")
 

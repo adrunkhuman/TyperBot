@@ -30,7 +30,7 @@ class TestOnMessage:
     @pytest.mark.asyncio
     async def test_ignores_non_thread_channels(self, handler, mock_message):
         """Should ignore messages not in threads."""
-        mock_message.channel = object()  # Not a thread
+        mock_message.channel = object()
 
         result = await handler.on_message(mock_message)
 
@@ -40,7 +40,7 @@ class TestOnMessage:
     @pytest.mark.usefixtures("database")
     async def test_ignores_unknown_threads(self, handler, mock_message):
         """Should ignore threads not associated with fixtures."""
-        mock_message.channel.id = 999999  # Unknown thread ID
+        mock_message.channel.id = 999999
 
         result = await handler.on_message(mock_message)
 
@@ -77,7 +77,6 @@ class TestOnMessage:
     @pytest.mark.usefixtures("fixture_with_thread")
     async def test_handles_invalid_prediction_format(self, handler, mock_message):
         """Should DM user when predictions have format errors."""
-        # Must provide exactly 3 lines for 3 games
         mock_message.content = "Team A - Team B invalid\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
         mock_message.channel.id = 789012
 
@@ -99,7 +98,6 @@ class TestOnMessage:
         assert result is True
         assert "✅" in mock_message.reactions_added
 
-        # Verify prediction was saved
         predictions = await handler.db.get_all_predictions(fixture_with_thread["id"])
         assert len(predictions) == 1
         assert predictions[0]["user_id"] == "123456"
@@ -108,7 +106,6 @@ class TestOnMessage:
     @pytest.mark.asyncio
     async def test_marks_late_predictions(self, handler, database, mock_message, sample_games):
         """Should mark predictions as late when past deadline."""
-        # Create fixture with past deadline
         deadline = datetime.now(UTC) - timedelta(hours=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
         await database.update_fixture_announcement(fixture_id, message_id="789012")
@@ -121,7 +118,6 @@ class TestOnMessage:
         assert result is True
         assert "✅" in mock_message.reactions_added
 
-        # Verify prediction was saved as late
         predictions = await handler.db.get_all_predictions(fixture_id)
         assert len(predictions) == 1
         assert predictions[0]["is_late"]
@@ -173,7 +169,6 @@ class TestEdgeCases:
         mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
         monkeypatch.setattr(mock_message, "add_reaction", raise_forbidden)
 
-        # Should not crash
         result = await handler.on_message(mock_message)
         assert result is True
 
@@ -187,11 +182,9 @@ class TestEdgeCases:
             raise discord.Forbidden(MagicMock(), "Cannot send DMs")
 
         mock_message.channel.id = 789012
-        # Must provide exactly 3 lines for 3 games, with invalid format to trigger DM
         mock_message.content = "Team A - Team B invalid\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
         monkeypatch.setattr(mock_message.author, "send", raise_forbidden)
 
-        # Should not crash and should add error reaction
         result = await handler.on_message(mock_message)
         assert result is True
 
@@ -207,7 +200,6 @@ class TestEdgeCases:
         mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
         monkeypatch.setattr(handler.db, "save_prediction", raise_error)
 
-        # Should not crash and should notify user
         result = await handler.on_message(mock_message)
         assert result is True
         assert len(mock_message.author.dm_sent) == 1
@@ -216,7 +208,7 @@ class TestEdgeCases:
     @pytest.mark.asyncio
     async def test_thread_exists_but_not_in_database(self, handler, mock_message):
         """Should handle threads created manually (not through bot)."""
-        mock_message.channel.id = 999999  # Thread not in database
+        mock_message.channel.id = 999999
 
         result = await handler.on_message(mock_message)
 
@@ -227,7 +219,6 @@ class TestEdgeCases:
     async def test_mixed_valid_and_chat_content(self, handler, mock_message):
         """Should error when some lines have chat text instead of scores."""
         mock_message.channel.id = 789012
-        # 3 lines but only 1 has a valid score - will error on lines 1 and 3
         mock_message.content = "Let's go Team A!\nTeam A - Team B 2-1\nGood luck everyone!"
 
         result = await handler.on_message(mock_message)
@@ -306,12 +297,10 @@ class TestIntegration:
         """Test multiple users predicting in the same thread."""
         from tests.conftest import MockMessage, MockUser
 
-        # Create fixture
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
         await database.update_fixture_announcement(fixture_id, message_id="789012")
 
-        # User 1 predicts
         user1 = MockUser(user_id="111", name="User1")
         message1 = MockMessage(
             content="Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2",
@@ -324,7 +313,6 @@ class TestIntegration:
         result = await handler.on_message(message1)
         assert result is True
 
-        # User 2 predicts
         user2 = MockUser(user_id="222", name="User2")
         message2 = MockMessage(
             content="Team A - Team B 1-0\nTeam C - Team D 2-2\nTeam E - Team F 1-1",
@@ -336,7 +324,6 @@ class TestIntegration:
         result = await handler.on_message(message2)
         assert result is True
 
-        # Verify both predictions exist
         predictions = await database.get_all_predictions(fixture_id)
         assert len(predictions) == 2
         user_ids = {p["user_id"] for p in predictions}

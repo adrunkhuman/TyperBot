@@ -70,7 +70,6 @@ class FixtureCreationHandler:
             await message.author.send(f"Message too long! (max {MAX_MESSAGE_LENGTH} characters)")
             return True
 
-        # Verify admin status
         state = self.get_session(user_id)
         if state is None:
             return False
@@ -147,7 +146,6 @@ class FixtureCreationHandler:
         state.games = games
         state.step = "deadline"
 
-        # Calculate default deadline (Friday 18:00)
         current_time = now()
         days_until_friday = (4 - current_time.weekday()) % 7
         if days_until_friday == 0 and current_time.hour >= 18:
@@ -378,7 +376,6 @@ class FixtureConfirmView(ui.View):
         )
 
         try:
-            # Send announcement message
             announcement = await self.channel.send(
                 f"**Week {allocated_week} Fixture is now open!**\n\n"
                 f"{final_preview}\n\n"
@@ -392,7 +389,6 @@ class FixtureConfirmView(ui.View):
                 message_id=str(announcement.id),
             )
 
-            # Create a thread for predictions
             try:
                 thread = await announcement.create_thread(
                     name=f"Week {allocated_week} Predictions",

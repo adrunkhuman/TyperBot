@@ -62,7 +62,7 @@ class TestFullWorkflow:
         await database.save_prediction(fixture_id, "user1", "User1", ["2-1", "1-1", "0-2"], True)
 
         predictions = await database.get_all_predictions(fixture_id)
-        assert predictions[0]["is_late"] == 1  # SQLite BOOLEAN returns int, not bool
+        assert predictions[0]["is_late"] == 1  # SQLite returns BOOLEAN columns as ints.
 
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
 
@@ -236,7 +236,6 @@ class TestUsernameChangeHandling:
         games = ["Team A - Team B"]
         deadline = datetime.now(UTC) - timedelta(days=2)
 
-        # Week 1: User is "st4chu"
         fixture1_id = await database.create_fixture(1, games, deadline)
         await database.save_prediction(fixture1_id, "user1", "st4chu", ["2-1"], False)
         await database.save_results(fixture1_id, ["2-1"])
@@ -253,7 +252,6 @@ class TestUsernameChangeHandling:
             ],
         )
 
-        # Week 2: Same user is now "Stachu"
         deadline = datetime.now(UTC) - timedelta(days=1)
         fixture2_id = await database.create_fixture(2, games, deadline)
         await database.save_prediction(fixture2_id, "user1", "Stachu", ["1-0"], False)
@@ -272,10 +270,9 @@ class TestUsernameChangeHandling:
         )
 
         standings = await database.get_standings()
-        assert len(standings) == 1  # Should NOT be 2 separate entries
+        assert len(standings) == 1
         assert standings[0]["total_points"] == 6
         assert standings[0]["weeks_played"] == 2
-        # Should show most recent name (from fixture 2)
         assert standings[0]["user_name"] == "Stachu"
 
     @pytest.mark.asyncio
@@ -283,7 +280,6 @@ class TestUsernameChangeHandling:
         """Should show the most recent username from latest fixture."""
         games = ["Team A - Team B"]
 
-        # Week 1: "OldName"
         fixture1_id = await database.create_fixture(1, games, datetime.now(UTC) - timedelta(days=3))
         await database.save_results(fixture1_id, ["2-1"])
         await database.save_scores(
@@ -299,7 +295,6 @@ class TestUsernameChangeHandling:
             ],
         )
 
-        # Week 2: "MiddleName"
         fixture2_id = await database.create_fixture(2, games, datetime.now(UTC) - timedelta(days=2))
         await database.save_results(fixture2_id, ["2-1"])
         await database.save_scores(
@@ -315,7 +310,6 @@ class TestUsernameChangeHandling:
             ],
         )
 
-        # Week 3: "NewName" (latest)
         fixture3_id = await database.create_fixture(3, games, datetime.now(UTC) - timedelta(days=1))
         await database.save_results(fixture3_id, ["2-1"])
         await database.save_scores(
@@ -333,6 +327,5 @@ class TestUsernameChangeHandling:
 
         standings = await database.get_standings()
         assert len(standings) == 1
-        # Should show name from most recent fixture (fixture 3)
         assert standings[0]["user_name"] == "NewName"
         assert standings[0]["total_points"] == 3

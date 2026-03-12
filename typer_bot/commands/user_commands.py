@@ -19,7 +19,7 @@ class UserCommands(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        # TyperBot sets db attr dynamically; discord.py typing doesn't track custom attrs
+        # TyperBot injects these attrs; discord.py typing cannot see them.
         self.db: Database = bot.db  # type: ignore
         self.workflow_state: WorkflowStateStore = bot.workflow_state  # type: ignore[attr-defined]
         self.prediction_handler = DMPredictionHandler(self.db, self.workflow_state)
