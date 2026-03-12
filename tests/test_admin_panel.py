@@ -5,8 +5,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from tests.conftest import MockInteraction, MockUser
-from typer_bot.commands.admin_commands import (
-    AdminCommands,
+from typer_bot.commands.admin_commands import AdminCommands
+from typer_bot.commands.admin_panel import (
     AdminPanelHomeView,
     CorrectResultsModal,
     PredictionsPanelView,
