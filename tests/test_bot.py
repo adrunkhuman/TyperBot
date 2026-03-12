@@ -58,7 +58,6 @@ class TestSetupHook:
             bot.thread_handler = MagicMock()
             bot.load_extension = AsyncMock()
             bot.reminder_task = MagicMock()
-            bot._run_archive_imports = AsyncMock()
             yield bot
 
     @pytest.mark.asyncio
@@ -90,12 +89,6 @@ class TestSetupHook:
         """Reminder task starts automatically."""
         await bot_instance.setup_hook()
         bot_instance.reminder_task.start.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_setup_hook_runs_archive_import(self, bot_instance):
-        """Archive import runs on first boot."""
-        await bot_instance.setup_hook()
-        bot_instance._run_archive_imports.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_setup_hook_raises_on_db_failure(self, bot_instance):
@@ -331,69 +324,6 @@ class TestSendReminder:
             fixture = {"deadline": datetime.now(UTC), "week_number": 1}
             await bot_instance.send_reminder(fixture, "24 hours remaining")
             mock_logger.warning.assert_called_with("REMINDER_CHANNEL_ID not set, skipping reminder")
-
-
-class TestArchiveImport:
-    """Test suite for archive import functionality."""
-
-    @pytest.fixture
-    def bot_instance(self, tmp_path):
-        with patch("typer_bot.bot.commands.Bot.__init__", return_value=None):
-            bot = TyperBot.__new__(TyperBot)
-            bot.db = MagicMock()
-            bot.db.db_path = str(tmp_path / "test.db")
-            yield bot
-
-    @pytest.mark.asyncio
-    async def test_archive_import_disabled_by_default(self, bot_instance):
-        """Archive import is opt-in to prevent accidental data overwrites."""
-        with patch.dict(os.environ, {}, clear=True), patch("typer_bot.bot.logger") as mock_logger:
-            await bot_instance._run_archive_imports()
-            mock_logger.info.assert_any_call(
-                "Archive import disabled (set IMPORT_ARCHIVE=true to enable)"
-            )
-
-    @pytest.mark.asyncio
-    @patch.dict(os.environ, {"IMPORT_ARCHIVE": "true"})
-    async def test_archive_import_skips_if_fixtures_exist(self, bot_instance):
-        """Import is skipped when fixtures already exist."""
-        import aiosqlite
-
-        async with aiosqlite.connect(bot_instance.db.db_path) as db:
-            await db.execute("""
-                CREATE TABLE fixtures (
-                    id INTEGER PRIMARY KEY,
-                    week_number INTEGER NOT NULL,
-                    games TEXT NOT NULL,
-                    deadline DATETIME NOT NULL,
-                    status TEXT DEFAULT 'open'
-                )
-            """)
-            await db.execute(
-                "INSERT INTO fixtures (week_number, games, deadline) VALUES (?, ?, ?)",
-                (1, "Game 1", datetime.now(UTC)),
-            )
-            await db.commit()
-
-        with patch("typer_bot.bot.logger") as mock_logger:
-            await bot_instance._run_archive_imports()
-            mock_logger.info.assert_any_call(
-                "Database already has fixtures, skipping archive import"
-            )
-
-    @pytest.mark.asyncio
-    async def test_validate_archive_sql_blocks_dangerous_statements(self, bot_instance):
-        """Dangerous SQL statements are blocked to prevent malicious archive files."""
-        dangerous_sqls = [
-            "ATTACH DATABASE 'evil.db' AS evil;",
-            "DETACH DATABASE evil;",
-            "VACUUM;",
-            "PRAGMA foreign_keys = OFF;",
-        ]
-
-        for sql in dangerous_sqls:
-            result = await bot_instance._validate_archive_sql(bot_instance.db.db_path, sql)
-            assert result is False, f"Should have rejected: {sql}"
 
 
 class TestMainFunction:

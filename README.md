@@ -75,7 +75,6 @@ I recommend **Railway** because it's cheap/free and supports persistent storage 
    - `TZ`: (Optional) Timezone for deadlines. Default `Europe/Warsaw`. Examples: `America/New_York`, `Asia/Tokyo`.
    - `REMINDER_CHANNEL_ID`: (Optional) ID of channel to spam reminders in.
    - `LOG_LEVEL`: (Optional) Set to `DEBUG` for verbose logs. Default `INFO`.
-   - `IMPORT_ARCHIVE`: (Optional) Set to `true` to import `.sql` files from `archive/` on first run (validated via sandbox transaction, INSERT-only). Default: disabled.
    - `ENVIRONMENT`: (Optional) Set to `production` for live bot operation. Other values run smoke-test mode (validates config then exits). Default: `development`.
 
 ## Running Locally
@@ -126,12 +125,6 @@ uv run pytest tests/test_admin_commands.py -v
 ```
 
 Tests run automatically on pull requests via GitHub Actions.
-
-## Importing History
-If you have a bunch of old scores you want to keep:
-1. Put `.sql` files in `archive/` folder (check `example_import.sql` for format).
-2. Start bot with a fresh database.
-3. It'll import them automatically.
 
 ## Username Management
 

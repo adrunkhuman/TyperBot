@@ -1,11 +1,9 @@
 """Main Discord bot implementation."""
 
-import asyncio
 import logging
 import os
 import sys
 from datetime import timedelta
-from pathlib import Path
 
 import discord
 from discord.ext import commands, tasks
@@ -95,8 +93,6 @@ class TyperBot(commands.Bot):
             logger.exception("Database initialization failed")
             raise
 
-        await self._run_archive_imports()
-
         logger.info("Loading command cogs...")
         try:
             await self.load_extension("typer_bot.commands.user_commands")
@@ -122,107 +118,6 @@ class TyperBot(commands.Bot):
         logger.info("Starting reminder task...")
         self.reminder_task.start()
         logger.info("Setup hook complete")
-
-    async def _validate_archive_sql(self, db_path: str, sql_content: str) -> bool:
-        """Validate archive SQL using sandbox transaction - only safe INSERTs allowed."""
-        import re
-
-        import aiosqlite
-
-        # Pre-check: block operations that bypass transaction safety
-        if re.search(r"\b(ATTACH|DETACH|VACUUM|PRAGMA)\b", sql_content, re.IGNORECASE):
-            return False
-
-        async with aiosqlite.connect(db_path) as db:
-            await db.execute("BEGIN")
-            await db.execute("PRAGMA writable_schema=OFF")
-            try:
-                await db.executescript(sql_content)
-                await db.rollback()
-                return True
-            except aiosqlite.Error as e:
-                logger.warning(f"SQL validation failed: {e}")
-                await db.rollback()
-                return False
-
-    async def _run_archive_imports(self):
-        """Run SQL files from archive folder if database is empty."""
-        import os
-
-        import aiosqlite
-
-        auto_import = os.getenv("IMPORT_ARCHIVE", "").lower() in ("true", "1", "yes")
-        if not auto_import:
-            logger.info("Archive import disabled (set IMPORT_ARCHIVE=true to enable)")
-            return
-
-        try:
-            async with (
-                aiosqlite.connect(self.db.db_path) as db,
-                db.execute("SELECT COUNT(*) FROM fixtures") as cursor,
-            ):
-                count = await cursor.fetchone()
-                if count and count[0] > 0:
-                    logger.info("Database already has fixtures, skipping archive import")
-                    return
-
-            # Path.glob() does string matching only, not file I/O.
-            # Actual file reads are wrapped in run_in_executor below.
-            archive_files = sorted(Path("archive").glob("*.sql"))  # noqa: ASYNC240
-            if not archive_files:
-                logger.info("No archive SQL files found")
-                return
-
-            logger.info(f"Found {len(archive_files)} archive file(s) to import")
-
-            for sql_file in archive_files:
-                logger.info(f"Importing {sql_file}...")
-                try:
-                    # Run file I/O in thread pool to avoid blocking event loop
-                    def _read_sql_file(file=sql_file):
-                        with file.open(encoding="utf-8") as f:
-                            return f.read()
-
-                    sql_content = await asyncio.get_event_loop().run_in_executor(
-                        None, _read_sql_file
-                    )
-
-                    if not await self._validate_archive_sql(self.db.db_path, sql_content):
-                        logger.error(
-                            f"❌ Rejected {sql_file}: validation failed (non-INSERT statements detected)"
-                        )
-                        continue
-
-                    async with aiosqlite.connect(self.db.db_path) as db:
-                        await db.executescript(sql_content)
-                        await db.commit()
-
-                        async with db.execute("SELECT COUNT(*) FROM fixtures") as cursor:
-                            row = await cursor.fetchone()
-                            fixture_count = row[0] if row else 0
-                        async with db.execute("SELECT COUNT(*) FROM predictions") as cursor:
-                            row = await cursor.fetchone()
-                            prediction_count = row[0] if row else 0
-
-                        async with db.execute("SELECT games FROM fixtures LIMIT 1") as cursor:
-                            row = await cursor.fetchone()
-                            games_count = len(row[0].split("\n")) if row else 0
-
-                    logger.info(f"✅ Successfully imported {sql_file}")
-                    logger.info(
-                        f"   📊 Imported {fixture_count} fixture(s) with {games_count} games"
-                    )
-                    logger.info(
-                        f"   👥 Imported {prediction_count} predictions from {prediction_count // games_count if games_count else 0} users"
-                    )
-
-                except Exception:
-                    logger.exception(f"❌ Failed to import {sql_file}")
-
-            logger.info("Archive import complete")
-
-        except Exception:
-            logger.exception("Error during archive import")
 
     async def on_ready(self):
         """Called when bot is ready."""
