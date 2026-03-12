@@ -12,7 +12,6 @@ You are working on `matchday-typer`, a Discord bot for football prediction leagu
 - **Persistence:** The database (`typer.db`) MUST live in `/app/data` on production (Railway volume).
 - **Transaction Safety:** Critical operations use atomic transactions (BEGIN/COMMIT/ROLLBACK) to ensure data consistency. Never modify transaction logic without understanding rollback implications.
 - **Race Condition Prevention:** Both DM and thread prediction handlers check for existing predictions before saving to prevent duplicates when users submit via both methods simultaneously.
-- **Archive Import Security:** SQL files in `archive/` are validated using sandbox transactions before execution. Only INSERT statements allowed; ATTACH/DETACH/VACUUM/PRAGMA blocked.
 - **Configuration:** All data paths configurable via env vars in `utils/config.py`:
   - `DATA_DIR`: Base directory (default: `/app/data`)
   - `DB_PATH`: Full database path (default: `{DATA_DIR}/typer.db`)
@@ -64,7 +63,7 @@ scores (
 ```
 
 ## 4. Codebase Map
-- `typer_bot/bot.py`: Entry point, setup hook, archive import logic.
+- `typer_bot/bot.py`: Entry point and setup hook.
 - `typer_bot/commands/user_commands.py`: `/predict`, `/standings` (Public).
 - `typer_bot/commands/admin_commands.py`: `/admin` hub (Protected).
 - `typer_bot/handlers/thread_prediction_handler.py`: Thread-based prediction processing (on_message).
@@ -82,7 +81,6 @@ scores (
 - **New Commands:** Add Cog to `commands/` folder, load in `bot.py`.
 - **Database Changes:** Edit `database.py` `initialize()` (Handle migrations manually if needed).
 - **Debugging:** Check `utils/logger.py` for config. Set `LOG_LEVEL=DEBUG` in env.
-- **Archive Import:** Set `IMPORT_ARCHIVE=true` to enable automatic import of historical data on fresh database.
 - **Database Restore:** Use `scripts/restore_db.py` from Railway console for manual database restoration from backups.
 
 ## 5.5 Testing Guidelines
@@ -118,7 +116,6 @@ uv run pytest --tb=short         # Shorter traceback output
 - **Handler Coordination:** The prediction handler (`user_commands.py`) checks `results_handler.has_results_session()` before processing DMs. This prevents admin's own predictions from being overwritten when they're entering results. Always check for conflicting sessions before processing DMs.
 - **Double Digits:** Scores like `10-0` are allowed.
 - **Format:** Users provide flexible separators (`-`, `:`, `–`).
-- **History:** `archive/` folder contains SQL files auto-imported on first run (empty DB).
 - **Rate Limiting:** Thread predictions limited to 1/second per user. DM predictions have no rate limit.
 - **Session Timeouts:** Fixture creation and results entry DM flows auto-expire after 1 hour of inactivity.
 - **Token Safety:** Bot validates DISCORD_TOKEN at startup (rejects placeholders like "your_bot_token_here"). Token values are never logged.
