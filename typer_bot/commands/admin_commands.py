@@ -11,27 +11,15 @@ from discord.ext import commands
 from typer_bot.commands.admin_panel import AdminPanelHomeView, DeleteConfirmView
 from typer_bot.database import Database
 from typer_bot.handlers import FixtureCreationHandler, ResultsEntryHandler
-from typer_bot.services import AdminService
+from typer_bot.services import AdminService, WorkflowStateStore
 from typer_bot.services.admin_service import FixtureScoreResult
 from typer_bot.utils import format_standings, is_admin, is_admin_member, now
 from typer_bot.utils.config import BACKUP_DIR
 from typer_bot.utils.db_backup import cleanup_old_backups, create_backup
 
-# Rate limiting: user_id -> timestamp
-_calculate_cooldowns: dict[str, float] = {}
 CALCULATE_COOLDOWN = 30.0
-COOLDOWN_EXPIRY_HOURS = 1
 
 logger = logging.getLogger(__name__)
-
-
-def _cleanup_expired_cooldowns() -> None:
-    """Remove cooldown entries older than COOLDOWN_EXPIRY_HOURS."""
-    current_time = now().timestamp()
-    cutoff = current_time - (COOLDOWN_EXPIRY_HOURS * 3600)
-    expired = [uid for uid, ts in list(_calculate_cooldowns.items()) if ts < cutoff]
-    for uid in expired:
-        _calculate_cooldowns.pop(uid, None)
 
 
 def admin_only():
@@ -59,9 +47,10 @@ class AdminCommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.db: Database = bot.db  # type: ignore
+        self.workflow_state: WorkflowStateStore = bot.workflow_state  # type: ignore[attr-defined]
         self.service = AdminService(self.db)
-        self.fixture_handler = FixtureCreationHandler(bot, self.db)
-        self.results_handler = ResultsEntryHandler(bot, self.db)
+        self.fixture_handler = FixtureCreationHandler(bot, self.db, self.workflow_state)
+        self.results_handler = ResultsEntryHandler(bot, self.db, self.workflow_state)
 
     @staticmethod
     def _format_open_weeks(open_fixtures: list[dict]) -> str:
@@ -302,18 +291,19 @@ class AdminCommands(commands.Cog):
     @results.command(name="calculate", description="Calculate scores and post results")
     @admin_only()
     async def results_calculate(self, interaction: discord.Interaction, week: int | None = None):
-        _cleanup_expired_cooldowns()
-
         user_id = str(interaction.user.id)
         current_time = now().timestamp()
-        if user_id in _calculate_cooldowns:
-            remaining = CALCULATE_COOLDOWN - (current_time - _calculate_cooldowns[user_id])
-            if remaining > 0:
-                await interaction.response.send_message(
-                    f"Please wait {remaining:.1f}s before calculating again.",
-                    ephemeral=True,
-                )
-                return
+        remaining = self.workflow_state.get_calculate_cooldown_remaining(
+            user_id,
+            current_time=current_time,
+            cooldown_seconds=CALCULATE_COOLDOWN,
+        )
+        if remaining > 0:
+            await interaction.response.send_message(
+                f"Please wait {remaining:.1f}s before calculating again.",
+                ephemeral=True,
+            )
+            return
 
         fixture = await self._resolve_open_fixture(
             interaction,
@@ -323,7 +313,7 @@ class AdminCommands(commands.Cog):
         if not fixture:
             return
 
-        _calculate_cooldowns[user_id] = current_time
+        self.workflow_state.record_calculate_cooldown(user_id, current_time=current_time)
 
         try:
             score_result = await self.service.calculate_fixture_scores(fixture["id"])

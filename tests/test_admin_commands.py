@@ -5,18 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from typer_bot.commands.admin_commands import AdminCommands, _calculate_cooldowns
-from typer_bot.handlers.fixture_handler import _pending_fixtures
-from typer_bot.handlers.results_handler import _pending_results
+from typer_bot.commands.admin_commands import CALCULATE_COOLDOWN, AdminCommands
 from typer_bot.utils.permissions import is_admin
-
-
-@pytest.fixture(autouse=True)
-def clear_sessions_and_rate_limits():
-    """Clear sessions and rate limiting cooldowns before each test."""
-    _calculate_cooldowns.clear()
-    _pending_fixtures.clear()
-    _pending_results.clear()
 
 
 class TestAdminOnlyDecorator:
@@ -73,12 +63,10 @@ class TestFixtureCreateLogic:
         user_id = str(mock_interaction_admin.user.id)
         admin_cog.fixture_handler.start_session(user_id, 123456, 111111)
 
-        from typer_bot.handlers.fixture_handler import _pending_fixtures
-
-        session = _pending_fixtures.get(user_id)
-        assert session["channel_id"] == 123456
-        assert session["guild_id"] == 111111
-        assert session["step"] == "games"
+        session = admin_cog.fixture_handler.get_session(user_id)
+        assert session.channel_id == 123456
+        assert session.guild_id == 111111
+        assert session.step == "games"
 
 
 class TestFixtureDeleteLogic:
@@ -131,11 +119,9 @@ class TestResultsEnterLogic:
         user_id = str(mock_interaction_admin.user.id)
         admin_cog.results_handler.start_session(user_id, 42, 111111)
 
-        from typer_bot.handlers.results_handler import _pending_results
-
-        session = _pending_results.get(user_id)
-        assert session["fixture_id"] == 42
-        assert session["guild_id"] == 111111
+        session = admin_cog.results_handler.get_session(user_id)
+        assert session.fixture_id == 42
+        assert session.guild_id == 111111
 
 
 class TestResultsCalculateLogic:
@@ -212,32 +198,35 @@ class TestResultsCalculateLogic:
 class TestCooldownLogic:
     """Test suite for rate limiting cooldown."""
 
-    def test_cooldown_enforced(self):
+    def test_cooldown_enforced(self, workflow_state):
         """Rate limiting prevents leaderboard recalculation spam."""
         import time
 
         user_id = "user123"
         current_time = time.time()
-        _calculate_cooldowns[user_id] = current_time
+        workflow_state.record_calculate_cooldown(user_id, current_time=current_time)
 
-        assert user_id in _calculate_cooldowns
+        remaining = workflow_state.get_calculate_cooldown_remaining(
+            user_id,
+            current_time=current_time,
+            cooldown_seconds=CALCULATE_COOLDOWN,
+        )
+        assert remaining > 0
 
-        if user_id in _calculate_cooldowns:
-            last_used = _calculate_cooldowns[user_id]
-            if current_time - last_used < 30.0:
-                remaining = 30.0 - (current_time - last_used)
-                assert remaining > 0
-
-    def test_cooldown_expires(self):
+    def test_cooldown_expires(self, workflow_state):
         """Cooldown expires after 30 seconds."""
         import time
 
         user_id = "user123"
         current_time = time.time()
-        _calculate_cooldowns[user_id] = current_time - 31  # 31 seconds ago
+        workflow_state.record_calculate_cooldown(user_id, current_time=current_time - 31)
 
-        last_used = _calculate_cooldowns[user_id]
-        assert current_time - last_used >= 30.0
+        remaining = workflow_state.get_calculate_cooldown_remaining(
+            user_id,
+            current_time=current_time,
+            cooldown_seconds=CALCULATE_COOLDOWN,
+        )
+        assert remaining == 0.0
 
 
 class TestOnMessageListener:
@@ -344,7 +333,7 @@ class TestMultiOpenFixtureTargeting:
         await admin_cog.results_enter.callback(admin_cog, mock_interaction_admin, 1)
 
         user_id = str(mock_interaction_admin.user.id)
-        assert _pending_results[user_id]["fixture_id"] == fixture_week_1
+        assert admin_cog.results_handler.get_session(user_id).fixture_id == fixture_week_1
         assert "Check your DMs" in mock_interaction_admin.response_sent[0]["content"]
 
     @pytest.mark.asyncio
@@ -365,7 +354,7 @@ class TestMultiOpenFixtureTargeting:
         assert len(mock_interaction_admin.response_sent) == 1
         content = mock_interaction_admin.response_sent[0]["content"]
         assert "Multiple fixtures are currently open" in content
-        assert user_id not in _calculate_cooldowns
+        assert admin_cog.workflow_state.get_calculate_cooldown(user_id) is None
 
     @pytest.mark.asyncio
     async def test_results_enter_rejects_duplicate_open_week_numbers(

@@ -8,49 +8,31 @@ import discord
 from discord import ui
 
 from typer_bot.database import Database
+from typer_bot.services.workflow_state import FixtureSession, WorkflowStateStore
 from typer_bot.utils import APP_TZ, format_for_discord, now
 from typer_bot.utils.logger import log_event
 
 logger = logging.getLogger(__name__)
 
-# user_id -> {"channel_id": int, "guild_id": int, "games": list, "deadline": datetime, "step": str, "created_at": datetime}
-_pending_fixtures: dict = {}
-
 MAX_MESSAGE_LENGTH = 5000
 MAX_GAMES = 100
-SESSION_TIMEOUT_HOURS = 1
-
-
-def _cleanup_expired_sessions():
-    """Remove fixture sessions older than SESSION_TIMEOUT_HOURS."""
-    current_time = now()
-    expired = [
-        user_id
-        for user_id, state in _pending_fixtures.items()
-        if current_time - state.get("created_at", current_time)
-        > timedelta(hours=SESSION_TIMEOUT_HOURS)
-    ]
-    for user_id in expired:
-        _pending_fixtures.pop(user_id, None)
-        logger.debug(f"Cleaned up expired fixture session for {user_id}")
 
 
 class FixtureCreationHandler:
     """Handles the DM workflow for creating fixtures."""
 
-    def __init__(self, bot: discord.Client, db: Database):
+    def __init__(self, bot: discord.Client, db: Database, workflow_state: WorkflowStateStore):
         self.bot = bot
         self.db = db
+        self.workflow_state = workflow_state
+
+    def get_session(self, user_id: str) -> FixtureSession | None:
+        """Return the active fixture session for a user."""
+        return self.workflow_state.get_fixture_session(user_id)
 
     def start_session(self, user_id: str, channel_id: int, guild_id: int) -> None:
         """Initialize a new fixture creation session."""
-        _cleanup_expired_sessions()
-        _pending_fixtures[user_id] = {
-            "channel_id": channel_id,
-            "guild_id": guild_id,
-            "step": "games",
-            "created_at": now(),
-        }
+        self.workflow_state.start_fixture_session(user_id, channel_id, guild_id)
         log_event(
             logger,
             event_type="session.fixture.started",
@@ -63,8 +45,7 @@ class FixtureCreationHandler:
 
     def has_session(self, user_id: str) -> bool:
         """Check if user has an active fixture creation session."""
-        _cleanup_expired_sessions()
-        return user_id in _pending_fixtures
+        return self.workflow_state.has_fixture_session(user_id)
 
     async def handle_dm(
         self,
@@ -82,7 +63,7 @@ class FixtureCreationHandler:
         Returns:
             True if message was handled, False otherwise
         """
-        if user_id not in _pending_fixtures:
+        if not self.has_session(user_id):
             return False
 
         if len(message.content) > MAX_MESSAGE_LENGTH:
@@ -90,13 +71,16 @@ class FixtureCreationHandler:
             return True
 
         # Verify admin status
-        state = _pending_fixtures[user_id]
-        guild_id = state.get("guild_id")
+        state = self.get_session(user_id)
+        if state is None:
+            return False
+
+        guild_id = state.guild_id
 
         if not await self._verify_admin(message, user_id, guild_id, is_admin_fn):
             return True
 
-        step = state.get("step", "games")
+        step = state.step
 
         if step == "games":
             await self._handle_games_step(message, user_id)
@@ -115,14 +99,14 @@ class FixtureCreationHandler:
         """Verify user is still an admin."""
         if not guild_id:
             logger.warning(f"No guild_id in fixture state for user {user_id}")
-            _pending_fixtures.pop(user_id, None)
+            self.workflow_state.clear_fixture_session(user_id)
             await message.author.send("Permission denied or session expired.")
             return False
 
         guild = self.bot.get_guild(guild_id)
         if not guild:
             logger.warning(f"Guild not found for ID: {guild_id}")
-            _pending_fixtures.pop(user_id, None)
+            self.workflow_state.clear_fixture_session(user_id)
             await message.author.send("Permission denied or session expired.")
             return False
 
@@ -132,13 +116,13 @@ class FixtureCreationHandler:
                 f"Member not found in guild cache for user {user_id}. "
                 "Members intent may not be enabled."
             )
-            _pending_fixtures.pop(user_id, None)
+            self.workflow_state.clear_fixture_session(user_id)
             await message.author.send("Permission denied or session expired.")
             return False
 
         if not is_admin_fn(member):
             logger.warning(f"Permission denied for user {user_id}")
-            _pending_fixtures.pop(user_id, None)
+            self.workflow_state.clear_fixture_session(user_id)
             await message.author.send("Permission denied or session expired.")
             return False
 
@@ -146,7 +130,9 @@ class FixtureCreationHandler:
 
     async def _handle_games_step(self, message: discord.Message, user_id: str) -> None:
         """Handle games list input."""
-        state = _pending_fixtures[user_id]
+        state = self.get_session(user_id)
+        if state is None:
+            return
 
         games = [line.strip() for line in message.content.strip().split("\n") if line.strip()]
 
@@ -158,8 +144,8 @@ class FixtureCreationHandler:
             await message.author.send("No games provided! Please send the fixture list again.")
             return
 
-        state["games"] = games
-        state["step"] = "deadline"
+        state.games = games
+        state.step = "deadline"
 
         # Calculate default deadline (Friday 18:00)
         current_time = now()
@@ -168,7 +154,7 @@ class FixtureCreationHandler:
             days_until_friday = 7
         default_deadline = current_time + timedelta(days=days_until_friday)
         default_deadline = default_deadline.replace(hour=18, minute=0, second=0, microsecond=0)
-        state["default_deadline"] = default_deadline
+        state.default_deadline = default_deadline
 
         default_str = format_for_discord(default_deadline, "F")
         relative_str = format_for_discord(default_deadline, "R")
@@ -184,7 +170,9 @@ class FixtureCreationHandler:
 
     async def _handle_deadline_step(self, message: discord.Message, user_id: str) -> None:
         """Handle deadline input."""
-        state = _pending_fixtures[user_id]
+        state = self.get_session(user_id)
+        if state is None:
+            return
 
         deadline = None
         formats = [
@@ -213,28 +201,37 @@ class FixtureCreationHandler:
             )
             return
 
-        state["deadline"] = deadline
+        state.deadline = deadline
         await self._show_preview(message.author, user_id)
 
     async def _show_preview(self, user: discord.User | discord.Member, user_id: str) -> None:
         """Show fixture preview with confirmation."""
-        state = _pending_fixtures[user_id]
-        games = state["games"]
-        deadline = state.get("deadline", state["default_deadline"])
-        channel = self.bot.get_channel(state["channel_id"])
+        state = self.get_session(user_id)
+        if state is None:
+            await user.send("Session expired. Please start over with `/admin fixture create`.")
+            return
+
+        games = state.games
+        deadline = state.deadline or state.default_deadline
+        channel = self.bot.get_channel(state.channel_id)
+
+        if deadline is None:
+            await user.send("Session expired. Please start over with `/admin fixture create`.")
+            self.workflow_state.clear_fixture_session(user_id)
+            return
 
         if not channel or not isinstance(channel, discord.TextChannel):
             await user.send("Error: Could not find the original channel.")
-            _pending_fixtures.pop(user_id, None)
+            self.workflow_state.clear_fixture_session(user_id)
             return
 
         max_week = await self.db.get_max_week_number()
         week_number = max_week + 1
-        state["week_number"] = week_number
+        state.week_number = week_number
 
         preview_text = self._build_fixture_preview_text(week_number, games, deadline)
-        state["preview"] = preview_text
-        state["step"] = "confirm"
+        state.preview = preview_text
+        state.step = "confirm"
 
         view = FixtureConfirmView(
             self, user_id, week_number, games, deadline, channel, preview_text
@@ -262,7 +259,7 @@ class FixtureCreationHandler:
     ) -> tuple[int, int]:
         """Create the fixture in the database and return ID + allocated week."""
         fixture_id, allocated_week = await self.db.create_next_fixture(games, deadline)
-        _pending_fixtures.pop(user_id, None)
+        self.workflow_state.clear_fixture_session(user_id)
         log_event(
             logger,
             event_type="fixture.created",
@@ -276,7 +273,7 @@ class FixtureCreationHandler:
 
     def cancel_session(self, user_id: str, reason: str = "cancelled") -> None:
         """Cancel the fixture creation session."""
-        _pending_fixtures.pop(user_id, None)
+        self.workflow_state.clear_fixture_session(user_id)
         log_event(
             logger,
             event_type="session.fixture.completed",
@@ -296,7 +293,7 @@ class DeadlineChoiceView(ui.View):
         self.user_id = user_id
 
     async def on_timeout(self):
-        _pending_fixtures.pop(self.user_id, None)
+        self.handler.cancel_session(self.user_id, reason="timeout")
 
     @ui.button(label="Use Default (Friday 18:00)", style=discord.ButtonStyle.primary)
     async def use_default(self, interaction: discord.Interaction, _button: ui.Button):
@@ -305,7 +302,7 @@ class DeadlineChoiceView(ui.View):
             await interaction.response.send_message("This button is not for you!", ephemeral=True)
             return
 
-        state = _pending_fixtures.get(self.user_id)
+        state = self.handler.get_session(self.user_id)
         if not state:
             await interaction.response.edit_message(
                 content="Session expired. Please start over with `/admin fixture create`.",
@@ -313,7 +310,15 @@ class DeadlineChoiceView(ui.View):
             )
             return
 
-        state["deadline"] = state["default_deadline"]
+        if state.default_deadline is None:
+            await interaction.response.edit_message(
+                content="Session expired. Please start over with `/admin fixture create`.",
+                view=None,
+            )
+            self.handler.cancel_session(self.user_id, reason="missing_default_deadline")
+            return
+
+        state.deadline = state.default_deadline
         await interaction.response.edit_message(
             content="Using default deadline. Showing preview...", view=None
         )
@@ -343,7 +348,7 @@ class FixtureConfirmView(ui.View):
         self.preview = preview
 
     async def on_timeout(self):
-        _pending_fixtures.pop(self.user_id, None)
+        self.handler.cancel_session(self.user_id, reason="timeout")
 
     @ui.button(label="Create Fixture", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, _button: ui.Button):

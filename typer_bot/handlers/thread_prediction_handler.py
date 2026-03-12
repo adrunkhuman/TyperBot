@@ -2,11 +2,11 @@
 
 import logging
 from contextlib import suppress
-from datetime import datetime, timedelta
 
 import discord
 
 from typer_bot.database import Database
+from typer_bot.services.workflow_state import WorkflowStateStore
 from typer_bot.utils import now, parse_line_predictions
 from typer_bot.utils.logger import LogContextManager, log_event
 
@@ -14,17 +14,16 @@ logger = logging.getLogger(__name__)
 
 MAX_MESSAGE_LENGTH = 5000
 
-# Rate limiting: user_id -> last prediction timestamp
 PREDICTION_RATE_LIMIT_SECONDS = 1
-_prediction_cooldowns: dict[str, datetime] = {}
 
 
 class ThreadPredictionHandler:
     """Handles predictions posted in fixture announcement threads."""
 
-    def __init__(self, bot: discord.Client, db: Database):
+    def __init__(self, bot: discord.Client, db: Database, workflow_state: WorkflowStateStore):
         self.bot = bot
         self.db = db
+        self.workflow_state = workflow_state
 
     async def on_message(self, message: discord.Message):
         """Handle messages in fixture threads.
@@ -46,20 +45,13 @@ class ThreadPredictionHandler:
         with LogContextManager(user_id=user_id, fixture_id=fixture["id"], source="thread"):
             # Rate limiting check - atomic update to prevent race conditions
             current_time = now()
-            last_time = _prediction_cooldowns.get(user_id)
-            _prediction_cooldowns[user_id] = current_time  # Always update atomically
+            last_time = self.workflow_state.record_thread_prediction_attempt(user_id, current_time)
             if (
                 last_time
                 and (current_time - last_time).total_seconds() < PREDICTION_RATE_LIMIT_SECONDS
             ):
                 logger.debug(f"Rate limiting prediction from {user_id}")
                 return True  # Silently ignore rate-limited messages
-
-            # Cleanup old rate limit entries (prevent unbounded memory growth)
-            cutoff = current_time - timedelta(hours=1)
-            expired = [uid for uid, ts in list(_prediction_cooldowns.items()) if ts < cutoff]
-            for uid in expired:
-                _prediction_cooldowns.pop(uid, None)
 
             # Check message length
             if len(message.content) > MAX_MESSAGE_LENGTH:

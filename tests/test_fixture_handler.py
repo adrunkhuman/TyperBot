@@ -6,32 +6,24 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from typer_bot.handlers.fixture_handler import (
-    FixtureCreationHandler,
-    _pending_fixtures,
-)
-
-
-@pytest.fixture(autouse=True)
-def clear_pending_fixtures():
-    """Clear pending fixture sessions before each test."""
-    _pending_fixtures.clear()
+from typer_bot.handlers.fixture_handler import FixtureCreationHandler
 
 
 class TestSessionManagement:
     """Test suite for fixture creation session management."""
 
     @pytest.fixture
-    def handler(self, mock_bot, database):
-        return FixtureCreationHandler(mock_bot, database)
+    def handler(self, mock_bot, database, workflow_state):
+        return FixtureCreationHandler(mock_bot, database, workflow_state)
 
     def test_start_session_creates_session(self, handler):
         handler.start_session("123456", 123456, 111111)
 
+        session = handler.get_session("123456")
         assert handler.has_session("123456")
-        assert _pending_fixtures["123456"]["channel_id"] == 123456
-        assert _pending_fixtures["123456"]["guild_id"] == 111111
-        assert _pending_fixtures["123456"]["step"] == "games"
+        assert session.channel_id == 123456
+        assert session.guild_id == 111111
+        assert session.step == "games"
 
     def test_has_session_returns_false_for_no_session(self, handler):
         assert not handler.has_session("nonexistent_user")
@@ -45,17 +37,12 @@ class TestSessionManagement:
 
     def test_start_session_cleans_expired_sessions(self, handler):
         """Expired sessions are cleaned up after 1 hour timeout."""
-        old_time = datetime.now(UTC) - timedelta(hours=2)
-        _pending_fixtures["old_user"] = {
-            "channel_id": 123,
-            "guild_id": 111,
-            "step": "games",
-            "created_at": old_time,
-        }
+        session = handler.workflow_state.start_fixture_session("old_user", 123, 111)
+        session.created_at = datetime.now(UTC) - timedelta(hours=2)
 
         handler.start_session("new_user", 456, 222)
 
-        assert "old_user" not in _pending_fixtures
+        assert handler.get_session("old_user") is None
         assert handler.has_session("new_user")
 
 
@@ -63,13 +50,14 @@ class TestAdminVerification:
     """Test suite for admin permission verification."""
 
     @pytest.fixture
-    def handler(self, mock_bot, database):
-        return FixtureCreationHandler(mock_bot, database)
+    def handler(self, mock_bot, database, workflow_state):
+        return FixtureCreationHandler(mock_bot, database, workflow_state)
 
     @pytest.mark.asyncio
     async def test_verify_admin_no_guild_id(self, handler):
         """Permission checks require server context."""
-        _pending_fixtures["123456"] = {"guild_id": None, "step": "games"}
+        session = handler.workflow_state.start_fixture_session("123456", 123456, 111111)
+        session.guild_id = None
 
         mock_message = MagicMock()
         mock_message.author = MagicMock()
@@ -78,13 +66,13 @@ class TestAdminVerification:
         result = await handler._verify_admin(mock_message, "123456", None, lambda _: True)
 
         assert result is False
-        assert "123456" not in _pending_fixtures
+        assert handler.get_session("123456") is None
 
     @pytest.mark.asyncio
     async def test_verify_admin_guild_not_found(self, handler):
         handler.bot.get_guild.return_value = None
 
-        _pending_fixtures["123456"] = {"guild_id": 111111, "step": "games"}
+        handler.workflow_state.start_fixture_session("123456", 123456, 111111)
 
         mock_message = MagicMock()
         mock_message.author = MagicMock()
@@ -101,7 +89,7 @@ class TestAdminVerification:
         mock_guild.get_member.return_value = None
         handler.bot.get_guild.return_value = mock_guild
 
-        _pending_fixtures["123456"] = {"guild_id": 111111, "step": "games"}
+        handler.workflow_state.start_fixture_session("123456", 123456, 111111)
 
         mock_message = MagicMock()
         mock_message.author = MagicMock()
@@ -119,7 +107,7 @@ class TestAdminVerification:
         mock_guild.get_member.return_value = mock_member
         handler.bot.get_guild.return_value = mock_guild
 
-        _pending_fixtures["123456"] = {"guild_id": 111111, "step": "games"}
+        handler.workflow_state.start_fixture_session("123456", 123456, 111111)
 
         mock_message = MagicMock()
         mock_message.author = MagicMock()
@@ -136,7 +124,7 @@ class TestAdminVerification:
         mock_guild.get_member.return_value = mock_member
         handler.bot.get_guild.return_value = mock_guild
 
-        _pending_fixtures["123456"] = {"guild_id": 111111, "step": "games"}
+        handler.workflow_state.start_fixture_session("123456", 123456, 111111)
 
         mock_message = MagicMock()
 
@@ -149,16 +137,16 @@ class TestGamesStep:
     """Test suite for games list input step."""
 
     @pytest.fixture
-    def handler(self, mock_bot, database):
+    def handler(self, mock_bot, database, workflow_state):
         mock_guild = MagicMock()
         mock_guild.get_member.return_value = MagicMock()
         mock_bot.get_guild.return_value = mock_guild
-        return FixtureCreationHandler(mock_bot, database)
+        return FixtureCreationHandler(mock_bot, database, workflow_state)
 
     @pytest.mark.asyncio
     async def test_handle_games_step_too_many_games(self, handler):
         """Game count limits prevent fixture abuse."""
-        _pending_fixtures["123456"] = {"step": "games"}
+        handler.workflow_state.start_fixture_session("123456", 123456, 111111)
 
         mock_message = MagicMock()
         mock_message.content = "\n".join([f"Team{i} - Team{i + 1}" for i in range(101)])
@@ -173,7 +161,7 @@ class TestGamesStep:
     @pytest.mark.asyncio
     async def test_handle_games_step_no_games(self, handler):
         """Empty fixtures are rejected."""
-        _pending_fixtures["123456"] = {"step": "games"}
+        handler.workflow_state.start_fixture_session("123456", 123456, 111111)
 
         mock_message = MagicMock()
         mock_message.content = "   \n   \n   "
@@ -187,7 +175,7 @@ class TestGamesStep:
 
     @pytest.mark.asyncio
     async def test_handle_games_step_valid_games(self, handler):
-        _pending_fixtures["123456"] = {"step": "games"}
+        handler.workflow_state.start_fixture_session("123456", 123456, 111111)
 
         mock_message = MagicMock()
         mock_message.content = "Team A - Team B\nTeam C - Team D"
@@ -196,25 +184,25 @@ class TestGamesStep:
 
         await handler._handle_games_step(mock_message, "123456")
 
-        assert _pending_fixtures["123456"]["step"] == "deadline"
-        assert _pending_fixtures["123456"]["games"] == ["Team A - Team B", "Team C - Team D"]
-        assert "default_deadline" in _pending_fixtures["123456"]
+        session = handler.get_session("123456")
+        assert session.step == "deadline"
+        assert session.games == ["Team A - Team B", "Team C - Team D"]
+        assert session.default_deadline is not None
 
 
 class TestDeadlineStep:
     """Test suite for deadline input step."""
 
     @pytest.fixture
-    def handler(self, mock_bot, database):
-        return FixtureCreationHandler(mock_bot, database)
+    def handler(self, mock_bot, database, workflow_state):
+        return FixtureCreationHandler(mock_bot, database, workflow_state)
 
     @pytest.mark.asyncio
     async def test_handle_deadline_step_invalid_format(self, handler):
         """Invalid dates are rejected."""
-        _pending_fixtures["123456"] = {
-            "step": "deadline",
-            "games": ["Game 1"],
-        }
+        session = handler.workflow_state.start_fixture_session("123456", 123456, 111111)
+        session.step = "deadline"
+        session.games = ["Game 1"]
 
         mock_message = MagicMock()
         mock_message.content = "invalid date"
@@ -238,10 +226,9 @@ class TestDeadlineStep:
         try:
             fixture_handler.APP_TZ = ZoneInfo("UTC")
 
-            _pending_fixtures["123456"] = {
-                "step": "deadline",
-                "games": ["Game 1"],
-            }
+            session = handler.workflow_state.start_fixture_session("123456", 123456, 111111)
+            session.step = "deadline"
+            session.games = ["Game 1"]
 
             mock_message = MagicMock()
             mock_message.content = "2024-12-25 18:00"
@@ -252,7 +239,7 @@ class TestDeadlineStep:
 
             await handler._handle_deadline_step(mock_message, "123456")
 
-            assert "deadline" in _pending_fixtures["123456"]
+            assert handler.get_session("123456").deadline is not None
             handler._show_preview.assert_called_once()
         finally:
             fixture_handler.APP_TZ = original_tz
@@ -262,27 +249,25 @@ class TestPreviewGeneration:
     """Test suite for fixture preview."""
 
     @pytest.fixture
-    def handler(self, mock_bot, database):
+    def handler(self, mock_bot, database, workflow_state):
         mock_channel = MagicMock(spec=discord.TextChannel)
         mock_bot.get_channel.return_value = mock_channel
-        return FixtureCreationHandler(mock_bot, database)
+        return FixtureCreationHandler(mock_bot, database, workflow_state)
 
     @pytest.mark.asyncio
     async def test_show_preview_creates_week_number(self, handler):
-        _pending_fixtures["123456"] = {
-            "step": "deadline",
-            "games": ["Game 1", "Game 2"],
-            "deadline": datetime.now(UTC),
-            "default_deadline": datetime.now(UTC),
-            "channel_id": 123456,
-        }
+        session = handler.workflow_state.start_fixture_session("123456", 123456, 111111)
+        session.step = "deadline"
+        session.games = ["Game 1", "Game 2"]
+        session.deadline = datetime.now(UTC)
+        session.default_deadline = datetime.now(UTC)
 
         mock_user = MagicMock()
         mock_user.send = AsyncMock()
 
         await handler._show_preview(mock_user, "123456")
 
-        assert _pending_fixtures["123456"]["week_number"] == 1
+        assert handler.get_session("123456").week_number == 1
         mock_user.send.assert_called_once()
         call_content = mock_user.send.call_args[0][0]
         assert "Week 1 Fixture Preview" in call_content
@@ -290,13 +275,11 @@ class TestPreviewGeneration:
     @pytest.mark.asyncio
     async def test_show_preview_warns_wrong_game_count(self, handler):
         """Wrong game count triggers a warning."""
-        _pending_fixtures["123456"] = {
-            "step": "deadline",
-            "games": ["Game 1", "Game 2"],
-            "deadline": datetime.now(UTC),
-            "default_deadline": datetime.now(UTC),
-            "channel_id": 123456,
-        }
+        session = handler.workflow_state.start_fixture_session("123456", 123456, 111111)
+        session.step = "deadline"
+        session.games = ["Game 1", "Game 2"]
+        session.deadline = datetime.now(UTC)
+        session.default_deadline = datetime.now(UTC)
 
         mock_user = MagicMock()
         mock_user.send = AsyncMock()
@@ -313,20 +296,18 @@ class TestPreviewGeneration:
         """Channel not found cancels the session."""
         handler.bot.get_channel.return_value = None
 
-        _pending_fixtures["123456"] = {
-            "step": "deadline",
-            "games": ["Game 1"],
-            "deadline": datetime.now(UTC),
-            "default_deadline": datetime.now(UTC),
-            "channel_id": 123456,
-        }
+        session = handler.workflow_state.start_fixture_session("123456", 123456, 111111)
+        session.step = "deadline"
+        session.games = ["Game 1"]
+        session.deadline = datetime.now(UTC)
+        session.default_deadline = datetime.now(UTC)
 
         mock_user = MagicMock()
         mock_user.send = AsyncMock()
 
         await handler._show_preview(mock_user, "123456")
 
-        assert "123456" not in _pending_fixtures
+        assert handler.get_session("123456") is None
         mock_user.send.assert_called_once()
         assert "Could not find" in mock_user.send.call_args[0][0]
 
@@ -335,12 +316,12 @@ class TestCreateFixture:
     """Test suite for fixture creation."""
 
     @pytest.fixture
-    def handler(self, mock_bot, database):
-        return FixtureCreationHandler(mock_bot, database)
+    def handler(self, mock_bot, database, workflow_state):
+        return FixtureCreationHandler(mock_bot, database, workflow_state)
 
     @pytest.mark.asyncio
     async def test_create_fixture_saves_to_database(self, handler, database):
-        _pending_fixtures["123456"] = {"some": "data"}
+        handler.workflow_state.start_fixture_session("123456", 123456, 111111)
 
         deadline = datetime.now(UTC)
         await handler.create_fixture("123456", ["Game 1", "Game 2"], deadline)
@@ -349,18 +330,18 @@ class TestCreateFixture:
         assert fixture is not None
         assert fixture["week_number"] == 1
 
-        assert "123456" not in _pending_fixtures
+        assert handler.get_session("123456") is None
 
 
 class TestHandleDM:
     """Test suite for handle_dm method."""
 
     @pytest.fixture
-    def handler(self, mock_bot, database):
+    def handler(self, mock_bot, database, workflow_state):
         mock_guild = MagicMock()
         mock_guild.get_member.return_value = MagicMock()
         mock_bot.get_guild.return_value = mock_guild
-        return FixtureCreationHandler(mock_bot, database)
+        return FixtureCreationHandler(mock_bot, database, workflow_state)
 
     @pytest.mark.asyncio
     async def test_handle_dm_no_session(self, handler):
@@ -398,15 +379,15 @@ class TestHandleDM:
         result = await handler.handle_dm(mock_message, "123456", lambda _: True)
 
         assert result is True
-        assert _pending_fixtures["123456"]["step"] == "deadline"
+        assert handler.get_session("123456").step == "deadline"
 
 
 class TestEdgeCases:
     """Test suite for edge cases."""
 
     @pytest.fixture
-    def handler(self, mock_bot, database):
-        return FixtureCreationHandler(mock_bot, database)
+    def handler(self, mock_bot, database, workflow_state):
+        return FixtureCreationHandler(mock_bot, database, workflow_state)
 
     def test_default_deadline_is_friday_1800(self, handler):
         """Default deadline is Friday 18:00 for typical weekend matches."""
@@ -421,7 +402,7 @@ class TestEdgeCases:
         expected = expected.replace(hour=18, minute=0, second=0, microsecond=0)
 
         handler.start_session("123456", 123456, 111111)
-        deadline = _pending_fixtures["123456"].get("default_deadline")
+        deadline = handler.get_session("123456").default_deadline
 
         if deadline:
             assert deadline.weekday() == 4  # Friday
@@ -437,11 +418,11 @@ class TestViewBehavioral:
     """
 
     @pytest.fixture
-    def handler(self, mock_bot, database):
+    def handler(self, mock_bot, database, workflow_state):
         mock_guild = MagicMock()
         mock_guild.get_member.return_value = MagicMock()
         mock_bot.get_guild.return_value = mock_guild
-        return FixtureCreationHandler(mock_bot, database)
+        return FixtureCreationHandler(mock_bot, database, workflow_state)
 
     @pytest.mark.asyncio
     async def test_games_step_sends_deadline_choice_view(self, handler):
@@ -475,13 +456,11 @@ class TestViewBehavioral:
 
             fixture_handler.APP_TZ = ZoneInfo("UTC")
 
-            _pending_fixtures["123456"] = {
-                "step": "deadline",
-                "games": ["Game 1", "Game 2"],
-                "deadline": datetime.now(UTC),
-                "default_deadline": datetime.now(UTC),
-                "channel_id": 123456,
-            }
+            session = handler.workflow_state.start_fixture_session("123456", 123456, 111111)
+            session.step = "deadline"
+            session.games = ["Game 1", "Game 2"]
+            session.deadline = datetime.now(UTC)
+            session.default_deadline = datetime.now(UTC)
 
             mock_message = MagicMock()
             mock_message.content = "2024-12-25 18:00"
@@ -502,8 +481,8 @@ class TestViewBehavioral:
                     handler,
                     user_id,
                     1,
-                    _pending_fixtures[user_id]["games"],
-                    _pending_fixtures[user_id]["deadline"],
+                    handler.get_session(user_id).games,
+                    handler.get_session(user_id).deadline,
                     None,
                     "Preview text",
                 )

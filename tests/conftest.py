@@ -9,14 +9,8 @@ import discord
 import pytest
 
 from typer_bot.database import Database
-from typer_bot.handlers.results_handler import _pending_results
 from typer_bot.handlers.thread_prediction_handler import ThreadPredictionHandler
-
-
-@pytest.fixture(autouse=True)
-def clear_results_sessions():
-    _pending_results.clear()
-    yield
+from typer_bot.services import WorkflowStateStore
 
 
 @pytest.fixture
@@ -28,11 +22,17 @@ def temp_db_path():
 
 
 @pytest.fixture
-def mock_bot():
+def workflow_state():
+    return WorkflowStateStore()
+
+
+@pytest.fixture
+def mock_bot(workflow_state):
     bot = MagicMock(spec=discord.Client)
     bot.user = MagicMock()
     bot.user.id = 999999
     bot.user.name = "TestBot"
+    bot.workflow_state = workflow_state
     return bot
 
 
@@ -202,8 +202,8 @@ async def fixture_with_dm(database, sample_games):
 
 
 @pytest.fixture
-def handler(mock_bot, database):
-    return ThreadPredictionHandler(mock_bot, database)
+def handler(mock_bot, database, workflow_state):
+    return ThreadPredictionHandler(mock_bot, database, workflow_state)
 
 
 class MockRole:

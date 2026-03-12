@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
-from datetime import datetime, timedelta
 from typing import Literal
 
 import discord
 
 from typer_bot.database import Database
-from typer_bot.handlers.results_handler import has_results_session
+from typer_bot.services.workflow_state import PredictionSession, WorkflowStateStore
 from typer_bot.utils import format_for_discord, now, parse_line_predictions
 from typer_bot.utils.logger import LogContextManager, log_event
 
@@ -25,41 +23,16 @@ NO_REPLIES = {"n", "no"}
 PredictionStep = Literal["select", "predict", "continue"]
 
 
-@dataclass(slots=True)
-class PredictionSession:
-    """Active state for one user's DM prediction flow."""
-
-    step: PredictionStep
-    fixture_ids: list[int]
-    fixture_id: int | None
-    completed_fixture_ids: list[int]
-    created_at: datetime
-
-
 class DMPredictionHandler:
     """Handles the DM workflow for user predictions."""
 
-    def __init__(self, db: Database):
+    def __init__(self, db: Database, workflow_state: WorkflowStateStore):
         self.db = db
-        self._prediction_sessions: dict[str, PredictionSession] = {}
-
-    def _cleanup_expired_prediction_sessions(self) -> None:
-        """Remove prediction sessions older than SESSION_TIMEOUT_HOURS."""
-        current_time = now()
-        expiry = timedelta(hours=SESSION_TIMEOUT_HOURS)
-        expired_users = [
-            user_id
-            for user_id, state in self._prediction_sessions.items()
-            if current_time - state.created_at > expiry
-        ]
-
-        for user_id in expired_users:
-            self._prediction_sessions.pop(user_id, None)
+        self.workflow_state = workflow_state
 
     def _get_prediction_session(self, user_id: str) -> PredictionSession | None:
         """Get active prediction session for a user."""
-        self._cleanup_expired_prediction_sessions()
-        return self._prediction_sessions.get(user_id)
+        return self.workflow_state.get_prediction_session(user_id)
 
     def _set_prediction_session(
         self,
@@ -71,17 +44,17 @@ class DMPredictionHandler:
         completed_fixture_ids: list[int] | None = None,
     ) -> None:
         """Create or update prediction flow state for a user."""
-        self._prediction_sessions[user_id] = PredictionSession(
+        self.workflow_state.set_prediction_session(
             step=step,
-            fixture_ids=fixture_ids or [],
+            user_id=user_id,
+            fixture_ids=fixture_ids,
             fixture_id=fixture_id,
-            completed_fixture_ids=completed_fixture_ids or [],
-            created_at=now(),
+            completed_fixture_ids=completed_fixture_ids,
         )
 
     def _clear_prediction_session(self, user_id: str) -> None:
         """Clear prediction flow state for a user."""
-        self._prediction_sessions.pop(user_id, None)
+        self.workflow_state.clear_prediction_session(user_id)
 
     @staticmethod
     def _parse_week_selection(content: str) -> tuple[int | None, str]:
@@ -182,7 +155,7 @@ class DMPredictionHandler:
         user_id = str(message.author.id)
 
         # Prevent admin's existing predictions being marked late during results entry
-        if has_results_session(user_id):
+        if self.workflow_state.has_results_session(user_id):
             return False
 
         if len(message.content) > MAX_MESSAGE_LENGTH:
