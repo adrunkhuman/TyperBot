@@ -22,13 +22,14 @@ SESSION_TIMEOUT_HOURS = 1
 WEEK_SELECTION_PATTERN = re.compile(r"^\s*(?:week\s+)?(\d+)\s*$", re.IGNORECASE)
 YES_REPLIES = {"y", "yes"}
 NO_REPLIES = {"n", "no"}
+PredictionStep = Literal["select", "predict", "continue"]
 
 
 @dataclass(slots=True)
 class PredictionSession:
     """Active state for one user's DM prediction flow."""
 
-    step: Literal["select", "predict", "continue"]
+    step: PredictionStep
     fixture_ids: list[int]
     fixture_id: int | None
     completed_fixture_ids: list[int]
@@ -64,7 +65,7 @@ class DMPredictionHandler:
         self,
         user_id: str,
         *,
-        step: str,
+        step: PredictionStep,
         fixture_ids: list[int] | None = None,
         fixture_id: int | None = None,
         completed_fixture_ids: list[int] | None = None,
