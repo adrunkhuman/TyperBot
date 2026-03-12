@@ -121,6 +121,10 @@ class TyperBot(commands.Bot):
 
     async def on_ready(self):
         """Called when bot is ready."""
+        if self.user is None:
+            logger.warning("Bot ready event fired before user was available")
+            return
+
         logger.info(f"✓ Bot connected: {self.user} (ID: {self.user.id})")
         logger.info(f"✓ Connected to {len(self.guilds)} guild(s):")
         for guild in self.guilds:
@@ -189,18 +193,24 @@ class TyperBot(commands.Bot):
 
         try:
             channel = self.get_channel(int(channel_id))
-            if channel:
-                deadline = format_for_discord(fixture["deadline"], "F")
-                relative = format_for_discord(fixture["deadline"], "R")
-                await channel.send(
-                    f"📢 **{time_description}!**\n\n"
-                    f"Don't forget to submit your predictions for this week!\n"
-                    f"Deadline: **{deadline}** ({relative})\n"
-                    f"Use `/predict` to enter your scores."
-                )
-                logger.info(f"Reminder sent to channel {channel_id}")
-            else:
+            if channel is None:
                 logger.error(f"Could not find channel {channel_id}")
+                return
+
+            send = getattr(channel, "send", None)
+            if send is None:
+                logger.error(f"Reminder channel {channel_id} does not support sending messages")
+                return
+
+            deadline = format_for_discord(fixture["deadline"], "F")
+            relative = format_for_discord(fixture["deadline"], "R")
+            await send(
+                f"📢 **{time_description}!**\n\n"
+                f"Don't forget to submit your predictions for this week!\n"
+                f"Deadline: **{deadline}** ({relative})\n"
+                f"Use `/predict` to enter your scores."
+            )
+            logger.info(f"Reminder sent to channel {channel_id}")
         except Exception:
             logger.exception("Failed to send reminder")
 
