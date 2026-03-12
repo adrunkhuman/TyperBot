@@ -4,16 +4,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from typer_bot.handlers.fixture_handler import _pending_fixtures
-from typer_bot.handlers.results_handler import _pending_results
-
-
-@pytest.fixture(autouse=True)
-def clear_sessions():
-    """Clear all pending sessions before each test."""
-    _pending_fixtures.clear()
-    _pending_results.clear()
-
 
 class TestFullWorkflow:
     """Integration tests for complete prediction workflows."""

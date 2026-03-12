@@ -5,14 +5,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from typer_bot.handlers.thread_prediction_handler import _prediction_cooldowns
-
-
-@pytest.fixture(autouse=True)
-def clear_rate_limits():
-    """Clear rate limiting cooldowns before each test."""
-    _prediction_cooldowns.clear()
-
 
 class TestOnMessage:
     """Test suite for on_message handler."""
@@ -146,7 +138,7 @@ class TestOnMessage:
         mock_message.channel.id = 789012
         mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
         await handler.on_message(mock_message)
-        _prediction_cooldowns.clear()
+        handler.workflow_state.clear_thread_prediction_cooldowns()
 
         second_message = type(mock_message)(
             content="Team A - Team B 0-0\nTeam C - Team D 0-0\nTeam E - Team F 0-0",

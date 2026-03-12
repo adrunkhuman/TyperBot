@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from typer_bot.database import Database
 from typer_bot.handlers.thread_prediction_handler import ThreadPredictionHandler
+from typer_bot.services import WorkflowStateStore
 from typer_bot.utils import format_for_discord, now
 from typer_bot.utils.config import IS_PRODUCTION
 from typer_bot.utils.logger import set_log_context, set_trace_id
@@ -36,7 +37,8 @@ class TyperBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents, help_command=None)
 
         self.db = Database()
-        self.thread_handler = ThreadPredictionHandler(self, self.db)
+        self.workflow_state = WorkflowStateStore()
+        self.thread_handler = ThreadPredictionHandler(self, self.db, self.workflow_state)
         logger.info("Database instance created")
 
     async def on_interaction(self, interaction: discord.Interaction):

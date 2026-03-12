@@ -6,6 +6,7 @@ from discord.ext import commands
 
 from typer_bot.database import Database
 from typer_bot.handlers import DMPredictionHandler
+from typer_bot.services import WorkflowStateStore
 from typer_bot.utils import (
     format_for_discord,
     format_standings,
@@ -20,7 +21,8 @@ class UserCommands(commands.Cog):
         self.bot = bot
         # TyperBot sets db attr dynamically; discord.py typing doesn't track custom attrs
         self.db: Database = bot.db  # type: ignore
-        self.prediction_handler = DMPredictionHandler(self.db)
+        self.workflow_state: WorkflowStateStore = bot.workflow_state  # type: ignore[attr-defined]
+        self.prediction_handler = DMPredictionHandler(self.db, self.workflow_state)
 
     @staticmethod
     def _chunk_message(content: str, limit: int = 2000) -> list[str]:

@@ -2,66 +2,35 @@
 
 import logging
 from collections.abc import Callable
-from datetime import timedelta
 
 import discord
 from discord import ui
 
 from typer_bot.database import Database
-from typer_bot.utils import now, parse_line_predictions
+from typer_bot.services.workflow_state import ResultsSession, WorkflowStateStore
+from typer_bot.utils import parse_line_predictions
 from typer_bot.utils.logger import log_event
 
 logger = logging.getLogger(__name__)
 
-# user_id -> {"fixture_id": int, "guild_id": int, "created_at": datetime}
-_pending_results: dict = {}
-
 MAX_MESSAGE_LENGTH = 5000
-SESSION_TIMEOUT_HOURS = 1
-
-
-def _cleanup_expired_sessions():
-    """Remove results sessions older than SESSION_TIMEOUT_HOURS."""
-    current_time = now()
-    expired = [
-        user_id
-        for user_id, state in _pending_results.items()
-        if current_time - state.get("created_at", current_time)
-        > timedelta(hours=SESSION_TIMEOUT_HOURS)
-    ]
-    for user_id in expired:
-        _pending_results.pop(user_id, None)
-        logger.debug(f"Cleaned up expired results session for {user_id}")
-
-
-def has_results_session(user_id: str) -> bool:
-    """Check if user has an active results entry session.
-
-    Used by prediction handler to distinguish admin entering results
-    from regular predictions. Prevents bug where admin's own predictions
-    would be overwritten and marked late during results entry.
-
-    Side effect: Cleans up expired sessions older than SESSION_TIMEOUT_HOURS.
-    """
-    _cleanup_expired_sessions()
-    return user_id in _pending_results
 
 
 class ResultsEntryHandler:
     """Handles the DM workflow for entering results."""
 
-    def __init__(self, bot: discord.Client, db: Database):
+    def __init__(self, bot: discord.Client, db: Database, workflow_state: WorkflowStateStore):
         self.bot = bot
         self.db = db
+        self.workflow_state = workflow_state
+
+    def get_session(self, user_id: str) -> ResultsSession | None:
+        """Return the active results session for a user."""
+        return self.workflow_state.get_results_session(user_id)
 
     def start_session(self, user_id: str, fixture_id: int, guild_id: int) -> None:
         """Initialize a new results entry session."""
-        _cleanup_expired_sessions()
-        _pending_results[user_id] = {
-            "fixture_id": fixture_id,
-            "guild_id": guild_id,
-            "created_at": now(),
-        }
+        self.workflow_state.start_results_session(user_id, fixture_id, guild_id)
         log_event(
             logger,
             event_type="session.results.started",
@@ -74,7 +43,7 @@ class ResultsEntryHandler:
 
     def has_session(self, user_id: str) -> bool:
         """Check if user has an active results entry session."""
-        return has_results_session(user_id)  # Delegate to module function
+        return self.workflow_state.has_results_session(user_id)
 
     async def handle_dm(
         self,
@@ -92,7 +61,8 @@ class ResultsEntryHandler:
         Returns:
             True if message was handled, False otherwise
         """
-        if user_id not in _pending_results:
+        session = self.get_session(user_id)
+        if session is None:
             return False
 
         if len(message.content) > MAX_MESSAGE_LENGTH:
@@ -102,18 +72,17 @@ class ResultsEntryHandler:
         logger.info(f"Processing results DM from user {user_id}")
 
         # Verify admin status
-        result_data = _pending_results[user_id]
-        guild_id = result_data.get("guild_id")
+        guild_id = session.guild_id
 
         if not await self._verify_admin(message, user_id, guild_id, is_admin_fn):
             return True
 
-        fixture_id = result_data["fixture_id"]
+        fixture_id = session.fixture_id
         fixture = await self.db.get_fixture_by_id(fixture_id)
 
         if not fixture:
             await message.author.send("Error: Fixture no longer exists.")
-            _pending_results.pop(user_id, None)
+            self.workflow_state.clear_results_session(user_id)
             return True
 
         processing_msg = await message.author.send("Processing your results...")
@@ -160,14 +129,14 @@ class ResultsEntryHandler:
         """Verify user is still an admin."""
         if not guild_id:
             logger.warning(f"No guild_id in result data for user {user_id}")
-            _pending_results.pop(user_id, None)
+            self.workflow_state.clear_results_session(user_id)
             await message.author.send("Permission denied or session expired.")
             return False
 
         guild = self.bot.get_guild(guild_id)
         if not guild:
             logger.warning(f"Guild not found for ID: {guild_id}")
-            _pending_results.pop(user_id, None)
+            self.workflow_state.clear_results_session(user_id)
             await message.author.send("Permission denied or session expired.")
             return False
 
@@ -177,13 +146,13 @@ class ResultsEntryHandler:
                 f"Member not found in guild cache for user {user_id}. "
                 "Members intent may not be enabled."
             )
-            _pending_results.pop(user_id, None)
+            self.workflow_state.clear_results_session(user_id)
             await message.author.send("Permission denied or session expired.")
             return False
 
         if not is_admin_fn(member):
             logger.warning(f"Permission denied for user {user_id}")
-            _pending_results.pop(user_id, None)
+            self.workflow_state.clear_results_session(user_id)
             await message.author.send("Permission denied or session expired.")
             return False
 
@@ -192,7 +161,7 @@ class ResultsEntryHandler:
     async def save_results(self, user_id: str, fixture_id: int, results: list[str]) -> None:
         """Save results to the database."""
         await self.db.save_results(fixture_id, results)
-        _pending_results.pop(user_id, None)
+        self.workflow_state.clear_results_session(user_id)
         log_event(
             logger,
             event_type="results.entered",
@@ -204,7 +173,7 @@ class ResultsEntryHandler:
 
     def cancel_session(self, user_id: str, reason: str = "cancelled") -> None:
         """Cancel the results entry session."""
-        _pending_results.pop(user_id, None)
+        self.workflow_state.clear_results_session(user_id)
         logger.debug(
             f"Results session {reason}",
             extra={
@@ -234,7 +203,7 @@ class ResultsConfirmView(ui.View):
         self.preview = preview
 
     async def on_timeout(self):
-        _pending_results.pop(self.user_id, None)
+        self.handler.cancel_session(self.user_id, reason="timeout")
 
     @ui.button(label="Save Results", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, _button: ui.Button):
