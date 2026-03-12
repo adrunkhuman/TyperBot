@@ -516,3 +516,50 @@ class TestViewBehavioral:
             assert len(captured_views) >= 0
         finally:
             fixture_handler.APP_TZ = original_tz
+
+    @pytest.mark.asyncio
+    async def test_confirm_warns_when_thread_creation_forbidden(self, handler, database):
+        """Fixture creation should succeed even if Discord blocks thread creation."""
+        from typer_bot.handlers.fixture_handler import FixtureConfirmView
+
+        deadline = datetime.now(UTC)
+        announcement = MagicMock()
+        announcement.id = 999999
+        announcement.create_thread = AsyncMock(
+            side_effect=discord.Forbidden(
+                MagicMock(status=403, reason="Forbidden", text="Missing Permissions"),
+                "Missing Permissions",
+            )
+        )
+
+        channel = MagicMock()
+        channel.send = AsyncMock(return_value=announcement)
+
+        interaction = MagicMock()
+        interaction.response = MagicMock()
+        interaction.response.edit_message = AsyncMock()
+        interaction.followup = MagicMock()
+        interaction.followup.send = AsyncMock()
+
+        view = FixtureConfirmView(
+            handler,
+            "123456",
+            1,
+            ["Game 1", "Game 2"],
+            deadline,
+            channel,
+            "Preview text",
+        )
+
+        create_button = next(child for child in view.children if child.label == "Create Fixture")
+
+        await create_button.callback(interaction)
+
+        fixture = await database.get_current_fixture()
+        assert fixture is not None
+        assert fixture["message_id"] == "999999"
+        interaction.response.edit_message.assert_called_once()
+        interaction.followup.send.assert_called_once_with(
+            "⚠️ Fixture created but I couldn't create a prediction thread. Users can still use `/predict`.",
+            ephemeral=True,
+        )
