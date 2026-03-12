@@ -161,12 +161,16 @@ class TestPermissionCheck:
         mock_guild.me.guild_permissions.send_messages = False
         mock_guild.me.guild_permissions.read_message_history = False
         mock_guild.me.guild_permissions.add_reactions = False
+        mock_guild.me.guild_permissions.create_public_threads = False
 
         bot_instance.guilds = [mock_guild]
 
         with patch("typer_bot.bot.logger") as mock_logger:
             await bot_instance._check_permissions()
-            mock_logger.warning.assert_called()
+            mock_logger.warning.assert_called_once_with(
+                "⚠️  Guild 'Test Guild' (ID: 123456): Missing permissions: "
+                "Send Messages, Read Message History, Add Reactions, Create Public Threads"
+            )
 
     @pytest.mark.asyncio
     async def test_check_permissions_logs_all_permissions_ok(self, bot_instance):
@@ -178,6 +182,7 @@ class TestPermissionCheck:
         mock_guild.me.guild_permissions.send_messages = True
         mock_guild.me.guild_permissions.read_message_history = True
         mock_guild.me.guild_permissions.add_reactions = True
+        mock_guild.me.guild_permissions.create_public_threads = True
 
         bot_instance.guilds = [mock_guild]
 
@@ -186,6 +191,27 @@ class TestPermissionCheck:
             mock_logger.info.assert_called_with(
                 "✓ Guild 'Test Guild': All required permissions present"
             )
+
+    @pytest.mark.asyncio
+    async def test_check_permissions_warns_when_only_thread_permission_missing(self, bot_instance):
+        """Thread permission must be present before startup reports a healthy setup."""
+        mock_guild = MagicMock()
+        mock_guild.name = "Test Guild"
+        mock_guild.id = 123456
+        mock_guild.me = MagicMock()
+        mock_guild.me.guild_permissions.send_messages = True
+        mock_guild.me.guild_permissions.read_message_history = True
+        mock_guild.me.guild_permissions.add_reactions = True
+        mock_guild.me.guild_permissions.create_public_threads = False
+
+        bot_instance.guilds = [mock_guild]
+
+        with patch("typer_bot.bot.logger") as mock_logger:
+            await bot_instance._check_permissions()
+            mock_logger.warning.assert_called_once_with(
+                "⚠️  Guild 'Test Guild' (ID: 123456): Missing permissions: Create Public Threads"
+            )
+            mock_logger.info.assert_not_called()
 
 
 class TestReminderSystem:
