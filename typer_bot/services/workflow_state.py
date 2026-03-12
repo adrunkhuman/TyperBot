@@ -1,4 +1,4 @@
-"""Centralized in-memory workflow and cooldown state."""
+"""Process-local DM workflow and cooldown state."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ PredictionStep = Literal["select", "predict", "continue"]
 
 @dataclass(slots=True)
 class FixtureSession:
-    """Mutable state for the fixture creation DM workflow."""
+    """In-memory state for fixture creation DMs."""
 
     channel_id: int
     guild_id: int
@@ -30,7 +30,7 @@ class FixtureSession:
 
 @dataclass(slots=True)
 class ResultsSession:
-    """Mutable state for the results entry DM workflow."""
+    """In-memory state for result-entry DMs."""
 
     fixture_id: int
     guild_id: int
@@ -39,7 +39,7 @@ class ResultsSession:
 
 @dataclass(slots=True)
 class PredictionSession:
-    """Mutable state for one user's DM prediction flow."""
+    """In-memory state for one user's DM prediction flow."""
 
     step: PredictionStep
     fixture_ids: list[int] = field(default_factory=list)
@@ -49,7 +49,7 @@ class PredictionSession:
 
 
 class WorkflowStateStore:
-    """Owns all process-local workflow state for the bot."""
+    """Owns process-local DM sessions and cooldowns."""
 
     def __init__(self):
         self._fixture_sessions: dict[str, FixtureSession] = {}

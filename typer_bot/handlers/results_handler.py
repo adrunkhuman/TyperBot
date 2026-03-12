@@ -71,7 +71,6 @@ class ResultsEntryHandler:
 
         logger.info(f"Processing results DM from user {user_id}")
 
-        # Verify admin status
         guild_id = session.guild_id
 
         if not await self._verify_admin(message, user_id, guild_id, is_admin_fn):

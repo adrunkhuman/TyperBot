@@ -154,7 +154,7 @@ class DMPredictionHandler:
 
         user_id = str(message.author.id)
 
-        # Prevent admin's existing predictions being marked late during results entry
+        # Ignore admin result-entry DMs so they do not overwrite stored predictions as late.
         if self.workflow_state.has_results_session(user_id):
             return False
 

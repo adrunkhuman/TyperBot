@@ -23,6 +23,7 @@ Bot requires:
 ## Workflow State
 - Match data, predictions, results, and scores are persisted in SQLite.
 - Active DM workflows and short-lived cooldowns are intentionally kept in memory.
+- This includes the thread-post rate limiter and the `/admin results calculate` cooldown, so both reset if the bot process restarts.
 - This bot assumes a single-process deployment. If the process restarts, any in-progress fixture/results/prediction DM flow is lost and users need to start again.
 - That tradeoff is deliberate for a small personal bot: simpler code, fewer moving parts, and no extra operational state to migrate or debug.
 
