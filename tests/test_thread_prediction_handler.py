@@ -108,7 +108,9 @@ class TestOnMessage:
         """Should mark predictions as late when past deadline."""
         deadline = datetime.now(UTC) - timedelta(hours=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
-        await database.update_fixture_announcement(fixture_id, message_id="789012")
+        await database.update_fixture_announcement(
+            fixture_id, message_id="789012", channel_id="123456"
+        )
 
         mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
         mock_message.channel.id = 789012
@@ -299,7 +301,9 @@ class TestIntegration:
 
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
-        await database.update_fixture_announcement(fixture_id, message_id="789012")
+        await database.update_fixture_announcement(
+            fixture_id, message_id="789012", channel_id="123456"
+        )
 
         user1 = MockUser(user_id="111", name="User1")
         message1 = MockMessage(

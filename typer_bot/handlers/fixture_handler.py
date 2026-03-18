@@ -145,7 +145,7 @@ class FixtureCreationHandler:
 
         state.games = games
 
-        # Deadline already set means admin is editing games from the confirmation screen
+        # step reverts to "games" without clearing deadline on re-edit — deadline being set is the sentinel
         if state.deadline is not None:
             await self._show_preview(message.author, user_id)
             return

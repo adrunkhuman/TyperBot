@@ -111,7 +111,7 @@ class Database:
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
                     status TEXT DEFAULT 'open',
-                    message_id TEXT,                 -- Discord message/ thread snowflake (threads share parent message ID)
+                    message_id TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -916,23 +916,13 @@ class Database:
     async def update_fixture_announcement(
         self,
         fixture_id: int,
-        message_id: str | None = None,
-        channel_id: str | None = None,
-    ):
-        """Update the Discord message ID and channel ID for a fixture.
-
-        Stores the parent message ID. When a thread is created from this
-        message, it shares the same snowflake ID, so no separate thread_id
-        column is needed.
-        """
+        message_id: str,
+        channel_id: str,
+    ) -> None:
+        """Store the announcement message and channel IDs after posting to Discord."""
         async with aiosqlite.connect(self.db_path) as db:
-            if message_id is not None:
-                await db.execute(
-                    "UPDATE fixtures SET message_id = ? WHERE id = ?", (message_id, fixture_id)
-                )
-            if channel_id is not None:
-                await db.execute(
-                    "UPDATE fixtures SET channel_id = ? WHERE id = ?", (channel_id, fixture_id)
-                )
-            if message_id is not None or channel_id is not None:
-                await db.commit()
+            await db.execute(
+                "UPDATE fixtures SET message_id = ?, channel_id = ? WHERE id = ?",
+                (message_id, channel_id, fixture_id),
+            )
+            await db.commit()

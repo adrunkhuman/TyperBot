@@ -16,7 +16,7 @@ class TestSessionManagement:
         return ResultsEntryHandler(mock_bot, database, workflow_state)
 
     def test_start_session_creates_session(self, handler):
-        handler.start_session("123456", 1, 111111)
+        handler.start_session("123456", 1, 111111, week_number=1)
         assert handler.has_session("123456")
         assert handler.get_session("123456").fixture_id == 1
 
@@ -24,7 +24,7 @@ class TestSessionManagement:
         assert not handler.has_session("nonexistent_user")
 
     def test_cancel_session_removes_session(self, handler):
-        handler.start_session("123456", 1, 111111)
+        handler.start_session("123456", 1, 111111, week_number=1)
         assert handler.has_session("123456")
         handler.cancel_session("123456")
         assert not handler.has_session("123456")
@@ -79,7 +79,7 @@ class TestHandleDM:
     @pytest.mark.asyncio
     async def test_handle_dm_message_too_long(self, handler):
         """Message length limits prevent resource exhaustion."""
-        handler.start_session("123456", 1, 111111)
+        handler.start_session("123456", 1, 111111, week_number=1)
         mock_message = MagicMock()
         mock_message.content = "x" * 5001
         mock_message.author = MagicMock()
@@ -91,7 +91,7 @@ class TestHandleDM:
     @pytest.mark.asyncio
     async def test_handle_dm_fixture_not_found(self, handler):
         """Mid-session fixture deletion is detected."""
-        handler.start_session("123456", 999, 111111)
+        handler.start_session("123456", 999, 111111, week_number=1)
         mock_message = MagicMock()
         mock_message.content = "Game 1 2-1"
         mock_message.author = MagicMock()
@@ -113,7 +113,7 @@ class TestSaveResults:
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
         handler.workflow_state.start_results_session("123456", fixture_id, 111111)
-        await handler.save_results("123456", fixture_id, ["2-1", "1-1", "0-2"])
+        await handler.save_results("123456", fixture_id, 1, ["2-1", "1-1", "0-2"])
         results = await database.get_results(fixture_id)
         assert results is not None
         assert handler.get_session("123456") is None
@@ -137,7 +137,7 @@ class TestViewBehavioral:
     async def test_valid_results_sends_confirm_view(self, handler, database, sample_games):
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
-        handler.start_session("123456", fixture_id, 111111)
+        handler.start_session("123456", fixture_id, 111111, week_number=1)
 
         mock_message = MagicMock()
         mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"

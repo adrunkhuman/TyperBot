@@ -42,7 +42,12 @@ class ThreadPredictionHandler:
             return False
 
         user_id = str(message.author.id)
-        with LogContextManager(user_id=user_id, fixture_id=fixture["id"], source="thread"):
+        with LogContextManager(
+            user_id=user_id,
+            fixture_id=fixture["id"],
+            week_number=fixture["week_number"],
+            source="thread",
+        ):
             # Update and check the cooldown in one step so rapid reposts cannot race each other.
             current_time = now()
             last_time = self.workflow_state.record_thread_prediction_attempt(user_id, current_time)
@@ -75,6 +80,7 @@ class ThreadPredictionHandler:
                     message="Invalid prediction format",
                     user_id=user_id,
                     fixture_id=fixture["id"],
+                    week_number=fixture["week_number"],
                     source="thread",
                     errors_count=len(errors),
                     level=logging.WARNING,
@@ -99,6 +105,7 @@ class ThreadPredictionHandler:
                     message="Duplicate prediction blocked (race condition prevention)",
                     user_id=user_id,
                     fixture_id=fixture["id"],
+                    week_number=fixture["week_number"],
                     source="thread",
                 )
                 await message.author.send(
@@ -137,6 +144,7 @@ class ThreadPredictionHandler:
                 message="Thread prediction saved successfully",
                 user_id=user_id,
                 fixture_id=fixture["id"],
+                week_number=fixture["week_number"],
                 source="thread",
                 predictions_count=len(predictions),
                 is_late=is_late,

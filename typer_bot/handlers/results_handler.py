@@ -28,7 +28,7 @@ class ResultsEntryHandler:
         """Return the active results session for a user."""
         return self.workflow_state.get_results_session(user_id)
 
-    def start_session(self, user_id: str, fixture_id: int, guild_id: int) -> None:
+    def start_session(self, user_id: str, fixture_id: int, guild_id: int, week_number: int) -> None:
         """Initialize a new results entry session."""
         self.workflow_state.start_results_session(user_id, fixture_id, guild_id)
         log_event(
@@ -38,6 +38,7 @@ class ResultsEntryHandler:
             level=logging.DEBUG,
             user_id=user_id,
             fixture_id=fixture_id,
+            week_number=week_number,
             guild_id=guild_id,
         )
 
@@ -109,7 +110,9 @@ class ResultsEntryHandler:
             preview_text = "\n".join(preview_lines)
 
             logger.info("Results parsed successfully, showing preview")
-            view = ResultsConfirmView(self, user_id, fixture_id, results, preview_text)
+            view = ResultsConfirmView(
+                self, user_id, fixture_id, fixture["week_number"], results, preview_text
+            )
             await processing_msg.edit(content=f"{preview_text}\n\nSave these results?", view=view)
 
         except Exception as e:
@@ -157,7 +160,9 @@ class ResultsEntryHandler:
 
         return True
 
-    async def save_results(self, user_id: str, fixture_id: int, results: list[str]) -> None:
+    async def save_results(
+        self, user_id: str, fixture_id: int, week_number: int, results: list[str]
+    ) -> None:
         """Save results to the database."""
         await self.db.save_results(fixture_id, results)
         self.workflow_state.clear_results_session(user_id)
@@ -167,6 +172,7 @@ class ResultsEntryHandler:
             message=f"Results entered for fixture {fixture_id}",
             user_id=user_id,
             fixture_id=fixture_id,
+            week_number=week_number,
             results_count=len(results),
         )
 
@@ -191,6 +197,7 @@ class ResultsConfirmView(ui.View):
         handler: ResultsEntryHandler,
         user_id: str,
         fixture_id: int,
+        week_number: int,
         results: list[str],
         preview: str,
     ):
@@ -198,6 +205,7 @@ class ResultsConfirmView(ui.View):
         self.handler = handler
         self.user_id = user_id
         self.fixture_id = fixture_id
+        self.week_number = week_number
         self.results = results
         self.preview = preview
 
@@ -207,7 +215,9 @@ class ResultsConfirmView(ui.View):
     @ui.button(label="Save Results", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, _button: ui.Button):
         """Save results to database."""
-        await self.handler.save_results(self.user_id, self.fixture_id, self.results)
+        await self.handler.save_results(
+            self.user_id, self.fixture_id, self.week_number, self.results
+        )
         await interaction.response.edit_message(
             content=f"**Results Saved!**\n\n{self.preview}\n\nUse `/admin results calculate` to calculate scores.",
             view=None,
