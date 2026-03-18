@@ -316,7 +316,12 @@ class DMPredictionHandler:
         games = target_fixture["games"]
         fixture_id = target_fixture["id"]
 
-        with LogContextManager(user_id=user_id, fixture_id=fixture_id, source="dm"):
+        with LogContextManager(
+            user_id=user_id,
+            fixture_id=fixture_id,
+            week_number=target_fixture["week_number"],
+            source="dm",
+        ):
             logger.debug(f"Processing DM from user {user_id}")
 
             processing_msg = await message.author.send("⏳ Processing your predictions...")
@@ -336,6 +341,7 @@ class DMPredictionHandler:
                         level=logging.WARNING,
                         user_id=user_id,
                         fixture_id=fixture_id,
+                        week_number=target_fixture["week_number"],
                         source="dm",
                         errors_count=len(errors),
                     )
@@ -360,6 +366,7 @@ class DMPredictionHandler:
                     message="DM prediction saved successfully",
                     user_id=user_id,
                     fixture_id=fixture_id,
+                    week_number=target_fixture["week_number"],
                     source="dm",
                     predictions_count=len(predictions),
                     is_late=is_late,

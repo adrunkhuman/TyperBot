@@ -143,7 +143,9 @@ class DeleteConfirmView(discord.ui.View):
         try:
             await self.db.delete_fixture(self.fixture_id)
         except Exception:
-            logger.exception("Failed to delete fixture %s", self.fixture_id)
+            logger.exception(
+                "Failed to delete fixture %s (week %s)", self.fixture_id, self.week_number
+            )
             await interaction.response.edit_message(
                 content="⚠️ Failed to delete the fixture. Check the logs.",
                 view=None,

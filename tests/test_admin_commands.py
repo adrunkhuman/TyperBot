@@ -141,14 +141,14 @@ class TestResultsEnterLogic:
     async def test_results_enter_starts_session(self, admin_cog, mock_interaction_admin):
         """DM session keeps results private before public announcement."""
         user_id = str(mock_interaction_admin.user.id)
-        admin_cog.results_handler.start_session(user_id, 1, 111111)
+        admin_cog.results_handler.start_session(user_id, 1, 111111, week_number=1)
         assert admin_cog.results_handler.has_session(user_id)
 
     @pytest.mark.asyncio
     async def test_results_enter_session_has_correct_data(self, admin_cog, mock_interaction_admin):
         """Session tracks fixture ID for result-to-match mapping."""
         user_id = str(mock_interaction_admin.user.id)
-        admin_cog.results_handler.start_session(user_id, 42, 111111)
+        admin_cog.results_handler.start_session(user_id, 42, 111111, week_number=5)
 
         session = admin_cog.results_handler.get_session(user_id)
         assert session.fixture_id == 42
@@ -312,7 +312,7 @@ class TestOnMessageListener:
         mock_message.author.id = 123456
         mock_message.author.bot = False
 
-        admin_cog.results_handler.start_session(user_id, 1, 111111)
+        admin_cog.results_handler.start_session(user_id, 1, 111111, week_number=1)
         admin_cog.results_handler.handle_dm = AsyncMock(return_value=True)
 
         await admin_cog.on_message(mock_message)

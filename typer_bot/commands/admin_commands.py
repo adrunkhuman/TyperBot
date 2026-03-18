@@ -293,7 +293,9 @@ class AdminCommands(commands.Cog):
                 "Error: Invalid interaction context.", ephemeral=True
             )
             return
-        self.results_handler.start_session(user_id, fixture["id"], interaction.guild_id)
+        self.results_handler.start_session(
+            user_id, fixture["id"], interaction.guild_id, fixture["week_number"]
+        )
 
         await interaction.response.send_message(
             "Check your DMs! I've sent you instructions for entering results.",
