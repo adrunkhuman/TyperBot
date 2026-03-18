@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from typer_bot.commands.admin_commands import CALCULATE_COOLDOWN, AdminCommands
+from typer_bot.commands.admin_panel import OpenFixtureWarningView
 from typer_bot.utils.permissions import is_admin
 
 
@@ -67,6 +68,36 @@ class TestFixtureCreateLogic:
         assert session.channel_id == 123456
         assert session.guild_id == 111111
         assert session.step == "games"
+
+    @pytest.mark.asyncio
+    async def test_fixture_create_shows_warning_when_open_fixture_exists(
+        self, admin_cog, mock_interaction_admin, sample_games
+    ):
+        """Accidental duplicate fixtures are blocked by a confirmation step."""
+        mock_interaction_admin.channel_id = int(mock_interaction_admin.channel.id)
+        mock_interaction_admin.guild_id = mock_interaction_admin.guild.id
+        await admin_cog.db.create_fixture(5, sample_games, datetime.now(UTC) + timedelta(days=1))
+
+        await admin_cog.fixture_create.callback(admin_cog, mock_interaction_admin)
+
+        response = mock_interaction_admin.response_sent[-1]
+        assert "already open" in response["content"]
+        assert isinstance(response["view"], OpenFixtureWarningView)
+
+    @pytest.mark.asyncio
+    async def test_fixture_create_proceeds_directly_when_no_open_fixtures(
+        self, admin_cog, mock_interaction_admin
+    ):
+        """When no fixtures are open the DM session starts without any confirmation gate."""
+        mock_interaction_admin.channel_id = int(mock_interaction_admin.channel.id)
+        mock_interaction_admin.guild_id = mock_interaction_admin.guild.id
+        mock_interaction_admin.user.send = AsyncMock()
+
+        await admin_cog.fixture_create.callback(admin_cog, mock_interaction_admin)
+
+        response = mock_interaction_admin.response_sent[-1]
+        assert "Check your DMs" in response["content"]
+        assert admin_cog.fixture_handler.has_session(str(mock_interaction_admin.user.id))
 
 
 class TestFixtureDeleteLogic:

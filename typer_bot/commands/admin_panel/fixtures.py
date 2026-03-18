@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import discord
@@ -13,6 +14,8 @@ from .base import BackButton, FixtureSelect, OwnerRestrictedView, PanelSelection
 
 if TYPE_CHECKING:
     from typer_bot.commands.admin_commands import AdminCommands
+
+logger = logging.getLogger(__name__)
 
 
 class FixturesPanelView(OwnerRestrictedView):
@@ -66,11 +69,14 @@ class FixturesDeleteButton(discord.ui.Button):
             fixture_id,
             fixture["week_number"],
         )
-        await interaction.response.send_message(
-            f"Delete week {fixture['week_number']} and all related predictions/results/scores?",
-            view=confirm_view,
-            ephemeral=True,
+        lines = [f"**Delete Week {fixture['week_number']}?**\n"]
+        for index, game in enumerate(fixture["games"], 1):
+            lines.append(f"{index}. {game}")
+        content = (
+            "\n".join(lines)
+            + "\n\nThis will delete the fixture and all associated predictions/results/scores. Are you sure?"
         )
+        await interaction.response.send_message(content, view=confirm_view, ephemeral=True)
 
 
 class DeleteConfirmView(discord.ui.View):
@@ -96,7 +102,16 @@ class DeleteConfirmView(discord.ui.View):
             )
             return
 
-        await self.db.delete_fixture(self.fixture_id)
+        try:
+            await self.db.delete_fixture(self.fixture_id)
+        except Exception:
+            logger.exception("Failed to delete fixture %s", self.fixture_id)
+            await interaction.response.edit_message(
+                content="⚠️ Failed to delete the fixture. Check the logs.",
+                view=None,
+            )
+            return
+
         await interaction.response.edit_message(
             content=f"**Week {self.week_number} Fixture Deleted!**",
             view=None,
@@ -119,3 +134,45 @@ class DeleteConfirmView(discord.ui.View):
             content="Deletion cancelled. The fixture is still active.",
             view=None,
         )
+
+
+class OpenFixtureWarningView(discord.ui.View):
+    """Shown when an admin tries to create a fixture while others are already open."""
+
+    def __init__(self, admin_cog: AdminCommands, user_id: str, channel_id: int, guild_id: int):
+        super().__init__(timeout=60)
+        self.admin_cog = admin_cog
+        self.user_id = user_id
+        self.channel_id = channel_id
+        self.guild_id = guild_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message(
+                "You don't have permission to do this!", ephemeral=True
+            )
+            return False
+        if not is_admin(interaction):
+            await interaction.response.send_message(
+                "You no longer have permission to use admin commands.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Yes, Proceed", style=discord.ButtonStyle.danger)
+    async def proceed(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await interaction.response.edit_message(
+            content="Check your DMs! I've sent you instructions for creating the fixture.",
+            view=None,
+        )
+        await self.admin_cog._start_fixture_dm(
+            interaction.user,
+            self.user_id,
+            self.channel_id,
+            self.guild_id,
+            followup=interaction.followup,
+        )
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.gray)
+    async def cancel(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        await interaction.response.edit_message(content="Fixture creation cancelled.", view=None)

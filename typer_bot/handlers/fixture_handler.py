@@ -366,8 +366,9 @@ class FixtureConfirmView(ui.View):
         created_text = f"**Week {allocated_week} Fixture Created!**\n\n{final_preview}"
         if allocated_week != self.week_number:
             created_text += (
-                "\n\nℹ️ Week number was adjusted automatically because another "
-                "fixture was created at the same time."
+                f"\n\n⚠️ **Week number changed:** preview showed Week {self.week_number} but "
+                f"this was created as **Week {allocated_week}** because the fixture set "
+                f"changed between steps."
             )
 
         await interaction.response.edit_message(
