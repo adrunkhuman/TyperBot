@@ -24,17 +24,27 @@ async def _cleanup_discord_announcement(
     message_id: str,
     week_number: int,
 ) -> None:
-    """Delete the announcement message and its thread. Best-effort — logs on failure."""
+    """Best-effort Discord cleanup — logs on failure."""
     try:
         channel = bot.get_channel(int(channel_id))
         if channel is None:
             return
-        thread = bot.get_channel(int(message_id))
-        if isinstance(thread, discord.Thread):
-            await thread.delete()
-        await channel.get_partial_message(int(message_id)).delete()
+        message = await channel.fetch_message(int(message_id))
+        if message.thread is not None:
+            await message.thread.delete()
+        await message.delete()
     except Exception:
         logger.warning("Could not delete Discord announcement for Week %s fixture", week_number)
+
+
+def _build_delete_confirmation_content(fixture: dict) -> str:
+    lines = [f"**Delete Week {fixture['week_number']}?**\n"]
+    for index, game in enumerate(fixture["games"], 1):
+        lines.append(f"{index}. {game}")
+    return (
+        "\n".join(lines)
+        + "\n\nThis will delete the fixture and all associated predictions, results, and scores. Are you sure?"
+    )
 
 
 class FixturesPanelView(OwnerRestrictedView):
@@ -91,13 +101,7 @@ class FixturesDeleteButton(discord.ui.Button):
             message_id=fixture.get("message_id"),
             channel_id=fixture.get("channel_id"),
         )
-        lines = [f"**Delete Week {fixture['week_number']}?**\n"]
-        for index, game in enumerate(fixture["games"], 1):
-            lines.append(f"{index}. {game}")
-        content = (
-            "\n".join(lines)
-            + "\n\nThis will delete the fixture and all associated predictions/results/scores. Are you sure?"
-        )
+        content = _build_delete_confirmation_content(fixture)
         await interaction.response.send_message(content, view=confirm_view, ephemeral=True)
 
 
@@ -204,13 +208,16 @@ class OpenFixtureWarningView(discord.ui.View):
             content="Check your DMs! I've sent you instructions for creating the fixture.",
             view=None,
         )
-        await self.admin_cog._start_fixture_dm(
+        if not await self.admin_cog._start_fixture_dm(
             interaction.user,
             self.user_id,
             self.channel_id,
             self.guild_id,
-            followup=interaction.followup,
-        )
+        ):
+            await interaction.followup.send(
+                "I can't send you DMs. Please enable DMs from server members and try again.",
+                ephemeral=True,
+            )
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.gray)
     async def cancel(self, interaction: discord.Interaction, _button: discord.ui.Button):

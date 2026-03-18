@@ -12,6 +12,7 @@ from typer_bot.commands.admin_panel import (
     AdminPanelHomeView,
     DeleteConfirmView,
     OpenFixtureWarningView,
+    _build_delete_confirmation_content,
 )
 from typer_bot.database import Database
 from typer_bot.handlers import FixtureCreationHandler, ResultsEntryHandler
@@ -121,9 +122,8 @@ class AdminCommands(commands.Cog):
         user_id: str,
         channel_id: int,
         guild_id: int,
-        followup: discord.Webhook | None = None,
-    ) -> None:
-        """Start a fixture creation session and send the DM workflow prompt."""
+    ) -> bool:
+        """Returns True if the DM was sent successfully."""
         self.fixture_handler.start_session(user_id, channel_id, guild_id)
         max_week = await self.db.get_max_week_number()
         predicted_week = max_week + 1
@@ -141,13 +141,11 @@ class AdminCommands(commands.Cog):
                 "```\n"
                 "One game per line."
             )
-        except discord.Forbidden:
-            self.fixture_handler.cancel_session(user_id, reason="dm_forbidden")
-            if followup:
-                await followup.send(
-                    "I can't send you DMs. Please enable DMs from server members and try again.",
-                    ephemeral=True,
-                )
+        except discord.HTTPException as exc:
+            reason = "dm_forbidden" if isinstance(exc, discord.Forbidden) else "dm_error"
+            self.fixture_handler.cancel_session(user_id, reason=reason)
+            return False
+        return True
 
     async def _post_calculation_to_channel(
         self,
@@ -231,13 +229,16 @@ class AdminCommands(commands.Cog):
             "Check your DMs! I've sent you instructions for creating the fixture.",
             ephemeral=True,
         )
-        await self._start_fixture_dm(
+        if not await self._start_fixture_dm(
             interaction.user,
             user_id,
             interaction.channel_id,
             interaction.guild_id,
-            followup=interaction.followup,
-        )
+        ):
+            await interaction.followup.send(
+                "I can't send you DMs. Please enable DMs from server members and try again.",
+                ephemeral=True,
+            )
 
     @fixture.command(name="delete", description="Delete an open fixture")
     @admin_only()
@@ -260,13 +261,8 @@ class AdminCommands(commands.Cog):
             channel_id=fixture.get("channel_id"),
         )
 
-        lines = [f"**Delete Week {fixture['week_number']}?**\n"]
-        for index, game in enumerate(fixture["games"], 1):
-            lines.append(f"{index}. {game}")
-
         await interaction.response.send_message(
-            "\n".join(lines)
-            + "\n\nThis will delete the fixture and all associated predictions. Are you sure?",
+            _build_delete_confirmation_content(fixture),
             view=view,
             ephemeral=True,
         )

@@ -14,7 +14,9 @@ class TestFullWorkflow:
         games = ["Team A - Team B", "Team C - Team D", "Team E - Team F"]
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, games, deadline)
-        await database.update_fixture_announcement(fixture_id, message_id="789012")
+        await database.update_fixture_announcement(
+            fixture_id, message_id="789012", channel_id="123456"
+        )
 
         fixture = await database.get_fixture_by_id(fixture_id)
         assert fixture["week_number"] == 1

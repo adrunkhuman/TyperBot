@@ -180,7 +180,7 @@ class TestDefensiveColumnAccess:
 
         # Create a fixture with message_id
         fixture_id = await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
-        await db.update_fixture_announcement(fixture_id, message_id="123456")
+        await db.update_fixture_announcement(fixture_id, message_id="123456", channel_id="999")
 
         # This should not crash
         fixture = await db.get_fixture_by_message_id("123456")

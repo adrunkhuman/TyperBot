@@ -187,7 +187,7 @@ def sample_predictions():
 async def fixture_with_thread(database, sample_games):
     deadline = datetime.now(UTC) + timedelta(days=1)
     fixture_id = await database.create_fixture(1, sample_games, deadline)
-    await database.update_fixture_announcement(fixture_id, message_id="789012")
+    await database.update_fixture_announcement(fixture_id, message_id="789012", channel_id="123456")
     fixture = await database.get_fixture_by_id(fixture_id)
     yield fixture
 
