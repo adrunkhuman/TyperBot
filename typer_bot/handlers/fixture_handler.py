@@ -394,6 +394,7 @@ class FixtureConfirmView(ui.View):
             await self.handler.db.update_fixture_announcement(
                 fixture_id,
                 message_id=str(announcement.id),
+                channel_id=str(self.channel.id),
             )
 
             try:

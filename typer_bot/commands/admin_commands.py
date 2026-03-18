@@ -255,6 +255,9 @@ class AdminCommands(commands.Cog):
             str(interaction.user.id),
             fixture["id"],
             fixture["week_number"],
+            bot=self.bot,
+            message_id=fixture.get("message_id"),
+            channel_id=fixture.get("channel_id"),
         )
 
         lines = [f"**Delete Week {fixture['week_number']}?**\n"]
