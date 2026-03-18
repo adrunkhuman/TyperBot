@@ -542,3 +542,50 @@ class TestViewBehavioral:
             "⚠️ Fixture created but I couldn't create a prediction thread. Users can still use `/predict`.",
             ephemeral=True,
         )
+
+    @pytest.mark.asyncio
+    async def test_edit_games_resets_step_and_prompts_re_entry(self, handler):
+        """Edit Games drops back to games input while keeping the deadline."""
+        from typer_bot.handlers.fixture_handler import FixtureConfirmView
+
+        deadline = datetime.now(UTC) + timedelta(days=3)
+        session = handler.workflow_state.start_fixture_session("123456", 123456, 111111)
+        session.step = "confirm"
+        session.games = ["Wrong Team A - Team B"]
+        session.deadline = deadline
+
+        interaction = MagicMock()
+        interaction.user.id = 123456
+        interaction.response.edit_message = AsyncMock()
+        interaction.response.send_message = AsyncMock()
+
+        view = FixtureConfirmView(
+            handler, "123456", 1, session.games, deadline, MagicMock(), "Preview"
+        )
+        edit_button = next(child for child in view.children if child.label == "Edit Games")
+        await edit_button.callback(interaction)
+
+        state = handler.get_session("123456")
+        assert state is not None
+        assert state.step == "games"
+        assert state.deadline == deadline  # deadline preserved
+        interaction.response.edit_message.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_games_step_skips_deadline_when_already_set(self, handler):
+        """Re-entered games go straight to preview if a deadline was already chosen."""
+        session = handler.workflow_state.start_fixture_session("123456", 123456, 111111)
+        session.step = "games"
+        session.deadline = datetime.now(UTC) + timedelta(days=3)
+
+        preview_calls = []
+        handler._show_preview = AsyncMock(side_effect=lambda _u, uid: preview_calls.append(uid))
+
+        mock_message = MagicMock()
+        mock_message.content = "Team A - Team B\nTeam C - Team D"
+        mock_message.author = MagicMock()
+
+        await handler._handle_games_step(mock_message, "123456")
+
+        assert preview_calls == ["123456"]
+        assert handler.get_session("123456").step == "games"  # _show_preview mocked, step unchanged
