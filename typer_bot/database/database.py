@@ -164,6 +164,10 @@ class Database:
                 logger.info("Adding message_id column to fixtures table")
                 await db.execute("ALTER TABLE fixtures ADD COLUMN message_id TEXT")
 
+            if "channel_id" not in column_names:
+                logger.info("Adding channel_id column to fixtures table")
+                await db.execute("ALTER TABLE fixtures ADD COLUMN channel_id TEXT")
+
             await self._migrate_prediction_columns(db)
             await self._migrate_results_table(db)
 
@@ -257,6 +261,7 @@ class Database:
             "deadline": parse_iso(deadline_val) if deadline_val else None,
             "status": row_dict.get("status"),
             "message_id": row_dict.get("message_id"),
+            "channel_id": row_dict.get("channel_id"),
         }
 
     async def get_current_fixture(self) -> dict | None:
@@ -912,8 +917,9 @@ class Database:
         self,
         fixture_id: int,
         message_id: str | None = None,
+        channel_id: str | None = None,
     ):
-        """Update the Discord message ID for a fixture.
+        """Update the Discord message ID and channel ID for a fixture.
 
         Stores the parent message ID. When a thread is created from this
         message, it shares the same snowflake ID, so no separate thread_id
@@ -924,4 +930,9 @@ class Database:
                 await db.execute(
                     "UPDATE fixtures SET message_id = ? WHERE id = ?", (message_id, fixture_id)
                 )
+            if channel_id is not None:
+                await db.execute(
+                    "UPDATE fixtures SET channel_id = ? WHERE id = ?", (channel_id, fixture_id)
+                )
+            if message_id is not None or channel_id is not None:
                 await db.commit()

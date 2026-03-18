@@ -18,6 +18,25 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+async def _cleanup_discord_announcement(
+    bot: discord.Client,
+    channel_id: str,
+    message_id: str,
+    week_number: int,
+) -> None:
+    """Delete the announcement message and its thread. Best-effort — logs on failure."""
+    try:
+        channel = bot.get_channel(int(channel_id))
+        if channel is None:
+            return
+        thread = bot.get_channel(int(message_id))
+        if isinstance(thread, discord.Thread):
+            await thread.delete()
+        await channel.get_partial_message(int(message_id)).delete()
+    except Exception:
+        logger.warning("Could not delete Discord announcement for Week %s fixture", week_number)
+
+
 class FixturesPanelView(OwnerRestrictedView):
     """Panel for fixture deletion and workflow guidance."""
 
@@ -68,6 +87,9 @@ class FixturesDeleteButton(discord.ui.Button):
             self.parent_view.owner_user_id,
             fixture_id,
             fixture["week_number"],
+            bot=self.parent_view.admin_cog.bot,
+            message_id=fixture.get("message_id"),
+            channel_id=fixture.get("channel_id"),
         )
         lines = [f"**Delete Week {fixture['week_number']}?**\n"]
         for index, game in enumerate(fixture["games"], 1):
@@ -82,12 +104,24 @@ class FixturesDeleteButton(discord.ui.Button):
 class DeleteConfirmView(discord.ui.View):
     """View for confirming fixture deletion."""
 
-    def __init__(self, db: Database, user_id: str, fixture_id: int, week_number: int):
+    def __init__(
+        self,
+        db: Database,
+        user_id: str,
+        fixture_id: int,
+        week_number: int,
+        bot: discord.Client | None = None,
+        message_id: str | None = None,
+        channel_id: str | None = None,
+    ):
         super().__init__(timeout=60)
         self.db = db
         self.user_id = user_id
         self.fixture_id = fixture_id
         self.week_number = week_number
+        self.bot = bot
+        self.message_id = message_id
+        self.channel_id = channel_id
 
     @discord.ui.button(label="Yes, Delete", style=discord.ButtonStyle.red)
     async def confirm(self, interaction: discord.Interaction, _button: discord.ui.Button):
@@ -116,6 +150,11 @@ class DeleteConfirmView(discord.ui.View):
             content=f"**Week {self.week_number} Fixture Deleted!**",
             view=None,
         )
+
+        if self.bot is not None and self.message_id is not None and self.channel_id is not None:
+            await _cleanup_discord_announcement(
+                self.bot, self.channel_id, self.message_id, self.week_number
+            )
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.gray)
     async def cancel(self, interaction: discord.Interaction, _button: discord.ui.Button):
