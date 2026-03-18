@@ -1,6 +1,7 @@
 """Tests for admin panel interactions."""
 
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -9,10 +10,12 @@ from typer_bot.commands.admin_commands import AdminCommands
 from typer_bot.commands.admin_panel import (
     AdminPanelHomeView,
     CorrectResultsModal,
+    DeleteConfirmView,
     PredictionsPanelView,
     ReplacePredictionModal,
     ResultsPanelView,
 )
+from typer_bot.database import Database
 
 
 class TestAdminPanelCommand:
@@ -186,6 +189,71 @@ class TestFixturePanelFlows:
         edited_view = mock_interaction_admin.response_sent[-1]["view"]
         assert edited_view.fixture_select.disabled is False
         assert edited_view.fixture_select.options[0].label == "Week 4 [OPEN]"
+
+    @pytest.mark.asyncio
+    async def test_fixture_panel_delete_confirmation_shows_games(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        """Deletion confirmation must show game list so admin can verify the right fixture."""
+        fixture_id = await admin_cog.db.create_fixture(
+            6, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+
+        view = AdminPanelHomeView(admin_cog, str(mock_interaction_admin.user.id))
+        fixture_button = next(
+            child for child in view.children if getattr(child, "label", None) == "Fixtures"
+        )
+        await fixture_button.callback(mock_interaction_admin)
+
+        fixtures_view = mock_interaction_admin.response_sent[-1]["view"]
+        fixtures_view.fixture_select._values = [str(fixture_id)]
+        await fixtures_view.fixture_select.callback(mock_interaction_admin)
+
+        delete_button = next(
+            child
+            for child in fixtures_view.children
+            if getattr(child, "label", None) == "Delete Fixture"
+        )
+        await delete_button.callback(mock_interaction_admin)
+
+        confirmation_content = mock_interaction_admin.response_sent[-1]["content"]
+        assert "Delete Week 6?" in confirmation_content
+        assert "Team A - Team B" in confirmation_content
+
+    @pytest.mark.asyncio
+    async def test_fixture_panel_delete_confirm_shows_error_on_db_failure(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        """Silent DB failures surface as a visible error instead of timing out the interaction."""
+        fixture_id = await admin_cog.db.create_fixture(
+            7, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+
+        db_mock = AsyncMock(spec=Database)
+        db_mock.delete_fixture.side_effect = RuntimeError("DB locked")
+
+        confirm_view = DeleteConfirmView(
+            db_mock,
+            str(mock_interaction_admin.user.id),
+            fixture_id,
+            week_number=7,
+        )
+        confirm_button = next(
+            child
+            for child in confirm_view.children
+            if getattr(child, "label", None) == "Yes, Delete"
+        )
+        await confirm_button.callback(mock_interaction_admin)
+
+        response = mock_interaction_admin.response_sent[-1]
+        assert "Failed to delete" in response["content"]
+        assert response.get("view") is None
 
 
 class TestResultsPanelFlows:

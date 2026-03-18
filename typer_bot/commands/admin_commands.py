@@ -8,7 +8,11 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from typer_bot.commands.admin_panel import AdminPanelHomeView, DeleteConfirmView
+from typer_bot.commands.admin_panel import (
+    AdminPanelHomeView,
+    DeleteConfirmView,
+    OpenFixtureWarningView,
+)
 from typer_bot.database import Database
 from typer_bot.handlers import FixtureCreationHandler, ResultsEntryHandler
 from typer_bot.services import AdminService, WorkflowStateStore
@@ -111,6 +115,40 @@ class AdminCommands(commands.Cog):
         except Exception as exc:
             logger.warning(f"Backup failed but calculation succeeded: {exc}")
 
+    async def _start_fixture_dm(
+        self,
+        user: discord.User | discord.Member,
+        user_id: str,
+        channel_id: int,
+        guild_id: int,
+        followup: discord.Webhook | None = None,
+    ) -> None:
+        """Start a fixture creation session and send the DM workflow prompt."""
+        self.fixture_handler.start_session(user_id, channel_id, guild_id)
+        max_week = await self.db.get_max_week_number()
+        predicted_week = max_week + 1
+        try:
+            await user.send(
+                f"**Create New Fixture — Week {predicted_week}**\n\n"
+                f"Based on current data, this will be **Week {predicted_week}** "
+                f"(may change if fixtures are created or deleted before you confirm).\n\n"
+                "Step 1/2: Send me the list of games in this format:\n"
+                "```\n"
+                "Team A - Team B\n"
+                "Team C - Team D\n"
+                "Team E - Team F\n"
+                "...\n"
+                "```\n"
+                "One game per line."
+            )
+        except discord.Forbidden:
+            self.fixture_handler.cancel_session(user_id, reason="dm_forbidden")
+            if followup:
+                await followup.send(
+                    "I can't send you DMs. Please enable DMs from server members and try again.",
+                    ephemeral=True,
+                )
+
     async def _post_calculation_to_channel(
         self,
         interaction: discord.Interaction,
@@ -175,31 +213,31 @@ class AdminCommands(commands.Cog):
                 "Error: Invalid interaction context.", ephemeral=True
             )
             return
-        self.fixture_handler.start_session(user_id, interaction.channel_id, interaction.guild_id)
+
+        open_fixtures = await self.db.get_open_fixtures()
+        if open_fixtures:
+            open_weeks = self._format_open_weeks(open_fixtures)
+            view = OpenFixtureWarningView(
+                self, user_id, interaction.channel_id, interaction.guild_id
+            )
+            await interaction.response.send_message(
+                f"Week(s) **{open_weeks}** are already open. Create another fixture anyway?",
+                view=view,
+                ephemeral=True,
+            )
+            return
 
         await interaction.response.send_message(
             "Check your DMs! I've sent you instructions for creating the fixture.",
             ephemeral=True,
         )
-
-        try:
-            await interaction.user.send(
-                "**Create New Fixture**\n\n"
-                "Step 1/2: Send me the list of games in this format:\n"
-                "```\n"
-                "Team A - Team B\n"
-                "Team C - Team D\n"
-                "Team E - Team F\n"
-                "...\n"
-                "```\n"
-                "One game per line."
-            )
-        except discord.Forbidden:
-            self.fixture_handler.cancel_session(user_id, reason="dm_forbidden")
-            await interaction.followup.send(
-                "I can't send you DMs. Please enable DMs from server members and try again.",
-                ephemeral=True,
-            )
+        await self._start_fixture_dm(
+            interaction.user,
+            user_id,
+            interaction.channel_id,
+            interaction.guild_id,
+            followup=interaction.followup,
+        )
 
     @fixture.command(name="delete", description="Delete an open fixture")
     @admin_only()

@@ -144,6 +144,12 @@ class FixtureCreationHandler:
             return
 
         state.games = games
+
+        # Deadline already set means admin is editing games from the confirmation screen
+        if state.deadline is not None:
+            await self._show_preview(message.author, user_id)
+            return
+
         state.step = "deadline"
 
         current_time = now()
@@ -366,8 +372,9 @@ class FixtureConfirmView(ui.View):
         created_text = f"**Week {allocated_week} Fixture Created!**\n\n{final_preview}"
         if allocated_week != self.week_number:
             created_text += (
-                "\n\nℹ️ Week number was adjusted automatically because another "
-                "fixture was created at the same time."
+                f"\n\n⚠️ **Week number changed:** preview showed Week {self.week_number} but "
+                f"this was created as **Week {allocated_week}** because the fixture set "
+                f"changed between steps."
             )
 
         await interaction.response.edit_message(
@@ -410,6 +417,27 @@ class FixtureConfirmView(ui.View):
                 "⚠️ Fixture created but I couldn't announce it in the channel. Please announce it manually.",
                 ephemeral=True,
             )
+
+    @ui.button(label="Edit Games", style=discord.ButtonStyle.secondary)
+    async def edit_games(self, interaction: discord.Interaction, _button: ui.Button):
+        """Go back to the games entry step, keeping the chosen deadline."""
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("This button is not for you!", ephemeral=True)
+            return
+
+        state = self.handler.get_session(self.user_id)
+        if state is None:
+            await interaction.response.edit_message(
+                content="Session expired. Please start over with `/admin fixture create`.",
+                view=None,
+            )
+            return
+
+        state.step = "games"
+        await interaction.response.edit_message(
+            content="Send me the corrected games list (one game per line).",
+            view=None,
+        )
 
     @ui.button(label="Cancel", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, _button: ui.Button):
