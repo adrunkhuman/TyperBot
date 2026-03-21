@@ -126,7 +126,7 @@ class AdminCommands(commands.Cog):
     ) -> bool:
         """Returns True if the DM was sent successfully."""
         if self.workflow_state.has_results_session(user_id):
-            with contextlib.suppress(discord.HTTPException):
+            with contextlib.suppress(Exception):
                 await user.send(
                     "❌ You have an active results entry session. "
                     "Finish or cancel it before starting a new fixture."
@@ -224,6 +224,14 @@ class AdminCommands(commands.Cog):
             await interaction.response.send_message(
                 f"Week(s) **{open_weeks}** are already open. Create another fixture anyway?",
                 view=view,
+                ephemeral=True,
+            )
+            return
+
+        if self.workflow_state.has_results_session(user_id):
+            await interaction.response.send_message(
+                "❌ You have an active results entry session. "
+                "Finish or cancel it before starting a new fixture.",
                 ephemeral=True,
             )
             return

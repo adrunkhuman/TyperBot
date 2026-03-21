@@ -285,10 +285,28 @@ class TestAdminSessionExclusivity:
         return AdminCommands(mock_bot)
 
     @pytest.mark.asyncio
-    async def test_fixture_create_blocked_when_results_session_active(
+    async def test_fixture_create_command_blocked_when_results_session_active(
         self, admin_cog, mock_interaction_admin
     ):
-        """Starting fixture creation while results entry is in progress is rejected."""
+        """fixture_create gives a single clear error — not 'Check your DMs' + error."""
+        user_id = str(mock_interaction_admin.user.id)
+        mock_interaction_admin.channel_id = int(mock_interaction_admin.channel.id)
+        mock_interaction_admin.guild_id = mock_interaction_admin.guild.id
+        admin_cog.results_handler.start_session(user_id, 1, 111111, week_number=1)
+
+        await admin_cog.fixture_create.callback(admin_cog, mock_interaction_admin)
+
+        assert len(mock_interaction_admin.response_sent) == 1
+        response = mock_interaction_admin.response_sent[0]["content"]
+        assert "results entry" in response.lower()
+        assert "Check your DMs" not in response
+        assert not admin_cog.fixture_handler.has_session(user_id)
+
+    @pytest.mark.asyncio
+    async def test_start_fixture_dm_blocked_when_results_session_active(
+        self, admin_cog, mock_interaction_admin
+    ):
+        """_start_fixture_dm fallback guard covers the view-triggered path."""
         user_id = str(mock_interaction_admin.user.id)
         admin_cog.results_handler.start_session(user_id, 1, 111111, week_number=1)
 
