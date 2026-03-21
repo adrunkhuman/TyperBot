@@ -462,7 +462,7 @@ class TestOnMessageDMRouting:
         mock_message.guild = MagicMock()
         mock_message.id = 2
 
-        with patch.object(bot_instance, "process_commands"):
+        with patch("discord.ext.commands.Bot.on_message", new_callable=AsyncMock):
             await bot_instance.on_message(mock_message)
 
         bot_instance.dm_router.route.assert_not_awaited()

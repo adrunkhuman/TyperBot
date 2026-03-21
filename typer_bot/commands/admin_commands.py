@@ -332,8 +332,9 @@ class AdminCommands(commands.Cog):
                 ]
             )
             await interaction.user.send("\n".join(lines))
-        except discord.Forbidden:
-            self.results_handler.cancel_session(user_id, reason="dm_forbidden")
+        except Exception as exc:
+            reason = "dm_forbidden" if isinstance(exc, discord.Forbidden) else "dm_error"
+            self.results_handler.cancel_session(user_id, reason=reason)
             await interaction.followup.send(
                 "I can't send you DMs. Please enable DMs from server members and try again.",
                 ephemeral=True,
