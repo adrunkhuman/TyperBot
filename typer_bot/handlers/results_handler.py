@@ -245,6 +245,7 @@ class ResultsConfirmView(ui.View):
                 self.user_id, self.fixture_id, self.week_number, self.results
             )
         except ValueError as e:
+            self.handler.cancel_session(self.user_id)
             await interaction.response.edit_message(
                 content=f"**Cannot save results:** {e}", view=None
             )

@@ -203,7 +203,6 @@ class TestSaveResults:
         handler.workflow_state.start_results_session("123456", fixture_id, 111111)
         with pytest.raises(ValueError, match="already been scored"):
             await handler.save_results("123456", fixture_id, 1, ["2-1", "1-1", "0-2"])
-        # session preserved so admin can cancel explicitly
         assert handler.get_session("123456") is not None
 
     @pytest.mark.asyncio

@@ -115,11 +115,10 @@ class TestParseIso:
 class TestTimezoneConfiguration:
     """Test timezone configuration via TZ environment variable."""
 
-    def test_default_europe_warsaw(self):
-        """Default timezone is Europe/Warsaw when TZ not set."""
-        # This test documents current behavior
-        # Note: APP_TZ is set at import time, can't easily change in tests
-        assert str(tz_module.APP_TZ) == "Europe/Warsaw"
+    def test_default_utc(self):
+        """Default timezone is UTC when TZ not set."""
+        # APP_TZ is set at import time, can't easily change in tests
+        assert str(tz_module.APP_TZ) == "UTC"
 
     @pytest.mark.skip(reason="APP_TZ set at import time, can't test dynamically")
     def test_tz_env_var_changes_timezone(self, monkeypatch):
@@ -133,14 +132,14 @@ class TestTimezoneComparisons:
     """Test datetime comparisons across timezones."""
 
     def test_same_time_different_zones(self):
-        """Same moment in time, different zone representations."""
-        warsaw_time = tz_module.parse_deadline("2024-03-15 14:00")
-        utc_time = warsaw_time.astimezone(UTC)
+        """parse_deadline produces a tz-aware datetime that round-trips to UTC correctly."""
+        app_time = tz_module.parse_deadline("2024-03-15 14:00")
+        utc_time = app_time.astimezone(UTC)
 
-        # Same moment, different display
-        assert warsaw_time.timestamp() == utc_time.timestamp()
-        # But different hour values
-        assert warsaw_time.hour != utc_time.hour
+        # Same Unix timestamp regardless of zone
+        assert app_time.timestamp() == utc_time.timestamp()
+        # With UTC as default APP_TZ the hour values are the same
+        assert app_time.hour == utc_time.hour
 
     def test_comparing_naive_and_aware_raises_error(self):
         """Can't compare naive and timezone-aware datetimes directly."""

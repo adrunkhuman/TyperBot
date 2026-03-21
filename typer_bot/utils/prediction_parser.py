@@ -101,7 +101,7 @@ def ascii_username(username: str, max_len: int = 20) -> str:
 def format_fixture_results(games: list[str], results: list[str], week_number: int) -> str:
     """Format entered match results for the calculation announcement."""
     lines = [f"⚽ **Week {week_number} Results**", "```"]
-    for game, result in zip(games, results, strict=False):
+    for game, result in zip(games, results, strict=True):
         lines.append(f"{game}  {result}")
     lines.append("```")
     return "\n".join(lines)
