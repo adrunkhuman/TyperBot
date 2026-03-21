@@ -104,6 +104,10 @@ class Database:
     async def initialize(self):
         """Create tables if they don't exist."""
         async with aiosqlite.connect(self.db_path) as db:
+            async with db.execute("PRAGMA journal_mode=WAL") as cur:
+                row = await cur.fetchone()
+                if row and row[0] != "wal":
+                    logger.warning("WAL mode not applied; journal_mode=%s", row[0])
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS fixtures (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,

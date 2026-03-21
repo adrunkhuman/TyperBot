@@ -167,6 +167,12 @@ class WorkflowStateStore:
 
         return previous_attempt
 
+    def _cleanup_thread_cooldowns(self) -> None:
+        cutoff = now() - COOLDOWN_ENTRY_EXPIRY
+        expired = [uid for uid, ts in self._thread_prediction_cooldowns.items() if ts < cutoff]
+        for uid in expired:
+            self._thread_prediction_cooldowns.pop(uid, None)
+
     def get_thread_prediction_cooldown(self, user_id: str) -> datetime | None:
         return self._thread_prediction_cooldowns.get(user_id)
 
@@ -198,8 +204,33 @@ class WorkflowStateStore:
     def record_calculate_cooldown(self, user_id: str, *, current_time: float) -> None:
         self._calculate_cooldowns[user_id] = current_time
 
+    def _cleanup_calculate_cooldowns(self) -> None:
+        cutoff = now().timestamp() - COOLDOWN_ENTRY_EXPIRY.total_seconds()
+        expired = [uid for uid, ts in self._calculate_cooldowns.items() if ts < cutoff]
+        for uid in expired:
+            self._calculate_cooldowns.pop(uid, None)
+
     def get_calculate_cooldown(self, user_id: str) -> float | None:
         return self._calculate_cooldowns.get(user_id)
 
     def clear_calculate_cooldowns(self) -> None:
         self._calculate_cooldowns.clear()
+
+    def cleanup_all_expired(self) -> int:
+        """Run all per-type session and cooldown cleanups. Returns count of DM sessions removed (cooldown entries not counted)."""
+        before = (
+            len(self._fixture_sessions)
+            + len(self._results_sessions)
+            + len(self._prediction_sessions)
+        )
+        self._cleanup_fixture_sessions()
+        self._cleanup_results_sessions()
+        self._cleanup_prediction_sessions()
+        self._cleanup_thread_cooldowns()
+        self._cleanup_calculate_cooldowns()
+        after = (
+            len(self._fixture_sessions)
+            + len(self._results_sessions)
+            + len(self._prediction_sessions)
+        )
+        return before - after
