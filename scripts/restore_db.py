@@ -78,15 +78,21 @@ def main():
         shutil.copy(db_path, bak_path)
         print(f"Current database backed up to {bak_path}")
 
+    tmp_path = db_path.with_suffix(".db.restore_tmp")
+    conn = None
     try:
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(tmp_path)
         conn.executescript(sql_content)
-        conn.commit()
         conn.close()
+        conn = None
+        tmp_path.replace(db_path)  # atomic on POSIX and Windows
         print(f"Database restored from {backup_path}")
     except Exception as e:
+        if conn is not None:
+            conn.close()
+        tmp_path.unlink(missing_ok=True)
         print(f"Restore failed: {e}")
-        print(f"Check if original database still exists at {bak_path}")
+        print("Original database was not modified.")
         sys.exit(1)
 
 
