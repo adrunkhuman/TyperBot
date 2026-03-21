@@ -26,14 +26,6 @@ class AdminService:
     def __init__(self, db: Database):
         self.db = db
 
-    async def get_fixture_by_week(self, week_number: int) -> dict | None:
-        """Resolve a fixture by week, regardless of status."""
-        return await self.db.get_fixture_by_week(week_number)
-
-    async def get_recent_fixtures(self, limit: int = 25) -> list[dict]:
-        """Return recent fixtures for panel selectors."""
-        return await self.db.get_recent_fixtures(limit)
-
     async def _build_score_result(self, fixture_id: int) -> FixtureScoreResult:
         fixture = await self.db.get_fixture_by_id(fixture_id)
         if fixture is None:
