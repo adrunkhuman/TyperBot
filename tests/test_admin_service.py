@@ -5,6 +5,8 @@ from datetime import UTC, datetime, timedelta
 import aiosqlite
 import pytest
 
+import typer_bot.database.predictions as predictions_module
+import typer_bot.database.results as results_module
 from typer_bot.services import AdminService
 
 
@@ -72,7 +74,9 @@ class TestLatePenaltyWaiver:
         async def raise_recalc_error(*_args, **_kwargs):
             raise RuntimeError("boom")
 
-        monkeypatch.setattr(database, "_recalculate_scores_in_connection", raise_recalc_error)
+        monkeypatch.setattr(
+            predictions_module, "_recalculate_scores_in_connection", raise_recalc_error
+        )
 
         with pytest.raises(RuntimeError, match="boom"):
             await service.toggle_late_penalty_waiver(fixture_id, "late-user")
@@ -147,7 +151,9 @@ class TestPredictionReplacement:
         async def raise_recalc_error(*_args, **_kwargs):
             raise RuntimeError("boom")
 
-        monkeypatch.setattr(database, "_recalculate_scores_in_connection", raise_recalc_error)
+        monkeypatch.setattr(
+            predictions_module, "_recalculate_scores_in_connection", raise_recalc_error
+        )
 
         with pytest.raises(RuntimeError, match="boom"):
             await service.replace_prediction(
@@ -298,7 +304,7 @@ class TestResultCorrection:
         async def raise_recalc_error(*_args, **_kwargs):
             raise RuntimeError("boom")
 
-        monkeypatch.setattr(database, "_recalculate_scores_in_connection", raise_recalc_error)
+        monkeypatch.setattr(results_module, "_recalculate_scores_in_connection", raise_recalc_error)
 
         with pytest.raises(RuntimeError, match="boom"):
             await service.correct_results(

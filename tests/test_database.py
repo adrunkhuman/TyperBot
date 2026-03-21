@@ -7,7 +7,7 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from typer_bot.database.database import Database, SaveResult
+from typer_bot.database import Database, SaveResult
 
 
 @pytest.fixture
