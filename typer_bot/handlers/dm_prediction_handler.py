@@ -8,7 +8,7 @@ from typing import Literal
 
 import discord
 
-from typer_bot.database import Database
+from typer_bot.database import Database, SaveResult
 from typer_bot.services.workflow_state import PredictionSession, WorkflowStateStore
 from typer_bot.utils import format_for_discord, now, parse_line_predictions
 from typer_bot.utils.logger import LogContextManager, log_event
@@ -352,13 +352,30 @@ class DMPredictionHandler:
                     )
                     return True
 
-                await self.db.save_prediction(
+                result = await self.db.save_prediction_guarded(
                     fixture_id,
                     user_id,
                     message.author.display_name,
                     predictions,
                     is_late,
                 )
+
+                if result == SaveResult.FIXTURE_CLOSED:
+                    self._clear_prediction_session(user_id)
+                    log_event(
+                        logger,
+                        event_type="prediction.fixture_closed",
+                        message="Prediction rejected: fixture closed before atomic write",
+                        user_id=user_id,
+                        fixture_id=fixture_id,
+                        week_number=target_fixture["week_number"],
+                        source="dm",
+                    )
+                    await processing_msg.edit(
+                        content="ℹ️ This fixture was closed before your prediction could be saved. "
+                        "Use `/predict` to check if another fixture is still open."
+                    )
+                    return True
 
                 log_event(
                     logger,

@@ -5,7 +5,7 @@ from contextlib import suppress
 
 import discord
 
-from typer_bot.database import Database
+from typer_bot.database import Database, SaveResult
 from typer_bot.services.workflow_state import WorkflowStateStore
 from typer_bot.utils import now, parse_line_predictions
 from typer_bot.utils.logger import LogContextManager, log_event
@@ -96,9 +96,33 @@ class ThreadPredictionHandler:
             current_time = now()
             is_late = current_time > fixture["deadline"]
 
-            # DM and thread submissions can land at the same time; keep the first stored pick.
-            existing = await self.db.get_prediction(fixture["id"], user_id)
-            if existing:
+        try:
+            result = await self.db.try_save_prediction(
+                fixture["id"],
+                user_id,
+                message.author.display_name,
+                predictions,
+                is_late,
+            )
+
+            if result == SaveResult.FIXTURE_CLOSED:
+                log_event(
+                    logger,
+                    event_type="prediction.fixture_closed",
+                    message="Prediction rejected: fixture closed before atomic write",
+                    user_id=user_id,
+                    fixture_id=fixture["id"],
+                    week_number=fixture["week_number"],
+                    source="thread",
+                )
+                with suppress(discord.Forbidden):
+                    await message.author.send(
+                        "ℹ️ This fixture was closed before your prediction could be saved. "
+                        "Use `/predict` to check if another fixture is still open."
+                    )
+                return True
+
+            if result == SaveResult.DUPLICATE:
                 log_event(
                     logger,
                     event_type="prediction.duplicate_blocked",
@@ -108,20 +132,12 @@ class ThreadPredictionHandler:
                     week_number=fixture["week_number"],
                     source="thread",
                 )
-                await message.author.send(
-                    "ℹ️ You already submitted predictions for this fixture. "
-                    "Use `/predict` if you want to update them."
-                )
+                with suppress(discord.Forbidden):
+                    await message.author.send(
+                        "ℹ️ You already submitted predictions for this fixture. "
+                        "Use `/predict` if you want to update them."
+                    )
                 return True
-
-        try:
-            await self.db.save_prediction(
-                fixture["id"],
-                user_id,
-                message.author.display_name,
-                predictions,
-                is_late,
-            )
 
             try:
                 await message.add_reaction("✅")

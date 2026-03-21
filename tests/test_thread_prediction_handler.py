@@ -5,6 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from typer_bot.database import SaveResult
+
 
 class TestOnMessage:
     """Test suite for on_message handler."""
@@ -200,7 +202,7 @@ class TestEdgeCases:
 
         mock_message.channel.id = 789012
         mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
-        monkeypatch.setattr(handler.db, "save_prediction", raise_error)
+        monkeypatch.setattr(handler.db, "try_save_prediction", raise_error)
 
         result = await handler.on_message(mock_message)
         assert result is True
@@ -332,3 +334,42 @@ class TestIntegration:
         assert len(predictions) == 2
         user_ids = {p["user_id"] for p in predictions}
         assert user_ids == {"111", "222"}
+
+
+class TestAtomicGuards:
+    """Verify handler behaviour when try_save_prediction returns non-SAVED results."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_fixture_closed_mid_submission(self, handler, mock_message, monkeypatch):
+        mock_message.channel.id = 789012
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        async def return_closed(*_args, **_kwargs):
+            return SaveResult.FIXTURE_CLOSED
+
+        monkeypatch.setattr(handler.db, "try_save_prediction", return_closed)
+
+        result = await handler.on_message(mock_message)
+
+        assert result is True
+        assert len(mock_message.author.dm_sent) == 1
+        assert "closed" in mock_message.author.dm_sent[0]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_duplicate_blocked_atomically(self, handler, mock_message, monkeypatch):
+        mock_message.channel.id = 789012
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        async def return_duplicate(*_args, **_kwargs):
+            return SaveResult.DUPLICATE
+
+        monkeypatch.setattr(handler.db, "try_save_prediction", return_duplicate)
+
+        result = await handler.on_message(mock_message)
+
+        assert result is True
+        assert len(mock_message.author.dm_sent) == 1
+        assert "already submitted" in mock_message.author.dm_sent[0]
+        assert "✅" not in mock_message.reactions_added
