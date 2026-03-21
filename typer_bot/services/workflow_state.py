@@ -115,10 +115,6 @@ class WorkflowStateStore:
     def clear_results_session(self, user_id: str) -> None:
         self._results_sessions.pop(user_id, None)
 
-    def has_admin_session(self, user_id: str) -> bool:
-        """True if the user has any active admin DM workflow (fixture or results)."""
-        return self.has_fixture_session(user_id) or self.has_results_session(user_id)
-
     def _cleanup_prediction_sessions(self) -> None:
         current_time = now()
         expired_users = [

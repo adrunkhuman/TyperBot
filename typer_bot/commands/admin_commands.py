@@ -150,7 +150,7 @@ class AdminCommands(commands.Cog):
                 "```\n"
                 "One game per line."
             )
-        except discord.HTTPException as exc:
+        except Exception as exc:
             reason = "dm_forbidden" if isinstance(exc, discord.Forbidden) else "dm_error"
             self.fixture_handler.cancel_session(user_id, reason=reason)
             return False

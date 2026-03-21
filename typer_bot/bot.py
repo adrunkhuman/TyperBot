@@ -73,8 +73,12 @@ class TyperBot(commands.Bot):
 
             if message.guild is None:
                 # DMs: explicit router owns precedence — no cog listener ordering dependency.
-                if self.dm_router is not None:
-                    await self.dm_router.route(message)
+                if self.dm_router is None:
+                    logger.warning(
+                        "DM received before router initialised, dropping: user=%s", user_id
+                    )
+                    return
+                await self.dm_router.route(message)
             else:
                 await super().on_message(message)
         finally:
