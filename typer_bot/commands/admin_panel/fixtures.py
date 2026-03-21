@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 import discord
 
 from typer_bot.database import Database
+from typer_bot.services import AdminService
 from typer_bot.utils import is_admin
 
 from .base import BackButton, FixtureSelect, OwnerRestrictedView, PanelSelectionState
-
-if TYPE_CHECKING:
-    from typer_bot.commands.admin_commands import AdminCommands
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +49,16 @@ def _build_delete_confirmation_content(fixture: dict) -> str:
 class FixturesPanelView(OwnerRestrictedView):
     """Panel for fixture deletion and workflow guidance."""
 
-    def __init__(self, admin_cog: AdminCommands, owner_user_id: str):
-        super().__init__(admin_cog, owner_user_id)
+    def __init__(
+        self,
+        db: Database,
+        service: AdminService,
+        owner_user_id: str,
+        bot: discord.Client | None = None,
+    ):
+        super().__init__(db, service, owner_user_id, bot=bot)
         self.selection = PanelSelectionState()
-        self.fixture_select = FixtureSelect(self, open_only=True)
+        self.fixture_select = FixtureSelect(self)
         self._refresh_items()
 
     def _refresh_items(self) -> None:
@@ -63,7 +68,7 @@ class FixturesPanelView(OwnerRestrictedView):
         self.add_item(BackButton(self))
 
     async def load_fixture_options(self) -> None:
-        fixtures = await self.admin_cog.db.get_open_fixtures()
+        fixtures = await self.db.get_open_fixtures()
         self.fixture_select.update_options(fixtures)
 
     def render_content(self) -> str:
@@ -85,7 +90,7 @@ class FixturesDeleteButton(discord.ui.Button):
             await interaction.response.send_message("Select an open fixture first.", ephemeral=True)
             return
 
-        fixture = await self.parent_view.admin_cog.db.get_fixture_by_id(fixture_id)
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
         if fixture is None or fixture["status"] != "open":
             await interaction.response.send_message(
                 "Only open fixtures can be deleted from the panel.", ephemeral=True
@@ -93,11 +98,11 @@ class FixturesDeleteButton(discord.ui.Button):
             return
 
         confirm_view = DeleteConfirmView(
-            self.parent_view.admin_cog.db,
+            self.parent_view.db,
             self.parent_view.owner_user_id,
             fixture_id,
             fixture["week_number"],
-            bot=self.parent_view.admin_cog.bot,
+            bot=self.parent_view.bot,
             message_id=fixture.get("message_id"),
             channel_id=fixture.get("channel_id"),
         )
@@ -181,12 +186,24 @@ class DeleteConfirmView(discord.ui.View):
         )
 
 
+StartFixtureDM = Callable[
+    [discord.User | discord.Member, str, int, int],
+    Coroutine[Any, Any, bool],
+]
+
+
 class OpenFixtureWarningView(discord.ui.View):
     """Shown when an admin tries to create a fixture while others are already open."""
 
-    def __init__(self, admin_cog: AdminCommands, user_id: str, channel_id: int, guild_id: int):
+    def __init__(
+        self,
+        start_fixture_dm: StartFixtureDM,
+        user_id: str,
+        channel_id: int,
+        guild_id: int,
+    ):
         super().__init__(timeout=60)
-        self.admin_cog = admin_cog
+        self.start_fixture_dm = start_fixture_dm
         self.user_id = user_id
         self.channel_id = channel_id
         self.guild_id = guild_id
@@ -210,7 +227,7 @@ class OpenFixtureWarningView(discord.ui.View):
             content="Check your DMs! I've sent you instructions for creating the fixture.",
             view=None,
         )
-        if not await self.admin_cog._start_fixture_dm(
+        if not await self.start_fixture_dm(
             interaction.user,
             self.user_id,
             self.channel_id,

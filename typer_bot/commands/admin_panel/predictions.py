@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import discord
+
+from typer_bot.database import Database
+from typer_bot.services import AdminService
 
 from .base import (
     MAX_SELECT_OPTIONS,
@@ -16,15 +17,12 @@ from .base import (
 )
 from .modals import ReplacePredictionModal
 
-if TYPE_CHECKING:
-    from typer_bot.commands.admin_commands import AdminCommands
-
 
 class PredictionsPanelView(OwnerRestrictedView):
     """Panel for prediction lookup and override actions."""
 
-    def __init__(self, admin_cog: AdminCommands, owner_user_id: str):
-        super().__init__(admin_cog, owner_user_id)
+    def __init__(self, db: Database, service: AdminService, owner_user_id: str):
+        super().__init__(db, service, owner_user_id)
         self.selection = PanelSelectionState()
         self.fixture_select = FixtureSelect(self)
         self.user_select = PredictionUserSelect(self)
@@ -41,7 +39,7 @@ class PredictionsPanelView(OwnerRestrictedView):
         self.add_item(BackButton(self))
 
     async def load_fixture_options(self) -> None:
-        fixtures = await self.admin_cog.service.get_recent_fixtures(MAX_SELECT_OPTIONS)
+        fixtures = await self.service.get_recent_fixtures(MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
 
     async def load_user_options(self) -> None:
@@ -49,7 +47,7 @@ class PredictionsPanelView(OwnerRestrictedView):
             self.user_select.update_options([])
             return
 
-        predictions = await self.admin_cog.db.get_all_predictions(self.selection.fixture_id)
+        predictions = await self.db.get_all_predictions(self.selection.fixture_id)
         self.user_select.update_options(predictions)
 
     def render_content(self) -> str:
@@ -99,7 +97,7 @@ class PredictionUserSelect(discord.ui.Select):
             await interaction.response.send_message("Select a fixture first.", ephemeral=True)
             return
 
-        prediction = await self.parent_view.admin_cog.db.get_prediction(fixture_id, self.values[0])
+        prediction = await self.parent_view.db.get_prediction(fixture_id, self.values[0])
         if prediction is None:
             self.parent_view.selection.status_message = "Prediction no longer exists."
         else:
@@ -128,7 +126,7 @@ class ViewPredictionsButton(discord.ui.Button):
             (
                 fixture,
                 predictions,
-            ) = await self.parent_view.admin_cog.service.get_fixture_prediction_summary(fixture_id)
+            ) = await self.parent_view.service.get_fixture_prediction_summary(fixture_id)
         except ValueError as exc:
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
@@ -156,8 +154,8 @@ class ReplacePredictionButton(discord.ui.Button):
             )
             return
 
-        fixture = await self.parent_view.admin_cog.db.get_fixture_by_id(fixture_id)
-        prediction = await self.parent_view.admin_cog.db.get_prediction(fixture_id, user_id)
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
+        prediction = await self.parent_view.db.get_prediction(fixture_id, user_id)
         if fixture is None or prediction is None:
             await interaction.response.send_message(
                 "That prediction is no longer available.", ephemeral=True
@@ -187,7 +185,7 @@ class ToggleWaiverButton(discord.ui.Button):
                 fixture,
                 prediction,
                 recalculation,
-            ) = await self.parent_view.admin_cog.service.toggle_late_penalty_waiver(
+            ) = await self.parent_view.service.toggle_late_penalty_waiver(
                 fixture_id,
                 user_id,
             )

@@ -48,7 +48,9 @@ class TestPredictionPanelFlows:
 
     @pytest.mark.asyncio
     async def test_prediction_panel_blocks_non_owner(self, admin_cog, mock_interaction_admin):
-        view = PredictionsPanelView(admin_cog, str(mock_interaction_admin.user.id))
+        view = PredictionsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
         outsider = MockInteraction(
             user=MockUser(user_id="999999", name="Outsider"),
             guild=mock_interaction_admin.guild,
@@ -63,7 +65,9 @@ class TestPredictionPanelFlows:
 
     @pytest.mark.asyncio
     async def test_prediction_panel_rechecks_admin_role(self, admin_cog, mock_interaction_admin):
-        view = PredictionsPanelView(admin_cog, str(mock_interaction_admin.user.id))
+        view = PredictionsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
         member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
         member.roles = []
 
@@ -81,7 +85,9 @@ class TestPredictionPanelFlows:
     ):
         await admin_cog.db.create_fixture(1, sample_games, datetime.now(UTC) + timedelta(days=1))
 
-        home_view = AdminPanelHomeView(admin_cog, str(mock_interaction_admin.user.id))
+        home_view = AdminPanelHomeView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
+        )
         predictions_button = next(
             child for child in home_view.children if getattr(child, "label", None) == "Predictions"
         )
@@ -110,7 +116,9 @@ class TestPredictionPanelFlows:
             False,
         )
 
-        view = PredictionsPanelView(admin_cog, str(mock_interaction_admin.user.id))
+        view = PredictionsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
         await view.load_fixture_options()
 
         view.fixture_select._values = [str(fixture_id)]
@@ -145,7 +153,9 @@ class TestPredictionPanelFlows:
             True,
         )
 
-        view = PredictionsPanelView(admin_cog, str(mock_interaction_admin.user.id))
+        view = PredictionsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
@@ -182,7 +192,9 @@ class TestFixturePanelFlows:
     ):
         await admin_cog.db.create_fixture(4, sample_games, datetime.now(UTC) + timedelta(days=1))
 
-        view = AdminPanelHomeView(admin_cog, str(mock_interaction_admin.user.id))
+        view = AdminPanelHomeView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
+        )
         fixture_button = next(
             child for child in view.children if getattr(child, "label", None) == "Fixtures"
         )
@@ -204,7 +216,9 @@ class TestFixturePanelFlows:
             6, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
-        view = AdminPanelHomeView(admin_cog, str(mock_interaction_admin.user.id))
+        view = AdminPanelHomeView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
+        )
         fixture_button = next(
             child for child in view.children if getattr(child, "label", None) == "Fixtures"
         )
@@ -341,7 +355,9 @@ class TestResultsPanelFlows:
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
 
-        view = ResultsPanelView(admin_cog, str(mock_interaction_admin.user.id))
+        view = ResultsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
         await view.load_fixture_options()
 
         view.fixture_select._values = [str(fixture_id)]
@@ -365,7 +381,9 @@ class TestResultsPanelFlows:
             5, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
-        view = ResultsPanelView(admin_cog, str(mock_interaction_admin.user.id))
+        view = ResultsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
         await view.load_fixture_options()
 
         view.fixture_select._values = [str(fixture_id)]
@@ -407,7 +425,9 @@ class TestAdminPanelModals:
             ["1-0", "1-1", "0-0"],
             False,
         )
-        view = PredictionsPanelView(admin_cog, str(mock_interaction_admin.user.id))
+        view = PredictionsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
         prediction = await admin_cog.db.get_prediction(fixture_id, "user-1")
         assert fixture is not None
@@ -435,7 +455,9 @@ class TestAdminPanelModals:
             2, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
-        view = ResultsPanelView(admin_cog, str(mock_interaction_admin.user.id))
+        view = ResultsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
         assert fixture is not None
 
@@ -459,7 +481,9 @@ class TestAdminPanelModals:
             6, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
-        view = ResultsPanelView(admin_cog, str(mock_interaction_admin.user.id))
+        view = ResultsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
         assert fixture is not None
 

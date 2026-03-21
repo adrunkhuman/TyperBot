@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from typer_bot.database import Database
+from typer_bot.services import AdminService
 from typer_bot.utils import is_admin
 
 if TYPE_CHECKING:
-    from typer_bot.commands.admin_commands import AdminCommands
-
     from .fixtures import FixturesPanelView
     from .predictions import PredictionsPanelView
     from .results import ResultsPanelView
@@ -53,10 +53,19 @@ class PanelSelectionState:
 class OwnerRestrictedView(discord.ui.View):
     """View base class that restricts interactions to one admin."""
 
-    def __init__(self, admin_cog: AdminCommands, owner_user_id: str, timeout: float = 180):
+    def __init__(
+        self,
+        db: Database,
+        service: AdminService,
+        owner_user_id: str,
+        bot: discord.Client | None = None,
+        timeout: float = 180,
+    ):
         super().__init__(timeout=timeout)
-        self.admin_cog = admin_cog
+        self.db = db
+        self.service = service
         self.owner_user_id = owner_user_id
+        self.bot = bot
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if str(interaction.user.id) != self.owner_user_id:
@@ -77,7 +86,7 @@ class AdminPanelHomeView(OwnerRestrictedView):
     async def fixtures(self, interaction: discord.Interaction, _button: discord.ui.Button):
         from .fixtures import FixturesPanelView
 
-        view = FixturesPanelView(self.admin_cog, self.owner_user_id)
+        view = FixturesPanelView(self.db, self.service, self.owner_user_id, bot=self.bot)
         await view.load_fixture_options()
         await interaction.response.edit_message(content=view.render_content(), view=view)
 
@@ -85,7 +94,7 @@ class AdminPanelHomeView(OwnerRestrictedView):
     async def predictions(self, interaction: discord.Interaction, _button: discord.ui.Button):
         from .predictions import PredictionsPanelView
 
-        view = PredictionsPanelView(self.admin_cog, self.owner_user_id)
+        view = PredictionsPanelView(self.db, self.service, self.owner_user_id)
         await view.load_fixture_options()
         await interaction.response.edit_message(content=view.render_content(), view=view)
 
@@ -93,7 +102,7 @@ class AdminPanelHomeView(OwnerRestrictedView):
     async def results(self, interaction: discord.Interaction, _button: discord.ui.Button):
         from .results import ResultsPanelView
 
-        view = ResultsPanelView(self.admin_cog, self.owner_user_id)
+        view = ResultsPanelView(self.db, self.service, self.owner_user_id)
         await view.load_fixture_options()
         await interaction.response.edit_message(content=view.render_content(), view=view)
 
@@ -104,7 +113,12 @@ class BackButton(discord.ui.Button):
         super().__init__(label="Back", style=discord.ButtonStyle.secondary)
 
     async def callback(self, interaction: discord.Interaction):
-        view = AdminPanelHomeView(self.parent_view.admin_cog, self.parent_view.owner_user_id)
+        view = AdminPanelHomeView(
+            self.parent_view.db,
+            self.parent_view.service,
+            self.parent_view.owner_user_id,
+            bot=self.parent_view.bot,
+        )
         await interaction.response.edit_message(
             content="**Admin Panel**\nChoose the workflow you want to manage.",
             view=view,
@@ -115,10 +129,8 @@ class FixtureSelect(discord.ui.Select):
     def __init__(
         self,
         parent_view: FixturesPanelView | PredictionsPanelView | ResultsPanelView,
-        open_only: bool = False,
     ):
         self.parent_view = parent_view
-        self.open_only = open_only
         super().__init__(
             placeholder="Select fixture",
             min_values=1,
@@ -127,9 +139,6 @@ class FixtureSelect(discord.ui.Select):
         )
 
     def update_options(self, fixtures: list[dict]) -> None:
-        if self.open_only:
-            fixtures = [fixture for fixture in fixtures if fixture["status"] == "open"]
-
         if not fixtures:
             self.options = [discord.SelectOption(label="No fixtures available", value="none")]
             self.disabled = True
@@ -154,7 +163,7 @@ class FixtureSelect(discord.ui.Select):
         self.parent_view.selection.fixture_id = fixture_id
         self.parent_view.selection.user_id = None
 
-        fixture = await self.parent_view.admin_cog.db.get_fixture_by_id(fixture_id)
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
         if fixture is None:
             self.parent_view.selection.status_message = "Fixture no longer exists."
         else:
