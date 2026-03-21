@@ -215,6 +215,14 @@ class AdminCommands(commands.Cog):
             )
             return
 
+        if self.workflow_state.has_results_session(user_id):
+            await interaction.response.send_message(
+                "❌ You have an active results entry session. "
+                "Finish or cancel it before starting a new fixture.",
+                ephemeral=True,
+            )
+            return
+
         open_fixtures = await self.db.get_open_fixtures()
         if open_fixtures:
             open_weeks = self._format_open_weeks(open_fixtures)
@@ -224,14 +232,6 @@ class AdminCommands(commands.Cog):
             await interaction.response.send_message(
                 f"Week(s) **{open_weeks}** are already open. Create another fixture anyway?",
                 view=view,
-                ephemeral=True,
-            )
-            return
-
-        if self.workflow_state.has_results_session(user_id):
-            await interaction.response.send_message(
-                "❌ You have an active results entry session. "
-                "Finish or cancel it before starting a new fixture.",
                 ephemeral=True,
             )
             return
