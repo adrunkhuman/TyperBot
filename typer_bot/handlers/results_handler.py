@@ -6,8 +6,8 @@ from collections.abc import Callable
 import discord
 from discord import ui
 
-from typer_bot.database import Database
-from typer_bot.services.workflow_state import ResultsSession, WorkflowStateStore
+from typer_bot.handlers.base_dm_handler import AdminDMHandler
+from typer_bot.services.workflow_state import ResultsSession
 from typer_bot.utils import parse_line_predictions
 from typer_bot.utils.logger import log_event
 
@@ -16,17 +16,16 @@ logger = logging.getLogger(__name__)
 MAX_MESSAGE_LENGTH = 5000
 
 
-class ResultsEntryHandler:
+class ResultsEntryHandler(AdminDMHandler[ResultsSession]):
     """Handles the DM workflow for entering results."""
-
-    def __init__(self, bot: discord.Client, db: Database, workflow_state: WorkflowStateStore):
-        self.bot = bot
-        self.db = db
-        self.workflow_state = workflow_state
 
     def get_session(self, user_id: str) -> ResultsSession | None:
         """Return the active results session for a user."""
         return self.workflow_state.get_results_session(user_id)
+
+    def clear_session(self, user_id: str) -> None:
+        """Remove the active results entry session."""
+        self.workflow_state.clear_results_session(user_id)
 
     def start_session(self, user_id: str, fixture_id: int, guild_id: int, week_number: int) -> None:
         """Initialize a new results entry session."""
@@ -41,10 +40,6 @@ class ResultsEntryHandler:
             week_number=week_number,
             guild_id=guild_id,
         )
-
-    def has_session(self, user_id: str) -> bool:
-        """Check if user has an active results entry session."""
-        return self.workflow_state.has_results_session(user_id)
 
     async def handle_dm(
         self,
@@ -82,7 +77,7 @@ class ResultsEntryHandler:
 
         if not fixture:
             await message.author.send("Error: Fixture no longer exists.")
-            self.workflow_state.clear_results_session(user_id)
+            self.clear_session(user_id)
             return True
 
         processing_msg = await message.author.send("Processing your results...")
@@ -121,59 +116,6 @@ class ResultsEntryHandler:
 
         return True
 
-    async def _verify_admin(
-        self,
-        message: discord.Message,
-        user_id: str,
-        guild_id: int | None,
-        is_admin_fn: Callable[[discord.Member | None], bool],
-    ) -> bool:
-        """Verify user is still an admin."""
-        if not guild_id:
-            logger.warning(f"No guild_id in result data for user {user_id}")
-            self.workflow_state.clear_results_session(user_id)
-            await message.author.send("Permission denied or session expired.")
-            return False
-
-        guild = self.bot.get_guild(guild_id)
-        if not guild:
-            logger.warning(f"Guild not found for ID: {guild_id}")
-            self.workflow_state.clear_results_session(user_id)
-            await message.author.send("Permission denied or session expired.")
-            return False
-
-        member = guild.get_member(int(user_id))
-        if not member:
-            try:
-                member = await guild.fetch_member(int(user_id))
-            except discord.NotFound:
-                logger.warning(
-                    f"Member {user_id} not found in guild {guild_id} (cache miss + fetch miss)"
-                )
-                self.workflow_state.clear_results_session(user_id)
-                await message.author.send("Permission denied or session expired.")
-                return False
-            except discord.Forbidden as e:
-                # Bot lacks GUILD_MEMBERS privileged intent or member is inaccessible
-                logger.error(
-                    f"fetch_member forbidden for user {user_id} — check GUILD_MEMBERS intent: {e}"
-                )
-                self.workflow_state.clear_results_session(user_id)
-                await message.author.send("Permission denied or session expired.")
-                return False
-            except discord.HTTPException as e:
-                logger.warning(f"fetch_member transient failure for user {user_id}: {e}")
-                await message.author.send("Could not verify permissions, please try again.")
-                return False
-
-        if not is_admin_fn(member):
-            logger.warning(f"Permission denied for user {user_id}")
-            self.workflow_state.clear_results_session(user_id)
-            await message.author.send("Permission denied or session expired.")
-            return False
-
-        return True
-
     async def save_results(
         self, user_id: str, fixture_id: int, week_number: int, results: list[str]
     ) -> None:
@@ -190,7 +132,7 @@ class ResultsEntryHandler:
                 "This fixture has already been scored. Use `/admin panel` → correct results to make changes."
             )
         await self.db.save_results(fixture_id, results)
-        self.workflow_state.clear_results_session(user_id)
+        self.clear_session(user_id)
         log_event(
             logger,
             event_type="results.entered",
@@ -203,7 +145,7 @@ class ResultsEntryHandler:
 
     def cancel_session(self, user_id: str, reason: str = "cancelled") -> None:
         """Cancel the results entry session."""
-        self.workflow_state.clear_results_session(user_id)
+        self.clear_session(user_id)
         logger.debug(
             f"Results session {reason}",
             extra={
