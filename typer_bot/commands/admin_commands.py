@@ -204,7 +204,7 @@ class AdminCommands(commands.Cog):
     @admin.command(name="panel", description="Open the admin management panel")
     @admin_only()
     async def panel(self, interaction: discord.Interaction):
-        view = AdminPanelHomeView(self, str(interaction.user.id))
+        view = AdminPanelHomeView(self.db, self.service, str(interaction.user.id), bot=self.bot)
         await interaction.response.send_message(
             "**Admin Panel**\nChoose the workflow you want to manage.",
             view=view,
@@ -225,7 +225,7 @@ class AdminCommands(commands.Cog):
         if open_fixtures:
             open_weeks = self._format_open_weeks(open_fixtures)
             view = OpenFixtureWarningView(
-                self, user_id, interaction.channel_id, interaction.guild_id
+                self._start_fixture_dm, user_id, interaction.channel_id, interaction.guild_id
             )
             await interaction.response.send_message(
                 f"Week(s) **{open_weeks}** are already open. Create another fixture anyway?",

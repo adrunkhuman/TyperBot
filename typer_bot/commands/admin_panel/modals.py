@@ -49,7 +49,7 @@ class ReplacePredictionModal(discord.ui.Modal):
                 fixture,
                 updated_prediction,
                 recalculation,
-            ) = await self.parent_view.admin_cog.service.replace_prediction(
+            ) = await self.parent_view.service.replace_prediction(
                 self.fixture["id"],
                 self.prediction["user_id"],
                 self.predictions_input.value,
@@ -96,7 +96,7 @@ class CorrectResultsModal(discord.ui.Modal):
                 fixture,
                 _results,
                 recalculation,
-            ) = await self.parent_view.admin_cog.service.correct_results(
+            ) = await self.parent_view.service.correct_results(
                 self.fixture["id"],
                 self.results_input.value,
             )

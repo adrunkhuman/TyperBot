@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import discord
+
+from typer_bot.database import Database
+from typer_bot.services import AdminService
 
 from .base import (
     MAX_SELECT_OPTIONS,
@@ -16,15 +17,12 @@ from .base import (
 )
 from .modals import CorrectResultsModal
 
-if TYPE_CHECKING:
-    from typer_bot.commands.admin_commands import AdminCommands
-
 
 class ResultsPanelView(OwnerRestrictedView):
     """Panel for result correction workflows."""
 
-    def __init__(self, admin_cog: AdminCommands, owner_user_id: str):
-        super().__init__(admin_cog, owner_user_id)
+    def __init__(self, db: Database, service: AdminService, owner_user_id: str):
+        super().__init__(db, service, owner_user_id)
         self.selection = PanelSelectionState()
         self.fixture_select = FixtureSelect(self)
         self._refresh_items()
@@ -37,7 +35,7 @@ class ResultsPanelView(OwnerRestrictedView):
         self.add_item(BackButton(self))
 
     async def load_fixture_options(self) -> None:
-        fixtures = await self.admin_cog.service.get_recent_fixtures(MAX_SELECT_OPTIONS)
+        fixtures = await self.service.get_recent_fixtures(MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
 
     def render_content(self) -> str:
@@ -58,11 +56,11 @@ class ViewResultsButton(discord.ui.Button):
             await interaction.response.send_message("Select a fixture first.", ephemeral=True)
             return
 
-        fixture = await self.parent_view.admin_cog.db.get_fixture_by_id(fixture_id)
-        results = await self.parent_view.admin_cog.db.get_results(fixture_id)
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
         if fixture is None:
             await interaction.response.send_message("Fixture not found.", ephemeral=True)
             return
+        results = await self.parent_view.db.get_results(fixture_id)
         if not results:
             await interaction.response.send_message(
                 "No results saved for that fixture yet.", ephemeral=True
@@ -86,11 +84,11 @@ class CorrectResultsButton(discord.ui.Button):
             await interaction.response.send_message("Select a fixture first.", ephemeral=True)
             return
 
-        fixture = await self.parent_view.admin_cog.db.get_fixture_by_id(fixture_id)
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
         if fixture is None:
             await interaction.response.send_message("Fixture not found.", ephemeral=True)
             return
-        if not await self.parent_view.admin_cog.db.get_results(fixture_id):
+        if not await self.parent_view.db.get_results(fixture_id):
             await interaction.response.send_message(
                 "No results are stored for that fixture yet. Use `/admin results enter` first.",
                 ephemeral=True,
