@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
+import aiosqlite
 import discord
 import pytest
 
@@ -209,7 +210,7 @@ class TestSaveResults:
     async def test_save_results_rejects_when_scores_exist_open_fixture(
         self, mock_bot, workflow_state
     ):
-        """fixture_has_scores guard catches scored-but-open DB inconsistency."""
+        """fixture_has_scores guard catches scored-but-open DB inconsistency (mocked)."""
         mock_db = MagicMock()
         mock_db.get_fixture_by_id = AsyncMock(return_value={"status": "open", "week_number": 1})
         mock_db.fixture_has_scores = AsyncMock(return_value=True)
@@ -217,6 +218,25 @@ class TestSaveResults:
         workflow_state.start_results_session("123456", 1, 111111)
         with pytest.raises(ValueError, match="already been scored"):
             await handler.save_results("123456", 1, 1, ["2-1", "1-1", "0-2"])
+
+    @pytest.mark.asyncio
+    async def test_save_results_db_rejects_scores_exist_open_fixture(
+        self, handler, database, sample_games
+    ):
+        """DB-layer BEGIN IMMEDIATE guard catches scored-but-open inconsistency on real SQLite."""
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        fixture_id = await database.create_fixture(1, sample_games, deadline)
+        # Insert a score row directly without closing the fixture, simulating DB inconsistency
+        async with aiosqlite.connect(database.db_path) as conn:
+            await conn.execute(
+                "INSERT INTO scores (fixture_id, user_id, user_name, points, exact_scores, correct_results)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (fixture_id, "u1", "User1", 3, 1, 0),
+            )
+            await conn.commit()
+        handler.workflow_state.start_results_session("123456", fixture_id, 111111)
+        with pytest.raises(ValueError, match="already scored"):
+            await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
 
 
 class TestViewBehavioral:

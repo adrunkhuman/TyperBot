@@ -728,25 +728,29 @@ class Database:
         start_time = time.perf_counter()
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("BEGIN IMMEDIATE")
-            async with db.execute("SELECT status FROM fixtures WHERE id = ?", (fixture_id,)) as cur:
-                row = await cur.fetchone()
-            if row is None or row[0] == "closed":
-                await db.execute("ROLLBACK")
-                raise ValueError("Fixture is already scored or does not exist.")
-            if await self._fixture_has_scores_in_connection(db, fixture_id):
-                await db.execute("ROLLBACK")
-                raise ValueError("Fixture is already scored or does not exist.")
-            cursor = await db.execute(
-                """
-                INSERT INTO results (fixture_id, results)
-                VALUES (?, ?)
-                ON CONFLICT(fixture_id)
-                DO UPDATE SET results = excluded.results,
-                              updated_at = CURRENT_TIMESTAMP
-                """,
-                (fixture_id, "\n".join(results)),
-            )
-            await db.commit()
+            try:
+                async with db.execute(
+                    "SELECT status FROM fixtures WHERE id = ?", (fixture_id,)
+                ) as cur:
+                    row = await cur.fetchone()
+                if row is None or row[0] == "closed":
+                    raise ValueError("Fixture is already scored or does not exist.")
+                if await self._fixture_has_scores_in_connection(db, fixture_id):
+                    raise ValueError("Fixture is already scored or does not exist.")
+                cursor = await db.execute(
+                    """
+                    INSERT INTO results (fixture_id, results)
+                    VALUES (?, ?)
+                    ON CONFLICT(fixture_id)
+                    DO UPDATE SET results = excluded.results,
+                                  updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (fixture_id, "\n".join(results)),
+                )
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
 
             duration_ms = (time.perf_counter() - start_time) * 1000
             logger.debug(
