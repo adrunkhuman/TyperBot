@@ -479,3 +479,24 @@ class TestSavePredictionGuarded:
         )
         prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
         assert prediction["user_name"] == "NewName"
+
+
+class TestRowToFixture:
+    """Test edge cases in _row_to_fixture deserialization."""
+
+    @pytest.mark.asyncio
+    async def test_empty_games_column_returns_empty_list(self, temp_db_path):
+        """Empty games column must deserialize to [] not [''] (split artefact)."""
+        db = Database(temp_db_path)
+        await db.initialize()
+
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute(
+                "INSERT INTO fixtures (week_number, games, deadline, status) VALUES (?, ?, ?, ?)",
+                (99, "", "2030-01-01T00:00:00+00:00", "open"),
+            )
+            await conn.commit()
+
+        fixture = await db.get_current_fixture()
+        assert fixture is not None
+        assert fixture["games"] == []

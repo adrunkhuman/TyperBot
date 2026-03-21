@@ -270,7 +270,7 @@ class Database:
         return {
             "id": row_dict.get("id"),
             "week_number": row_dict.get("week_number"),
-            "games": row_dict.get("games", "").split("\n"),
+            "games": [g for g in row_dict.get("games", "").split("\n") if g],
             "deadline": parse_iso(deadline_val) if deadline_val else None,
             "status": row_dict.get("status"),
             "message_id": row_dict.get("message_id"),

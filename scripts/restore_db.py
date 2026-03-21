@@ -2,6 +2,7 @@
 """Manual database restore script - run from Railway console."""
 
 import argparse
+import os
 import re
 import shutil
 import sqlite3
@@ -13,7 +14,12 @@ from typer_bot.utils.config import DB_PATH
 
 
 def validate_backup_sql(sql_content: str) -> bool:
-    """Validate backup SQL - allows CREATE TABLE IF NOT EXISTS and INSERT only."""
+    """Validate backup SQL - allows CREATE TABLE IF NOT EXISTS and INSERT only.
+
+    Best-effort check: keyword scanning can be bypassed by embedding keywords in
+    string literals. Real safety comes from the atomic temp-file restore — a bad
+    SQL file only affects the temp DB and leaves the live DB untouched.
+    """
     normalized = re.sub(r"--.*?$", "", sql_content, flags=re.MULTILINE)
     normalized = re.sub(r"/\*.*?\*/", "", normalized, flags=re.DOTALL)
     normalized = re.sub(r"^\s*$", "", normalized, flags=re.MULTILINE)
@@ -76,17 +82,26 @@ def main():
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         bak_path = db_path.with_suffix(f".db.bak.{timestamp}")
         shutil.copy(db_path, bak_path)
+        with bak_path.open("r+b") as f:
+            os.fsync(f.fileno())
         print(f"Current database backed up to {bak_path}")
 
+    tmp_path = db_path.with_suffix(".db.restore_tmp")
+    tmp_path.unlink(missing_ok=True)  # clear any remnant from a prior crashed run
+    conn = None
     try:
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(tmp_path)
         conn.executescript(sql_content)
-        conn.commit()
         conn.close()
+        conn = None
+        tmp_path.replace(db_path)  # atomic on POSIX and Windows
         print(f"Database restored from {backup_path}")
     except Exception as e:
+        if conn is not None:
+            conn.close()
+        tmp_path.unlink(missing_ok=True)
         print(f"Restore failed: {e}")
-        print(f"Check if original database still exists at {bak_path}")
+        print("Original database was not modified.")
         sys.exit(1)
 
 
