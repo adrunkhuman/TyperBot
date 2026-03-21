@@ -5,9 +5,15 @@ All datetime operations use a single configurable timezone (from TZ env var).
 
 import os
 from datetime import datetime
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-APP_TZ = ZoneInfo(os.getenv("TZ", "Europe/Warsaw"))
+_tz_name = os.getenv("TZ", "UTC")
+try:
+    APP_TZ = ZoneInfo(_tz_name)
+except ZoneInfoNotFoundError:
+    raise RuntimeError(
+        f"Invalid TZ environment variable: {_tz_name!r} is not a valid IANA timezone key"
+    ) from None
 
 
 def now() -> datetime:

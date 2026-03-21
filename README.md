@@ -79,7 +79,7 @@ I recommend **Railway** because it's cheap/free and supports persistent storage 
    - `DATA_DIR`: (Optional) Base data directory. Default `/app/data`.
    - `DB_PATH`: (Optional) Database path. Defaults to `{DATA_DIR}/typer.db`.
    - `BACKUP_DIR`: (Optional) Backup storage. Defaults to `{DATA_DIR}/backups`.
-   - `TZ`: (Optional) Timezone for deadlines. Default `Europe/Warsaw`. Examples: `America/New_York`, `Asia/Tokyo`.
+   - `TZ`: (Optional) Timezone for deadline inputs in the admin DM workflow. Default `UTC`. Examples: `Europe/Warsaw`, `America/New_York`, `Asia/Tokyo`.
    - `REMINDER_CHANNEL_ID`: (Optional) ID of channel to spam reminders in.
    - `LOG_LEVEL`: (Optional) Set to `DEBUG` for verbose logs. Default `INFO`.
    - `ENVIRONMENT`: (Optional) Set to `production` for live bot operation. Other values run smoke-test mode (validates config then exits). Default: `development`.
