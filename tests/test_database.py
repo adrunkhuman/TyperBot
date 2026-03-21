@@ -1,13 +1,13 @@
 """Tests for database operations and defensive coding patterns."""
 
 import tempfile
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import aiosqlite
 import pytest
 
-from typer_bot.database.database import Database
+from typer_bot.database.database import Database, SaveResult
 
 
 @pytest.fixture
@@ -356,3 +356,126 @@ class TestSchemaMigration:
         assert prediction["late_penalty_waived"] == 0
         assert prediction["admin_edited_at"] is None
         assert prediction["admin_edited_by"] is None
+
+
+@pytest.fixture
+async def prediction_db(temp_db_path):
+    """Initialized Database for prediction-write tests."""
+    database = Database(temp_db_path)
+    await database.initialize()
+    return database
+
+
+@pytest.fixture
+async def open_fixture_id(prediction_db):
+    deadline = datetime.now(UTC) + timedelta(hours=1)
+    return await prediction_db.create_fixture(1, ["A - B", "C - D"], deadline)
+
+
+@pytest.fixture
+async def closed_fixture_id(prediction_db):
+    deadline = datetime.now(UTC) + timedelta(hours=1)
+    fixture_id = await prediction_db.create_fixture(2, ["A - B", "C - D"], deadline)
+    async with aiosqlite.connect(prediction_db.db_path) as conn:
+        await conn.execute("UPDATE fixtures SET status = 'closed' WHERE id = ?", (fixture_id,))
+        await conn.commit()
+    return fixture_id
+
+
+class TestTrySavePrediction:
+    """Atomic first-write-wins insert with fixture-open guard."""
+
+    @pytest.mark.asyncio
+    async def test_saved_when_fixture_open_and_no_prior_prediction(
+        self, prediction_db, open_fixture_id
+    ):
+        result = await prediction_db.try_save_prediction(
+            open_fixture_id, "u1", "User", ["2-1", "0-0"]
+        )
+        assert result == SaveResult.SAVED
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        assert prediction is not None
+        assert prediction["predictions"] == ["2-1", "0-0"]
+
+    @pytest.mark.asyncio
+    async def test_duplicate_when_prior_prediction_exists(self, prediction_db, open_fixture_id):
+        await prediction_db.try_save_prediction(open_fixture_id, "u1", "User", ["2-1", "0-0"])
+        result = await prediction_db.try_save_prediction(
+            open_fixture_id, "u1", "User", ["3-0", "1-1"]
+        )
+        assert result == SaveResult.DUPLICATE
+        # Original prediction preserved
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        assert prediction["predictions"] == ["2-1", "0-0"]
+
+    @pytest.mark.asyncio
+    async def test_fixture_closed_returns_fixture_closed(self, prediction_db, closed_fixture_id):
+        result = await prediction_db.try_save_prediction(
+            closed_fixture_id, "u1", "User", ["2-1", "0-0"]
+        )
+        assert result == SaveResult.FIXTURE_CLOSED
+
+    @pytest.mark.asyncio
+    async def test_no_row_written_on_fixture_closed(self, prediction_db, closed_fixture_id):
+        await prediction_db.try_save_prediction(closed_fixture_id, "u1", "User", ["2-1", "0-0"])
+        prediction = await prediction_db.get_prediction(closed_fixture_id, "u1")
+        assert prediction is None
+
+    @pytest.mark.asyncio
+    async def test_fixture_closed_checked_before_duplicate(self, prediction_db, closed_fixture_id):
+        # Pre-seed a prediction so both conditions are true
+        async with aiosqlite.connect(prediction_db.db_path) as conn:
+            await conn.execute(
+                "INSERT INTO predictions (fixture_id, user_id, user_name, predictions, is_late) VALUES (?, 'u1', 'User', '2-1', 0)",
+                (closed_fixture_id,),
+            )
+            await conn.commit()
+        result = await prediction_db.try_save_prediction(
+            closed_fixture_id, "u1", "User", ["3-0", "1-1"]
+        )
+        # Fixture check runs first, so FIXTURE_CLOSED wins
+        assert result == SaveResult.FIXTURE_CLOSED
+
+
+class TestSavePredictionGuarded:
+    """Upsert with fixture-open guard (DM re-submission path)."""
+
+    @pytest.mark.asyncio
+    async def test_saved_when_fixture_open(self, prediction_db, open_fixture_id):
+        result = await prediction_db.save_prediction_guarded(
+            open_fixture_id, "u1", "User", ["2-1", "0-0"]
+        )
+        assert result == SaveResult.SAVED
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        assert prediction["predictions"] == ["2-1", "0-0"]
+
+    @pytest.mark.asyncio
+    async def test_fixture_closed_blocks_write(self, prediction_db, closed_fixture_id):
+        result = await prediction_db.save_prediction_guarded(
+            closed_fixture_id, "u1", "User", ["2-1", "0-0"]
+        )
+        assert result == SaveResult.FIXTURE_CLOSED
+        prediction = await prediction_db.get_prediction(closed_fixture_id, "u1")
+        assert prediction is None
+
+    @pytest.mark.asyncio
+    async def test_allows_overwrite_of_existing_prediction(self, prediction_db, open_fixture_id):
+        await prediction_db.save_prediction_guarded(open_fixture_id, "u1", "User", ["2-1", "0-0"])
+        result = await prediction_db.save_prediction_guarded(
+            open_fixture_id, "u1", "User", ["3-0", "1-1"]
+        )
+        assert result == SaveResult.SAVED
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        # New predictions persisted (distinguishes from try_save_prediction's duplicate guard)
+        assert prediction["predictions"] == ["3-0", "1-1"]
+
+    @pytest.mark.asyncio
+    async def test_updates_user_name_on_resubmission(self, prediction_db, open_fixture_id):
+        await prediction_db.save_prediction_guarded(
+            open_fixture_id, "u1", "OldName", ["2-1", "0-0"]
+        )
+        await prediction_db.save_prediction_guarded(
+            open_fixture_id, "u1", "NewName", ["3-0", "1-1"]
+        )
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        assert prediction["user_name"] == "NewName"

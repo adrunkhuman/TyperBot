@@ -1,5 +1,5 @@
 """Database module for SQLite operations."""
 
-from .database import Database
+from .database import Database, SaveResult
 
-__all__ = ["Database"]
+__all__ = ["Database", "SaveResult"]

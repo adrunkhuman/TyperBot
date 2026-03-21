@@ -135,7 +135,7 @@ class TestHandleDM:
         async def raise_error(*_args, **_kwargs):
             raise Exception("Database connection failed")
 
-        monkeypatch.setattr(prediction_handler.db, "save_prediction", raise_error)
+        monkeypatch.setattr(prediction_handler.db, "save_prediction_guarded", raise_error)
         mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
 
         handled = await prediction_handler.handle_dm(mock_message)
@@ -143,6 +143,27 @@ class TestHandleDM:
         assert handled
         assert len(mock_message.author.dm_sent) == 2
         assert "Error processing predictions" in mock_message.author.dm_sent[-1]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_dm")
+    async def test_fixture_closed_mid_dm_session(
+        self, prediction_handler, mock_message, monkeypatch
+    ):
+        mock_message.guild = None
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        from typer_bot.database import SaveResult
+
+        async def return_closed(*_args, **_kwargs):
+            return SaveResult.FIXTURE_CLOSED
+
+        monkeypatch.setattr(prediction_handler.db, "save_prediction_guarded", return_closed)
+
+        handled = await prediction_handler.handle_dm(mock_message)
+
+        assert handled
+        # processing message + edit with fixture-closed notice
+        assert any("closed" in msg for msg in mock_message.author.dm_sent)
 
 
 class TestStartFlow:
