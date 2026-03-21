@@ -177,7 +177,18 @@ class ResultsEntryHandler:
     async def save_results(
         self, user_id: str, fixture_id: int, week_number: int, results: list[str]
     ) -> None:
-        """Save results to the database."""
+        """Save results to the database.
+
+        Raises:
+            ValueError: If the fixture is already scored or no longer exists.
+        """
+        fixture = await self.db.get_fixture_by_id(fixture_id)
+        if fixture is None:
+            raise ValueError("Fixture no longer exists.")
+        if fixture["status"] == "closed" or await self.db.fixture_has_scores(fixture_id):
+            raise ValueError(
+                "This fixture has already been scored. Use `/admin panel` → correct results to make changes."
+            )
         await self.db.save_results(fixture_id, results)
         self.workflow_state.clear_results_session(user_id)
         log_event(
@@ -229,9 +240,15 @@ class ResultsConfirmView(ui.View):
     @ui.button(label="Save Results", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, _button: ui.Button):
         """Save results to database."""
-        await self.handler.save_results(
-            self.user_id, self.fixture_id, self.week_number, self.results
-        )
+        try:
+            await self.handler.save_results(
+                self.user_id, self.fixture_id, self.week_number, self.results
+            )
+        except ValueError as e:
+            await interaction.response.edit_message(
+                content=f"**Cannot save results:** {e}", view=None
+            )
+            return
         await interaction.response.edit_message(
             content=f"**Results Saved!**\n\n{self.preview}\n\nUse `/admin results calculate` to calculate scores.",
             view=None,

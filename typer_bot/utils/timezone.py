@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-APP_TZ = ZoneInfo(os.getenv("TZ", "Europe/Warsaw"))
+APP_TZ = ZoneInfo(os.getenv("TZ", "UTC"))
 
 
 def now() -> datetime:

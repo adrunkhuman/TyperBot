@@ -18,7 +18,7 @@ from typer_bot.database import Database
 from typer_bot.handlers import FixtureCreationHandler, ResultsEntryHandler
 from typer_bot.services import AdminService, WorkflowStateStore
 from typer_bot.services.admin_service import FixtureScoreResult
-from typer_bot.utils import format_standings, is_admin, is_admin_member, now
+from typer_bot.utils import format_fixture_results, format_standings, is_admin, is_admin_member, now
 from typer_bot.utils.config import BACKUP_DIR
 from typer_bot.utils.db_backup import cleanup_old_backups, create_backup
 
@@ -159,7 +159,16 @@ class AdminCommands(commands.Cog):
             )
             return
 
-        message = format_standings(score_result.standings, score_result.last_fixture)
+        results_section = format_fixture_results(
+            score_result.fixture["games"],
+            score_result.results,
+            score_result.fixture["week_number"],
+        )
+        message = (
+            results_section
+            + "\n\n"
+            + format_standings(score_result.standings, score_result.last_fixture)
+        )
 
         try:
             await channel.send(message)

@@ -195,6 +195,30 @@ class TestSaveResults:
         assert results is not None
         assert handler.get_session("123456") is None
 
+    @pytest.mark.asyncio
+    async def test_save_results_rejects_closed_fixture(self, handler, database, sample_games):
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        fixture_id = await database.create_fixture(1, sample_games, deadline)
+        await database.save_scores(fixture_id, [])  # closes the fixture
+        handler.workflow_state.start_results_session("123456", fixture_id, 111111)
+        with pytest.raises(ValueError, match="already been scored"):
+            await handler.save_results("123456", fixture_id, 1, ["2-1", "1-1", "0-2"])
+        # session preserved so admin can cancel explicitly
+        assert handler.get_session("123456") is not None
+
+    @pytest.mark.asyncio
+    async def test_save_results_rejects_when_scores_exist_open_fixture(
+        self, mock_bot, workflow_state
+    ):
+        """fixture_has_scores guard catches scored-but-open DB inconsistency."""
+        mock_db = MagicMock()
+        mock_db.get_fixture_by_id = AsyncMock(return_value={"status": "open", "week_number": 1})
+        mock_db.fixture_has_scores = AsyncMock(return_value=True)
+        handler = ResultsEntryHandler(mock_bot, mock_db, workflow_state)
+        workflow_state.start_results_session("123456", 1, 111111)
+        with pytest.raises(ValueError, match="already been scored"):
+            await handler.save_results("123456", 1, 1, ["2-1", "1-1", "0-2"])
+
 
 class TestViewBehavioral:
     """Behavioral tests for Discord view handling in results entry.

@@ -98,6 +98,15 @@ def ascii_username(username: str, max_len: int = 20) -> str:
     return ascii_only[:max_len].ljust(max_len)
 
 
+def format_fixture_results(games: list[str], results: list[str], week_number: int) -> str:
+    """Format entered match results for the calculation announcement."""
+    lines = [f"⚽ **Week {week_number} Results**", "```"]
+    for game, result in zip(games, results, strict=False):
+        lines.append(f"{game}  {result}")
+    lines.append("```")
+    return "\n".join(lines)
+
+
 def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
     """Format standings table for Discord using code blocks for proper alignment."""
     lines = []

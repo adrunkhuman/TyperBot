@@ -226,6 +226,22 @@ class TestResultsCalculateLogic:
         assert standings[0]["total_points"] == 9
 
 
+class TestCalculationPostFormat:
+    """Test that the calculation announcement includes entered match results."""
+
+    def test_format_fixture_results_included_in_post(self, sample_games):
+        from typer_bot.utils import format_fixture_results
+
+        games = sample_games
+        results = ["2-1", "1-1", "0-2"]
+        output = format_fixture_results(games, results, week_number=3)
+
+        assert "Week 3 Results" in output
+        for game, result in zip(games, results, strict=False):
+            assert game in output
+            assert result in output
+
+
 class TestCooldownLogic:
     """Test suite for rate limiting cooldown."""
 
