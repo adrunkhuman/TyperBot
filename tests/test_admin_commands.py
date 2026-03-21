@@ -276,8 +276,8 @@ class TestCooldownLogic:
         assert remaining == 0.0
 
 
-class TestOnMessageListener:
-    """Test suite for on_message DM listener."""
+class TestAdminSessionExclusivity:
+    """Admin DM workflows are mutually exclusive — only one active session per user."""
 
     @pytest.fixture
     def admin_cog(self, mock_bot, database):
@@ -285,54 +285,77 @@ class TestOnMessageListener:
         return AdminCommands(mock_bot)
 
     @pytest.mark.asyncio
-    async def test_ignores_bot_messages(self, admin_cog):
-        """Bot messages are ignored to prevent infinite loops."""
-        mock_message = MagicMock()
-        mock_message.author.bot = True
-        mock_message.guild = None
+    async def test_fixture_create_blocked_when_results_session_active(
+        self, admin_cog, mock_interaction_admin
+    ):
+        """Starting fixture creation while results entry is in progress is rejected."""
+        user_id = str(mock_interaction_admin.user.id)
+        admin_cog.results_handler.start_session(user_id, 1, 111111, week_number=1)
 
-        result = await admin_cog.on_message(mock_message)
-        assert result is None
+        result = await admin_cog._start_fixture_dm(
+            mock_interaction_admin.user,
+            user_id,
+            channel_id=123456,
+            guild_id=111111,
+        )
+
+        assert result is False
+        assert not admin_cog.fixture_handler.has_session(user_id)
+        assert len(mock_interaction_admin.user.dm_sent) == 1
+        assert "results entry" in mock_interaction_admin.user.dm_sent[0].lower()
 
     @pytest.mark.asyncio
-    async def test_ignores_guild_messages(self, admin_cog):
-        """Guild messages are ignored - admin workflows require DMs."""
-        mock_message = MagicMock()
-        mock_message.guild = MagicMock()  # Has guild
+    async def test_results_enter_blocked_when_fixture_session_active(
+        self, admin_cog, mock_interaction_admin, sample_games
+    ):
+        """Starting results entry while fixture creation is in progress is rejected."""
+        from datetime import UTC, datetime, timedelta
 
-        result = await admin_cog.on_message(mock_message)
-        assert result is None
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        await admin_cog.db.create_fixture(1, sample_games, deadline)
 
-    @pytest.mark.asyncio
-    async def test_handles_fixture_creation_dm(self, admin_cog):
-        """Fixture creation DMs route to the correct handler."""
-        mock_message = MagicMock()
-        mock_message.guild = None
-        user_id = "123456"
-        mock_message.author.id = 123456
-        mock_message.author.bot = False
-
+        user_id = str(mock_interaction_admin.user.id)
+        mock_interaction_admin.guild_id = mock_interaction_admin.guild.id
         admin_cog.fixture_handler.start_session(user_id, 123456, 111111)
-        admin_cog.fixture_handler.handle_dm = AsyncMock(return_value=True)
 
-        await admin_cog.on_message(mock_message)
+        await admin_cog.results_enter.callback(admin_cog, mock_interaction_admin, 1)
 
+        assert not admin_cog.results_handler.has_session(user_id)
+        response = mock_interaction_admin.response_sent[-1]
+        assert "fixture creation" in response["content"].lower()
+
+    @pytest.mark.asyncio
+    async def test_fixture_create_allowed_when_no_conflicting_session(
+        self, admin_cog, mock_interaction_admin
+    ):
+        """Fixture creation proceeds normally when no admin session is active."""
+        user_id = str(mock_interaction_admin.user.id)
+
+        result = await admin_cog._start_fixture_dm(
+            mock_interaction_admin.user,
+            user_id,
+            channel_id=123456,
+            guild_id=111111,
+        )
+
+        assert result is True
         assert admin_cog.fixture_handler.has_session(user_id)
 
     @pytest.mark.asyncio
-    async def test_handles_results_entry_dm(self, admin_cog):
-        """Results entry DMs route to the correct handler."""
-        mock_message = MagicMock()
-        mock_message.guild = None
-        user_id = "123456"
-        mock_message.author.id = 123456
-        mock_message.author.bot = False
+    async def test_results_enter_allowed_when_no_conflicting_session(
+        self, admin_cog, mock_interaction_admin, sample_games
+    ):
+        """Results entry proceeds normally when no admin session is active."""
+        from datetime import UTC, datetime, timedelta
 
-        admin_cog.results_handler.start_session(user_id, 1, 111111, week_number=1)
-        admin_cog.results_handler.handle_dm = AsyncMock(return_value=True)
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        await admin_cog.db.create_fixture(1, sample_games, deadline)
 
-        await admin_cog.on_message(mock_message)
+        mock_interaction_admin.guild_id = mock_interaction_admin.guild.id
 
+        await admin_cog.results_enter.callback(admin_cog, mock_interaction_admin, 1)
+
+        user_id = str(mock_interaction_admin.user.id)
         assert admin_cog.results_handler.has_session(user_id)
 
 

@@ -48,9 +48,16 @@ class TestSetupHook:
     async def bot_instance(self):
         mock_tree = MagicMock()
         mock_tree.sync = AsyncMock(return_value=[])
+        mock_admin_cog = MagicMock()
+        mock_admin_cog.fixture_handler = MagicMock()
+        mock_admin_cog.results_handler = MagicMock()
+        mock_user_cog = MagicMock()
+        mock_user_cog.prediction_handler = MagicMock()
+        mock_cogs = {"AdminCommands": mock_admin_cog, "UserCommands": mock_user_cog}
         with (
             patch("typer_bot.bot.commands.Bot.__init__", return_value=None),
             patch.object(TyperBot, "tree", mock_tree),
+            patch.object(TyperBot, "cogs", mock_cogs),
         ):
             bot = TyperBot.__new__(TyperBot)
             bot.db = MagicMock()

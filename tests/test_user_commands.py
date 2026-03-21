@@ -14,17 +14,6 @@ async def user_commands(mock_bot, database):
     return UserCommands(mock_bot)
 
 
-class TestOnMessage:
-    @pytest.mark.asyncio
-    async def test_delegates_dm_messages_to_prediction_handler(self, user_commands, mock_message):
-        handler = AsyncMock(return_value=True)
-        user_commands.prediction_handler.handle_dm = handler
-
-        await user_commands.on_message(mock_message)
-
-        handler.assert_awaited_once_with(mock_message)
-
-
 class TestPredictCommand:
     @pytest.mark.asyncio
     async def test_no_fixture_shows_error(self, user_commands, mock_interaction):

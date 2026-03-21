@@ -66,11 +66,6 @@ class UserCommands(commands.Cog):
         for chunk in chunks[1:]:
             await interaction.followup.send(chunk, ephemeral=True)
 
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        """Listen for DMs with predictions."""
-        await self.prediction_handler.handle_dm(message)
-
     @app_commands.command(name="predict", description="Submit your predictions for open fixtures")
     @app_commands.checks.cooldown(1, 1.0)
     async def predict(self, interaction: discord.Interaction):
