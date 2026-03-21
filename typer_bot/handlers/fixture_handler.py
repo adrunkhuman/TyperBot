@@ -111,13 +111,27 @@ class FixtureCreationHandler:
 
         member = guild.get_member(int(user_id))
         if not member:
-            logger.warning(
-                f"Member not found in guild cache for user {user_id}. "
-                "Members intent may not be enabled."
-            )
-            self.workflow_state.clear_fixture_session(user_id)
-            await message.author.send("Permission denied or session expired.")
-            return False
+            try:
+                member = await guild.fetch_member(int(user_id))
+            except discord.NotFound:
+                logger.warning(
+                    f"Member {user_id} not found in guild {guild_id} (cache miss + fetch miss)"
+                )
+                self.workflow_state.clear_fixture_session(user_id)
+                await message.author.send("Permission denied or session expired.")
+                return False
+            except discord.Forbidden as e:
+                # Bot lacks GUILD_MEMBERS privileged intent or member is inaccessible
+                logger.error(
+                    f"fetch_member forbidden for user {user_id} — check GUILD_MEMBERS intent: {e}"
+                )
+                self.workflow_state.clear_fixture_session(user_id)
+                await message.author.send("Permission denied or session expired.")
+                return False
+            except discord.HTTPException as e:
+                logger.warning(f"fetch_member transient failure for user {user_id}: {e}")
+                await message.author.send("Could not verify permissions, please try again.")
+                return False
 
         if not is_admin_fn(member):
             logger.warning(f"Permission denied for user {user_id}")

@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
+import discord
 import pytest
 
 from typer_bot.handlers.results_handler import ResultsEntryHandler
@@ -58,6 +59,82 @@ class TestAdminVerification:
         mock_message.author.send = AsyncMock()
         result = await handler._verify_admin(mock_message, "123456", 111111, lambda _: True)
         assert result is False
+
+    @pytest.mark.asyncio
+    async def test_verify_admin_cache_miss_fetch_not_found(self, handler):
+        """Member absent from cache and from guild is denied."""
+        mock_guild = MagicMock()
+        mock_guild.get_member.return_value = None
+        mock_response = MagicMock()
+        mock_response.status = 404
+        mock_response.reason = "Not Found"
+        mock_guild.fetch_member = AsyncMock(
+            side_effect=discord.NotFound(mock_response, "Unknown Member")
+        )
+        handler.bot.get_guild.return_value = mock_guild
+        handler.workflow_state.start_results_session("123456", 1, 111111)
+        mock_message = MagicMock()
+        mock_message.author = MagicMock()
+        mock_message.author.send = AsyncMock()
+        result = await handler._verify_admin(mock_message, "123456", 111111, lambda _: True)
+        assert result is False
+        assert handler.get_session("123456") is None
+
+    @pytest.mark.asyncio
+    async def test_verify_admin_cache_miss_fetch_success(self, handler):
+        """Member missing from cache but fetchable via REST is allowed."""
+        mock_guild = MagicMock()
+        mock_member = MagicMock()
+        mock_guild.get_member.return_value = None
+        mock_guild.fetch_member = AsyncMock(return_value=mock_member)
+        handler.bot.get_guild.return_value = mock_guild
+        handler.workflow_state.start_results_session("123456", 1, 111111)
+        mock_message = MagicMock()
+        result = await handler._verify_admin(mock_message, "123456", 111111, lambda _: True)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_verify_admin_cache_miss_fetch_forbidden(self, handler):
+        """Forbidden on fetch_member clears session (bot misconfiguration)."""
+        mock_guild = MagicMock()
+        mock_guild.get_member.return_value = None
+        mock_response = MagicMock()
+        mock_response.status = 403
+        mock_response.reason = "Forbidden"
+        mock_guild.fetch_member = AsyncMock(
+            side_effect=discord.Forbidden(mock_response, "Missing Access")
+        )
+        handler.bot.get_guild.return_value = mock_guild
+        handler.workflow_state.start_results_session("123456", 1, 111111)
+        mock_message = MagicMock()
+        mock_message.author = MagicMock()
+        mock_message.author.send = AsyncMock()
+        result = await handler._verify_admin(mock_message, "123456", 111111, lambda _: True)
+        assert result is False
+        assert handler.get_session("123456") is None
+
+    @pytest.mark.asyncio
+    async def test_verify_admin_cache_miss_fetch_http_error(self, handler):
+        """Transient HTTP error preserves session for retry."""
+        mock_guild = MagicMock()
+        mock_guild.get_member.return_value = None
+        mock_response = MagicMock()
+        mock_response.status = 500
+        mock_response.reason = "Internal Server Error"
+        mock_guild.fetch_member = AsyncMock(
+            side_effect=discord.HTTPException(mock_response, "Server Error")
+        )
+        handler.bot.get_guild.return_value = mock_guild
+        handler.workflow_state.start_results_session("123456", 1, 111111)
+        mock_message = MagicMock()
+        mock_message.author = MagicMock()
+        mock_message.author.send = AsyncMock()
+        result = await handler._verify_admin(mock_message, "123456", 111111, lambda _: True)
+        assert result is False
+        assert handler.has_session("123456")  # session preserved for retry
+        mock_message.author.send.assert_called_once_with(
+            "Could not verify permissions, please try again."
+        )
 
 
 class TestHandleDM:
