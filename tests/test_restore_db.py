@@ -1,6 +1,5 @@
 """Tests for scripts/restore_db.py restore semantics."""
 
-import contextlib
 import sqlite3
 import sys
 from unittest.mock import patch
@@ -53,8 +52,7 @@ class TestRestoreAtomic:
             patch("sys.exit"),
         ):
             sys.argv = ["restore_db", str(backup_file)]
-            with contextlib.suppress(SystemExit):
-                main()
+            main()
 
         conn = sqlite3.connect(db_path)
         rows = conn.execute("SELECT val FROM sentinel").fetchall()
