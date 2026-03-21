@@ -87,6 +87,7 @@ def main():
         print(f"Current database backed up to {bak_path}")
 
     tmp_path = db_path.with_suffix(".db.restore_tmp")
+    tmp_path.unlink(missing_ok=True)  # clear any remnant from a prior crashed run
     conn = None
     try:
         conn = sqlite3.connect(tmp_path)

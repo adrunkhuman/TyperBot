@@ -49,10 +49,12 @@ class TestRestoreAtomic:
             patch("scripts.restore_db.DB_PATH", str(db_path)),
             patch("scripts.restore_db.validate_backup_sql", return_value=True),
             patch("builtins.input", return_value="YES"),
-            patch("sys.exit"),
+            patch("sys.exit") as mock_exit,
         ):
             sys.argv = ["restore_db", str(backup_file)]
             main()
+
+        mock_exit.assert_called_once_with(1)
 
         conn = sqlite3.connect(db_path)
         rows = conn.execute("SELECT val FROM sentinel").fetchall()
