@@ -35,7 +35,7 @@ class ResultsPanelView(OwnerRestrictedView):
         self.add_item(BackButton(self))
 
     async def load_fixture_options(self) -> None:
-        fixtures = await self.service.get_recent_fixtures(MAX_SELECT_OPTIONS)
+        fixtures = await self.db.get_recent_fixtures(MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
 
     def render_content(self) -> str:
