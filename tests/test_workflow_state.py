@@ -25,6 +25,39 @@ class TestSessionCleanup:
         assert workflow_state.get_prediction_session("user-1") is None
 
 
+class TestCleanupAllExpired:
+    def test_returns_zero_when_nothing_expired(self, workflow_state):
+        workflow_state.start_fixture_session("user-1", 123, 456)
+        workflow_state.start_results_session("user-2", 99, 456)
+        workflow_state.set_prediction_session("user-3", step="select")
+
+        assert workflow_state.cleanup_all_expired() == 0
+
+    def test_counts_expired_sessions_across_all_types(self, workflow_state):
+        s1 = workflow_state.start_fixture_session("user-1", 123, 456)
+        s2 = workflow_state.start_results_session("user-2", 99, 456)
+        s3 = workflow_state.set_prediction_session("user-3", step="select")
+
+        stale = datetime.now(UTC) - timedelta(hours=2)
+        s1.created_at = stale
+        s2.created_at = stale
+        s3.created_at = stale
+
+        assert workflow_state.cleanup_all_expired() == 3
+
+    def test_only_removes_expired_leaves_fresh(self, workflow_state):
+        # Create both sessions first, then backdate one — ordering matters because
+        # start_fixture_session() triggers lazy cleanup on its own call
+        stale = workflow_state.start_fixture_session("stale-user", 123, 456)
+        workflow_state.start_fixture_session("fresh-user", 123, 456)
+        stale.created_at = datetime.now(UTC) - timedelta(hours=2)
+
+        removed = workflow_state.cleanup_all_expired()
+
+        assert removed == 1
+        assert workflow_state.get_fixture_session("fresh-user") is not None
+
+
 class TestCooldownTracking:
     def test_thread_cooldowns_drop_entries_older_than_one_hour(self, workflow_state):
         stale_time = datetime.now(UTC) - timedelta(hours=2)

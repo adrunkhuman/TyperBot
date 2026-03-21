@@ -58,6 +58,7 @@ class TestSetupHook:
             bot.thread_handler = MagicMock()
             bot.load_extension = AsyncMock()
             bot.reminder_task = MagicMock()
+            bot._cleanup_sessions_task = MagicMock()
             yield bot
 
     @pytest.mark.asyncio

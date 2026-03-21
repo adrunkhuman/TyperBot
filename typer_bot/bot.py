@@ -1,5 +1,6 @@
 """Main Discord bot implementation."""
 
+import asyncio
 import logging
 import os
 import sys
@@ -116,8 +117,9 @@ class TyperBot(commands.Bot):
         except Exception:
             logger.exception("Failed to sync commands")
 
-        logger.info("Starting reminder task...")
+        logger.info("Starting background tasks...")
         self.reminder_task.start()
+        self._cleanup_sessions_task.start()
         logger.info("Setup hook complete")
 
     async def on_ready(self):
@@ -152,10 +154,18 @@ class TyperBot(commands.Bot):
             },
         )
 
-    def cog_unload(self):
-        """Clean up when bot shuts down."""
-        logger.info("Shutting down reminder task...")
+    async def close(self):
+        """Cancel background tasks and wait for them to finish before closing."""
         self.reminder_task.cancel()
+        self._cleanup_sessions_task.cancel()
+        pending = [
+            t
+            for loop in (self.reminder_task, self._cleanup_sessions_task)
+            if (t := loop.get_task()) is not None
+        ]
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        await super().close()
 
     @tasks.loop(minutes=1)
     async def reminder_task(self):
@@ -182,6 +192,20 @@ class TyperBot(commands.Bot):
             if is_same_minute(current_time, reminder_1h):
                 logger.info(f"Sending 1h reminder for week {fixture['week_number']}...")
                 await self.send_reminder(fixture, "1 hour remaining")
+
+    @reminder_task.before_loop
+    async def _before_reminder(self):
+        await self.wait_until_ready()
+
+    @tasks.loop(minutes=5)
+    async def _cleanup_sessions_task(self) -> None:
+        removed = self.workflow_state.cleanup_all_expired()
+        if removed:
+            logger.debug(f"Session cleanup removed {removed} expired DM session(s)")
+
+    @_cleanup_sessions_task.before_loop
+    async def _before_cleanup_sessions(self):
+        await self.wait_until_ready()
 
     async def send_reminder(self, fixture: dict, time_description: str):
         """Send prediction reminder to configured channel."""

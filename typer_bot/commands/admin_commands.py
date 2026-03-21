@@ -413,19 +413,17 @@ class PostResultsConfirmView(discord.ui.View):
 
         try:
             await interaction.response.edit_message(
-                content="Results posted without mentions!",
-                view=None,
+                content="Results posted without mentions!", view=None
             )
+        except Exception as exc:
+            logger.error(f"Failed to acknowledge interaction: {exc}")
+            return
+
+        try:
             await self.channel.send(message)
         except Exception as exc:
             logger.error(f"Failed to post results: {exc}")
-            if not interaction.response.is_done():
-                await interaction.response.edit_message(
-                    content=f"Failed to post results: {exc}",
-                    view=None,
-                )
-            else:
-                await interaction.followup.send(f"Failed to post results: {exc}")
+            await interaction.followup.send(f"Failed to post results: {exc}")
 
     @discord.ui.button(label="YES", style=discord.ButtonStyle.green)
     async def with_mentions(self, interaction: discord.Interaction, _button: discord.ui.Button):
@@ -435,19 +433,17 @@ class PostResultsConfirmView(discord.ui.View):
 
         try:
             await interaction.response.edit_message(
-                content="Results posted with mentions!",
-                view=None,
+                content="Results posted with mentions!", view=None
             )
+        except Exception as exc:
+            logger.error(f"Failed to acknowledge interaction: {exc}")
+            return
+
+        try:
             await self.channel.send(message)
         except Exception as exc:
             logger.error(f"Failed to post results: {exc}")
-            if not interaction.response.is_done():
-                await interaction.response.edit_message(
-                    content=f"Failed to post results: {exc}",
-                    view=None,
-                )
-            else:
-                await interaction.followup.send(f"Failed to post results: {exc}")
+            await interaction.followup.send(f"Failed to post results: {exc}")
 
 
 async def setup(bot: commands.Bot):
