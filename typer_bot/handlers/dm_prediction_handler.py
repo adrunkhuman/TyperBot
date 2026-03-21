@@ -154,10 +154,6 @@ class DMPredictionHandler:
 
         user_id = str(message.author.id)
 
-        # Ignore admin result-entry DMs so they do not overwrite stored predictions as late.
-        if self.workflow_state.has_results_session(user_id):
-            return False
-
         if len(message.content) > MAX_MESSAGE_LENGTH:
             await message.author.send(f"❌ Message too long! (max {MAX_MESSAGE_LENGTH} characters)")
             return True

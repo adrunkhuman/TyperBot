@@ -32,20 +32,6 @@ class TestHandleDM:
         assert len(mock_message.author.dm_sent) == 0
 
     @pytest.mark.asyncio
-    async def test_ignores_dms_during_results_entry(
-        self, prediction_handler, mock_message, workflow_state
-    ):
-        mock_message.guild = None
-        user_id = str(mock_message.author.id)
-        session = workflow_state.start_results_session(user_id, 1, 123456)
-        session.created_at = datetime.now(UTC)
-
-        handled = await prediction_handler.handle_dm(mock_message)
-
-        assert not handled
-        assert len(mock_message.author.dm_sent) == 0
-
-    @pytest.mark.asyncio
     async def test_rejects_message_too_long(self, prediction_handler, mock_message):
         mock_message.guild = None
         mock_message.content = "x" * 5001

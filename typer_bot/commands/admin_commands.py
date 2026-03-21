@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 import discord
@@ -18,7 +19,7 @@ from typer_bot.database import Database
 from typer_bot.handlers import FixtureCreationHandler, ResultsEntryHandler
 from typer_bot.services import AdminService, WorkflowStateStore
 from typer_bot.services.admin_service import FixtureScoreResult
-from typer_bot.utils import format_fixture_results, format_standings, is_admin, is_admin_member, now
+from typer_bot.utils import format_fixture_results, format_standings, is_admin, now
 from typer_bot.utils.config import BACKUP_DIR
 from typer_bot.utils.db_backup import cleanup_old_backups, create_backup
 
@@ -124,6 +125,14 @@ class AdminCommands(commands.Cog):
         guild_id: int,
     ) -> bool:
         """Returns True if the DM was sent successfully."""
+        if self.workflow_state.has_results_session(user_id):
+            with contextlib.suppress(Exception):
+                await user.send(
+                    "❌ You have an active results entry session. "
+                    "Finish or cancel it before starting a new fixture."
+                )
+            return False
+
         self.fixture_handler.start_session(user_id, channel_id, guild_id)
         max_week = await self.db.get_max_week_number()
         predicted_week = max_week + 1
@@ -141,7 +150,7 @@ class AdminCommands(commands.Cog):
                 "```\n"
                 "One game per line."
             )
-        except discord.HTTPException as exc:
+        except Exception as exc:
             reason = "dm_forbidden" if isinstance(exc, discord.Forbidden) else "dm_error"
             self.fixture_handler.cancel_session(user_id, reason=reason)
             return False
@@ -182,21 +191,6 @@ class AdminCommands(commands.Cog):
                 "Scores calculated but failed to post to channel.", ephemeral=True
             )
 
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        if message.author.bot or message.guild is not None:
-            return
-
-        user_id = str(message.author.id)
-
-        if self.fixture_handler.has_session(user_id):
-            await self.fixture_handler.handle_dm(message, user_id, is_admin_member)
-            return
-
-        if self.results_handler.has_session(user_id):
-            await self.results_handler.handle_dm(message, user_id, is_admin_member)
-            return
-
     admin = app_commands.Group(name="admin", description="Admin commands for managing fixtures")
     fixture = app_commands.Group(name="fixture", description="Manage fixtures", parent=admin)
     results = app_commands.Group(name="results", description="Manage results", parent=admin)
@@ -218,6 +212,14 @@ class AdminCommands(commands.Cog):
         if interaction.channel_id is None or interaction.guild_id is None:
             await interaction.response.send_message(
                 "Error: Invalid interaction context.", ephemeral=True
+            )
+            return
+
+        if self.workflow_state.has_results_session(user_id):
+            await interaction.response.send_message(
+                "❌ You have an active results entry session. "
+                "Finish or cancel it before starting a new fixture.",
+                ephemeral=True,
             )
             return
 
@@ -302,6 +304,15 @@ class AdminCommands(commands.Cog):
                 "Error: Invalid interaction context.", ephemeral=True
             )
             return
+
+        if self.workflow_state.has_fixture_session(user_id):
+            await interaction.response.send_message(
+                "❌ You have an active fixture creation session. "
+                "Finish or cancel it before entering results.",
+                ephemeral=True,
+            )
+            return
+
         self.results_handler.start_session(
             user_id, fixture["id"], interaction.guild_id, fixture["week_number"]
         )
@@ -329,8 +340,9 @@ class AdminCommands(commands.Cog):
                 ]
             )
             await interaction.user.send("\n".join(lines))
-        except discord.Forbidden:
-            self.results_handler.cancel_session(user_id, reason="dm_forbidden")
+        except Exception as exc:
+            reason = "dm_forbidden" if isinstance(exc, discord.Forbidden) else "dm_error"
+            self.results_handler.cancel_session(user_id, reason=reason)
             await interaction.followup.send(
                 "I can't send you DMs. Please enable DMs from server members and try again.",
                 ephemeral=True,
