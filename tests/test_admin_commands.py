@@ -5,8 +5,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from typer_bot.commands.admin_commands import CALCULATE_COOLDOWN, AdminCommands
+from typer_bot.commands.admin_commands import (
+    CALCULATE_COOLDOWN,
+    AdminCommands,
+    PostResultsConfirmView,
+)
 from typer_bot.commands.admin_panel import OpenFixtureWarningView
+from typer_bot.services.admin_service import FixtureScoreResult
 from typer_bot.utils.permissions import is_admin
 
 
@@ -154,6 +159,23 @@ class TestResultsEnterLogic:
         assert session.fixture_id == 42
         assert session.guild_id == 111111
 
+    @pytest.mark.asyncio
+    async def test_results_enter_rejects_fixture_that_already_has_results(
+        self, admin_cog, mock_interaction_admin, sample_games
+    ):
+        """Re-entering results routes admins to correction/calculate flows instead of starting a DM."""
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        fixture_id = await admin_cog.db.create_fixture(1, sample_games, deadline)
+        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        mock_interaction_admin.guild_id = mock_interaction_admin.guild.id
+
+        await admin_cog.results_enter.callback(admin_cog, mock_interaction_admin, 1)
+
+        user_id = str(mock_interaction_admin.user.id)
+        assert not admin_cog.results_handler.has_session(user_id)
+        assert "Results already entered" in mock_interaction_admin.response_sent[0]["content"]
+        assert mock_interaction_admin.user.dm_sent == []
+
 
 class TestResultsCalculateLogic:
     """Test suite for results calculate command logic."""
@@ -224,6 +246,222 @@ class TestResultsCalculateLogic:
         assert len(standings) == 1
         assert standings[0]["user_name"] == "User1"
         assert standings[0]["total_points"] == 9
+
+    @pytest.mark.asyncio
+    async def test_results_calculate_records_cooldown_and_calls_followup_steps(
+        self, admin_cog, mock_interaction_admin, monkeypatch
+    ):
+        """Successful calculation records cooldown, creates a backup, and posts results."""
+        fixture = {"id": 7, "week_number": 7, "games": ["A - B"], "deadline": datetime.now(UTC)}
+        score_result = FixtureScoreResult(
+            fixture=fixture,
+            results=["2-1"],
+            predictions=[
+                {
+                    "user_id": "123",
+                    "user_name": "User1",
+                    "predictions": ["2-1"],
+                    "is_late": False,
+                    "late_penalty_waived": False,
+                }
+            ],
+            scores=[
+                {
+                    "user_id": "123",
+                    "user_name": "User1",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 1,
+                }
+            ],
+            standings=[
+                {
+                    "user_id": "123",
+                    "user_name": "User1",
+                    "total_points": 3,
+                    "total_exact": 1,
+                    "total_correct": 1,
+                }
+            ],
+            last_fixture=None,
+        )
+        monkeypatch.setattr(admin_cog.db, "get_open_fixtures", AsyncMock(return_value=[fixture]))
+        admin_cog.service.calculate_fixture_scores = AsyncMock(return_value=score_result)
+        admin_cog._create_backup = AsyncMock()
+        admin_cog._post_calculation_to_channel = AsyncMock()
+
+        await admin_cog.results_calculate.callback(admin_cog, mock_interaction_admin, None)
+
+        user_id = str(mock_interaction_admin.user.id)
+        assert admin_cog.workflow_state.get_calculate_cooldown(user_id) is not None
+        admin_cog.service.calculate_fixture_scores.assert_called_once_with(7)
+        admin_cog._create_backup.assert_called_once()
+        admin_cog._post_calculation_to_channel.assert_called_once_with(
+            mock_interaction_admin, score_result
+        )
+
+
+class TestResultsPostFlow:
+    @pytest.fixture
+    def admin_cog(self, mock_bot, database):
+        mock_bot.db = database
+        return AdminCommands(mock_bot)
+
+    @pytest.mark.asyncio
+    async def test_results_post_rejects_non_text_channel(self, admin_cog, mock_interaction_admin):
+        """Slash command rejects preview posting outside text channels."""
+        admin_cog.db.get_last_fixture_scores = AsyncMock(
+            return_value={
+                "week_number": 1,
+                "games": ["A - B"],
+                "results": ["2-1"],
+                "scores": [
+                    {
+                        "user_id": "123",
+                        "user_name": "User1",
+                        "points": 3,
+                        "exact_scores": 1,
+                        "correct_results": 1,
+                    }
+                ],
+            }
+        )
+        admin_cog.db.get_standings = AsyncMock(
+            return_value=[
+                {
+                    "user_id": "123",
+                    "user_name": "User1",
+                    "total_points": 3,
+                    "total_exact": 1,
+                    "total_correct": 1,
+                }
+            ]
+        )
+
+        await admin_cog.results_post.callback(admin_cog, mock_interaction_admin)
+
+        assert (
+            mock_interaction_admin.response_sent[0]["content"]
+            == "This command can only be used in text channels."
+        )
+
+    @pytest.mark.asyncio
+    async def test_post_results_view_posts_without_mentions(
+        self, mock_text_channel, mock_interaction_admin
+    ):
+        """NO branch posts standings without pinging participants."""
+        fixture_data = {
+            "week_number": 1,
+            "games": ["A - B"],
+            "results": ["2-1"],
+            "scores": [
+                {
+                    "user_id": "123",
+                    "user_name": "User1",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 1,
+                }
+            ],
+        }
+        standings = [
+            {
+                "user_id": "123",
+                "user_name": "User1",
+                "total_points": 3,
+                "total_exact": 1,
+                "total_correct": 1,
+            }
+        ]
+        view = PostResultsConfirmView(MagicMock(), fixture_data, standings, mock_text_channel)
+        no_button = next(child for child in view.children if child.label == "NO")
+
+        await no_button.callback(mock_interaction_admin)
+
+        assert (
+            mock_interaction_admin.response_sent[-1]["content"]
+            == "Results posted without mentions!"
+        )
+        assert len(mock_text_channel.messages_sent) == 1
+        assert "Participants" not in mock_text_channel.messages_sent[0]["content"]
+
+    @pytest.mark.asyncio
+    async def test_post_results_view_posts_with_mentions(
+        self, mock_text_channel, mock_interaction_admin
+    ):
+        """YES branch appends participant mentions to the public post."""
+        fixture_data = {
+            "week_number": 1,
+            "games": ["A - B"],
+            "results": ["2-1"],
+            "scores": [
+                {
+                    "user_id": "123",
+                    "user_name": "User1",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 1,
+                }
+            ],
+        }
+        standings = [
+            {
+                "user_id": "123",
+                "user_name": "User1",
+                "total_points": 3,
+                "total_exact": 1,
+                "total_correct": 1,
+            }
+        ]
+        view = PostResultsConfirmView(MagicMock(), fixture_data, standings, mock_text_channel)
+        yes_button = next(child for child in view.children if child.label == "YES")
+
+        await yes_button.callback(mock_interaction_admin)
+
+        assert (
+            mock_interaction_admin.response_sent[-1]["content"] == "Results posted with mentions!"
+        )
+        assert "<@123>" in mock_text_channel.messages_sent[0]["content"]
+
+    @pytest.mark.asyncio
+    async def test_post_results_view_uses_followup_when_channel_send_fails(
+        self, mock_text_channel, mock_interaction_admin
+    ):
+        """Post failures happen after the interaction is acknowledged, so errors go to followup."""
+        fixture_data = {
+            "week_number": 1,
+            "games": ["A - B"],
+            "results": ["2-1"],
+            "scores": [
+                {
+                    "user_id": "123",
+                    "user_name": "User1",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 1,
+                }
+            ],
+        }
+        standings = [
+            {
+                "user_id": "123",
+                "user_name": "User1",
+                "total_points": 3,
+                "total_exact": 1,
+                "total_correct": 1,
+            }
+        ]
+        mock_text_channel.send = AsyncMock(side_effect=RuntimeError("boom"))
+        view = PostResultsConfirmView(MagicMock(), fixture_data, standings, mock_text_channel)
+        no_button = next(child for child in view.children if child.label == "NO")
+
+        await no_button.callback(mock_interaction_admin)
+
+        assert (
+            mock_interaction_admin.response_sent[-1]["content"]
+            == "Results posted without mentions!"
+        )
+        assert mock_interaction_admin.followup_sent[-1]["content"] == "Failed to post results: boom"
 
 
 class TestCalculationPostFormat:

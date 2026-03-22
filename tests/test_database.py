@@ -1,5 +1,6 @@
 """Tests for database operations and defensive coding patterns."""
 
+import asyncio
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -16,7 +17,6 @@ def temp_db_path():
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         path = f.name
     yield path
-    # Cleanup
     Path(path).unlink(missing_ok=True)
 
 
@@ -38,7 +38,6 @@ class TestGetMaxWeekNumber:
         db = Database(temp_db_path)
         await db.initialize()
 
-        # Create fixtures with various week numbers
         await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
         await db.create_fixture(3, ["Team C - Team D"], datetime.now(UTC))
         await db.create_fixture(5, ["Team E - Team F"], datetime.now(UTC))
@@ -52,7 +51,6 @@ class TestGetMaxWeekNumber:
         db = Database(temp_db_path)
         await db.initialize()
 
-        # Create a fixture and close it
         fixture_id = await db.create_fixture(10, ["Team A - Team B"], datetime.now(UTC))
         await db.save_scores(
             fixture_id,
@@ -67,7 +65,6 @@ class TestGetMaxWeekNumber:
             ],
         )
 
-        # Create another fixture
         await db.create_fixture(5, ["Team C - Team D"], datetime.now(UTC))
 
         result = await db.get_max_week_number()
@@ -150,10 +147,8 @@ class TestDefensiveColumnAccess:
         db = Database(temp_db_path)
         await db.initialize()
 
-        # Create a fixture
         await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
 
-        # This should not crash even if columns were missing
         fixture = await db.get_current_fixture()
         assert fixture is not None
         assert fixture["message_id"] is None
@@ -164,10 +159,8 @@ class TestDefensiveColumnAccess:
         db = Database(temp_db_path)
         await db.initialize()
 
-        # Create a fixture
         fixture_id = await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
 
-        # This should not crash even if columns were missing
         fixture = await db.get_fixture_by_id(fixture_id)
         assert fixture is not None
         assert fixture["message_id"] is None
@@ -178,11 +171,9 @@ class TestDefensiveColumnAccess:
         db = Database(temp_db_path)
         await db.initialize()
 
-        # Create a fixture with message_id
         fixture_id = await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
         await db.update_fixture_announcement(fixture_id, message_id="123456", channel_id="999")
 
-        # This should not crash
         fixture = await db.get_fixture_by_message_id("123456")
         assert fixture is not None
         assert fixture["message_id"] == "123456"
@@ -194,7 +185,6 @@ class TestSchemaMigration:
     @pytest.mark.asyncio
     async def test_initialize_adds_missing_columns(self, temp_db_path):
         """Should automatically add missing columns during initialization."""
-        # Create a database with old schema (missing columns)
         async with aiosqlite.connect(temp_db_path) as conn:
             await conn.execute("""
                 CREATE TABLE fixtures (
@@ -210,10 +200,8 @@ class TestSchemaMigration:
 
         db = Database(temp_db_path)
 
-        # Initialize should add missing columns
         await db.initialize()
 
-        # Verify columns were added by creating a fixture
         await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
         fixture = await db.get_current_fixture()
         assert fixture is not None
@@ -404,7 +392,6 @@ class TestTrySavePrediction:
             open_fixture_id, "u1", "User", ["3-0", "1-1"]
         )
         assert result == SaveResult.DUPLICATE
-        # Original prediction preserved
         prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
         assert prediction["predictions"] == ["2-1", "0-0"]
 
@@ -423,7 +410,6 @@ class TestTrySavePrediction:
 
     @pytest.mark.asyncio
     async def test_fixture_closed_checked_before_duplicate(self, prediction_db, closed_fixture_id):
-        # Pre-seed a prediction so both conditions are true
         async with aiosqlite.connect(prediction_db.db_path) as conn:
             await conn.execute(
                 "INSERT INTO predictions (fixture_id, user_id, user_name, predictions, is_late) VALUES (?, 'u1', 'User', '2-1', 0)",
@@ -433,8 +419,40 @@ class TestTrySavePrediction:
         result = await prediction_db.try_save_prediction(
             closed_fixture_id, "u1", "User", ["3-0", "1-1"]
         )
-        # Fixture check runs first, so FIXTURE_CLOSED wins
         assert result == SaveResult.FIXTURE_CLOSED
+
+    @pytest.mark.asyncio
+    async def test_concurrent_writers_allow_only_one_prediction(
+        self, prediction_db, open_fixture_id
+    ):
+        async def save(user_name, predictions):
+            return await prediction_db.try_save_prediction(
+                open_fixture_id,
+                "u1",
+                user_name,
+                predictions,
+            )
+
+        first, second = await asyncio.gather(
+            save("First", ["2-1", "0-0"]),
+            save("Second", ["3-0", "1-1"]),
+        )
+
+        assert sorted([first, second]) == [SaveResult.DUPLICATE, SaveResult.SAVED]
+
+        async with (
+            aiosqlite.connect(prediction_db.db_path) as conn,
+            conn.execute(
+                "SELECT COUNT(*), user_name, predictions FROM predictions WHERE fixture_id = ? AND user_id = ?",
+                (open_fixture_id, "u1"),
+            ) as cursor,
+        ):
+            row = await cursor.fetchone()
+
+        assert row is not None
+        assert row[0] == 1
+        assert row[1] in {"First", "Second"}
+        assert row[2] in {"2-1\n0-0", "3-0\n1-1"}
 
 
 class TestSavePredictionGuarded:
@@ -466,7 +484,6 @@ class TestSavePredictionGuarded:
         )
         assert result == SaveResult.SAVED
         prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
-        # New predictions persisted (distinguishes from try_save_prediction's duplicate guard)
         assert prediction["predictions"] == ["3-0", "1-1"]
 
     @pytest.mark.asyncio
@@ -479,6 +496,30 @@ class TestSavePredictionGuarded:
         )
         prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
         assert prediction["user_name"] == "NewName"
+
+
+class TestCreateNextFixtureConcurrency:
+    @pytest.mark.asyncio
+    async def test_concurrent_calls_allocate_distinct_week_numbers(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+
+        created = await asyncio.gather(
+            db.create_next_fixture(["A - B"], datetime.now(UTC)),
+            db.create_next_fixture(["C - D"], datetime.now(UTC)),
+        )
+
+        fixture_ids = [fixture_id for fixture_id, _week in created]
+        weeks = sorted(week for _fixture_id, week in created)
+
+        assert weeks == [1, 2]
+
+        fixtures = [await db.get_fixture_by_id(fixture_id) for fixture_id in fixture_ids]
+        assert all(fixture is not None for fixture in fixtures)
+        assert sorted(fixture["week_number"] for fixture in fixtures if fixture is not None) == [
+            1,
+            2,
+        ]
 
 
 class TestRowToFixture:

@@ -7,7 +7,7 @@ import aiosqlite
 import discord
 import pytest
 
-from typer_bot.handlers.results_handler import ResultsEntryHandler
+from typer_bot.handlers.results_handler import ResultsConfirmView, ResultsEntryHandler
 
 
 class TestSessionManagement:
@@ -132,7 +132,7 @@ class TestAdminVerification:
         mock_message.author.send = AsyncMock()
         result = await handler._verify_admin(mock_message, "123456", 111111, lambda _: True)
         assert result is False
-        assert handler.has_session("123456")  # session preserved for retry
+        assert handler.has_session("123456")
         mock_message.author.send.assert_called_once_with(
             "Could not verify permissions, please try again."
         )
@@ -200,7 +200,7 @@ class TestSaveResults:
     async def test_save_results_rejects_closed_fixture(self, handler, database, sample_games):
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
-        await database.save_scores(fixture_id, [])  # closes the fixture
+        await database.save_scores(fixture_id, [])
         handler.workflow_state.start_results_session("123456", fixture_id, 111111)
         with pytest.raises(ValueError, match="already been scored"):
             await handler.save_results("123456", fixture_id, 1, ["2-1", "1-1", "0-2"])
@@ -226,7 +226,7 @@ class TestSaveResults:
         """DB-layer BEGIN IMMEDIATE guard catches scored-but-open inconsistency on real SQLite."""
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture(1, sample_games, deadline)
-        # Insert a score row directly without closing the fixture, simulating DB inconsistency
+        # Simulate scored-but-open corruption that only the DB layer can see.
         async with aiosqlite.connect(database.db_path) as conn:
             await conn.execute(
                 "INSERT INTO scores (fixture_id, user_id, user_name, points, exact_scores, correct_results)"
@@ -275,3 +275,56 @@ class TestViewBehavioral:
         mock_message.author.send = capture_send
 
         await handler.handle_dm(mock_message, "123456", lambda _: True)
+
+
+class TestResultsConfirmView:
+    @pytest.fixture
+    def handler(self, mock_bot, database, workflow_state):
+        return ResultsEntryHandler(mock_bot, database, workflow_state)
+
+    @pytest.mark.asyncio
+    async def test_confirm_handles_fixture_scored_before_click(self, handler):
+        """Late scoring conflicts are surfaced in the confirmation callback and clear the session."""
+        handler.start_session("123456", 1, 111111, week_number=1)
+        handler.save_results = AsyncMock(side_effect=ValueError("already been scored"))
+        interaction = MagicMock()
+        interaction.response.edit_message = AsyncMock()
+
+        view = ResultsConfirmView(handler, "123456", 1, 1, ["2-1"], "Preview")
+        confirm_button = next(child for child in view.children if child.label == "Save Results")
+
+        await confirm_button.callback(interaction)
+
+        assert handler.get_session("123456") is None
+        interaction.response.edit_message.assert_called_once_with(
+            content="**Cannot save results:** already been scored",
+            view=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_cancel_clears_session_and_removes_view(self, handler):
+        """Explicit cancellation closes the session and updates the preview message."""
+        handler.start_session("123456", 1, 111111, week_number=1)
+        interaction = MagicMock()
+        interaction.response.edit_message = AsyncMock()
+
+        view = ResultsConfirmView(handler, "123456", 1, 1, ["2-1"], "Preview")
+        cancel_button = next(child for child in view.children if child.label == "Cancel")
+
+        await cancel_button.callback(interaction)
+
+        assert handler.get_session("123456") is None
+        interaction.response.edit_message.assert_called_once_with(
+            content="Results entry cancelled. Use `/admin results enter` to try again.",
+            view=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_timeout_clears_session(self, handler):
+        """Timed-out confirmation views do not leave stale results sessions behind."""
+        handler.start_session("123456", 1, 111111, week_number=1)
+        view = ResultsConfirmView(handler, "123456", 1, 1, ["2-1"], "Preview")
+
+        await view.on_timeout()
+
+        assert handler.get_session("123456") is None
