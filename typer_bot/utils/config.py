@@ -1,8 +1,11 @@
 """Deployment-sensitive configuration defaults.
 
 The bot boots in smoke-test mode unless ``ENVIRONMENT`` is set to a production
-value. Data paths default to a local ``./data`` tree so development does not
-silently depend on Railway's ``/app/data`` volume layout.
+value.
+
+``DATA_DIR`` intentionally defaults to ``./data`` so local development writes
+into a repo-adjacent folder without depending on Railway's volume mount.
+Production deploys must override it to a persistent path such as ``/app/data``.
 """
 
 import os

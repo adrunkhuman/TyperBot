@@ -1,6 +1,8 @@
 """Timezone utilities for the prediction bot.
 
-All datetime operations use a single configurable timezone (from TZ env var).
+All datetime operations use a single configurable timezone from ``TZ``.
+The default is ``UTC`` so fresh deploys get deterministic deadline handling
+until an operator explicitly chooses a league-specific timezone.
 """
 
 import os
