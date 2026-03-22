@@ -273,8 +273,9 @@ class RailwayJSONFormatter(logging.Formatter):
             log_entry["trace_id"] = trace_id
 
         # Add event_type from record if set
-        if hasattr(record, "event_type") and record.event_type:
-            log_entry["event_type"] = record.event_type
+        event_type = getattr(record, "event_type", None)
+        if isinstance(event_type, str) and event_type:
+            log_entry["event_type"] = event_type
 
         # Add exception info if available
         if record.exc_info:
