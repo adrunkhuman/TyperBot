@@ -319,7 +319,6 @@ class TestDiscordCleanup:
         channel.fetch_message.side_effect = Exception("Discord unavailable")
         bot.get_channel.return_value = channel
 
-        # Should not raise
         await _cleanup_discord_announcement(bot, "111", "222", week_number=5)
 
     @pytest.mark.asyncio

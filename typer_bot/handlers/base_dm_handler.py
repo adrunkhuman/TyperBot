@@ -76,7 +76,7 @@ class AdminDMHandler[S](ABC):
                 await message.author.send("Permission denied or session expired.")
                 return False
             except discord.Forbidden as e:
-                # Bot lacks GUILD_MEMBERS privileged intent or member is inaccessible
+                # Missing intent or inaccessible member looks the same here.
                 logger.error(
                     f"fetch_member forbidden for user {user_id} — check GUILD_MEMBERS intent: {e}"
                 )

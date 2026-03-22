@@ -101,7 +101,7 @@ class FixtureCreationHandler(AdminDMHandler[FixtureSession]):
 
         state.games = games
 
-        # step reverts to "games" without clearing deadline on re-edit — deadline being set is the sentinel
+        # Re-editing games keeps the chosen deadline; `deadline` being set is the sentinel.
         if state.deadline is not None:
             await self._show_preview(message.author, user_id)
             return
@@ -356,7 +356,7 @@ class FixtureConfirmView(ui.View):
             try:
                 thread = await announcement.create_thread(
                     name=f"Week {allocated_week} Predictions",
-                    auto_archive_duration=1440,  # 24 hours
+                    auto_archive_duration=1440,
                 )
                 await thread.send(
                     "💬 **Post your predictions here!**\n"

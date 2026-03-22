@@ -46,8 +46,7 @@ class TestCleanupAllExpired:
         assert workflow_state.cleanup_all_expired() == 3
 
     def test_only_removes_expired_leaves_fresh(self, workflow_state):
-        # Create both sessions first, then backdate one — ordering matters because
-        # start_fixture_session() triggers lazy cleanup on its own call
+        # Backdate after both inserts; starting a fixture session triggers lazy cleanup.
         stale = workflow_state.start_fixture_session("stale-user", 123, 456)
         workflow_state.start_fixture_session("fresh-user", 123, 456)
         stale.created_at = datetime.now(UTC) - timedelta(hours=2)
