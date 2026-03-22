@@ -12,6 +12,7 @@ from typer_bot.commands.admin_commands import (
 )
 from typer_bot.commands.admin_panel import OpenFixtureWarningView
 from typer_bot.services.admin_service import FixtureScoreResult
+from typer_bot.utils import now
 from typer_bot.utils.permissions import is_admin
 
 
@@ -321,6 +322,29 @@ class TestResultsCalculateLogic:
         assert mock_interaction_admin.response_sent[-1]["content"] == "No results entered"
         admin_cog._create_backup.assert_not_called()
         admin_cog._post_calculation_to_channel.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_results_calculate_rejects_active_cooldown(
+        self, admin_cog, mock_interaction_admin
+    ):
+        """Cooldown should stop duplicate clicks before any scoring work starts."""
+        user_id = str(mock_interaction_admin.user.id)
+        admin_cog.workflow_state.record_calculate_cooldown(user_id, current_time=now().timestamp())
+        admin_cog.service.calculate_fixture_scores = AsyncMock()
+
+        await admin_cog.results_calculate.callback(admin_cog, mock_interaction_admin, None)
+
+        assert "Please wait" in mock_interaction_admin.response_sent[-1]["content"]
+        admin_cog.service.calculate_fixture_scores.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_results_calculate_reports_missing_open_fixture(
+        self, admin_cog, mock_interaction_admin
+    ):
+        """Missing fixture selection should fail through the slash-command response path."""
+        await admin_cog.results_calculate.callback(admin_cog, mock_interaction_admin, None)
+
+        assert mock_interaction_admin.response_sent[-1]["content"] == "No open fixtures found!"
 
 
 class TestResultsPostFlow:
