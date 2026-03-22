@@ -373,13 +373,13 @@ class AdminCommands(commands.Cog):
         if not fixture:
             return
 
-        self.workflow_state.record_calculate_cooldown(user_id, current_time=current_time)
-
         try:
             score_result = await self.service.calculate_fixture_scores(fixture["id"])
         except ValueError as exc:
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
+
+        self.workflow_state.record_calculate_cooldown(user_id, current_time=current_time)
 
         await self._create_backup()
         await self._post_calculation_to_channel(interaction, score_result)
