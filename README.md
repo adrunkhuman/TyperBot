@@ -93,8 +93,8 @@ Team E - Team F 3:2
 By default the bot runs in smoke-test mode. It validates config and exits without connecting to Discord. Local runs also default to `DATA_DIR=./data` and `TZ=UTC`.
 
 ```bash
-git clone https://github.com/adrunkhuman/matchday-typer
-cd matchday-typer
+git clone https://github.com/adrunkhuman/TyperBot
+cd TyperBot
 uv sync --group dev
 
 export DISCORD_TOKEN="your_token"
