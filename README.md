@@ -1,10 +1,10 @@
 # matchday-typer
 
-`matchday-typer` is a focused Discord bot for weekly football prediction leagues.
+100% vibecoded, no guarantees given but it seems to work.
 
-It handles fixtures, predictions, results, and standings without dragging admins back into spreadsheets or forcing players through a bloated workflow.
+Admins create fixtures and enter results. Players submit score predictions by thread or DM. The bot stores picks, calculates points, and posts standings.
 
-## What it does
+## Features
 - **Predictions via Thread**: Post directly in the fixture announcement thread.
 - **Predictions via DM**: Type `/predict` to submit privately.
 - **Easy Format**: Just reply with scores like `2-1` or `2:0`.
