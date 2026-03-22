@@ -1,8 +1,12 @@
-"""Configuration constants and environment variables."""
+"""Deployment-sensitive configuration defaults.
+
+The bot boots in smoke-test mode unless ``ENVIRONMENT`` is set to a production
+value. Data paths default to a local ``./data`` tree so development does not
+silently depend on Railway's ``/app/data`` volume layout.
+"""
 
 import os
 
-# Environment configuration - supports any platform (Railway, Coolify, local, etc.)
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 IS_PRODUCTION = ENVIRONMENT.lower() in ("production", "prod")
 

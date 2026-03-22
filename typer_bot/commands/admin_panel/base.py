@@ -51,7 +51,11 @@ class PanelSelectionState:
 
 
 class OwnerRestrictedView(discord.ui.View):
-    """View base class that restricts interactions to one admin."""
+    """Base view that only accepts interactions from the opening admin.
+
+    The owner check persists across nested panel navigation so one admin cannot
+    click through another admin's ephemeral management flow.
+    """
 
     def __init__(
         self,
@@ -82,6 +86,8 @@ class OwnerRestrictedView(discord.ui.View):
 
 
 class AdminPanelHomeView(OwnerRestrictedView):
+    """Top-level admin panel router for fixture, prediction, and results flows."""
+
     @discord.ui.button(label="Fixtures", style=discord.ButtonStyle.secondary)
     async def fixtures(self, interaction: discord.Interaction, _button: discord.ui.Button):
         from .fixtures import FixturesPanelView
@@ -108,6 +114,8 @@ class AdminPanelHomeView(OwnerRestrictedView):
 
 
 class BackButton(discord.ui.Button):
+    """Return from a subview to the home panel while preserving ownership."""
+
     def __init__(self, parent_view: OwnerRestrictedView):
         self.parent_view = parent_view
         super().__init__(label="Back", style=discord.ButtonStyle.secondary)
@@ -126,6 +134,8 @@ class BackButton(discord.ui.Button):
 
 
 class FixtureSelect(discord.ui.Select):
+    """Shared fixture selector that updates panel selection state in place."""
+
     def __init__(
         self,
         parent_view: FixturesPanelView | PredictionsPanelView | ResultsPanelView,

@@ -52,10 +52,14 @@ class TyperBot(commands.Bot):
         guild_id = str(interaction.guild_id) if interaction.guild_id else None
         set_log_context(user_id=user_id, guild_id=guild_id, source="command")
 
-        # ContextVars are task-local, so this handler does not need explicit cleanup.
-
     async def on_message(self, message: discord.Message):
-        """Set trace ID and context for every message before processing."""
+        """Route inbound messages through thread handling, DM routing, or cogs.
+
+        Thread predictions run first so public fixture threads behave like a
+        dedicated submission surface. Non-thread guild messages fall back to the
+        normal command/cog pipeline. DMs bypass listener ordering entirely and go
+        through ``DMRouter`` once ``setup_hook`` has wired the handlers together.
+        """
         if message.author.bot:
             return
 
@@ -198,7 +202,7 @@ class TyperBot(commands.Bot):
         if not open_fixtures:
             return
 
-        # Compare minute-level precision to avoid double-sending
+        # Minute precision avoids duplicate sends inside the same loop tick.
         def is_same_minute(t1, t2):
             return t1.replace(second=0, microsecond=0) == t2.replace(second=0, microsecond=0)
 

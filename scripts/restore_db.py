@@ -1,5 +1,10 @@
 #!/usr/bin/env python
-"""Manual database restore script - run from Railway console."""
+"""Restore a SQL backup into the live SQLite database.
+
+The script validates the backup, restores it into a temporary SQLite file, and
+atomically replaces the live DB only after the restore succeeds. If a live DB is
+already present, it is copied to a timestamped backup file first.
+"""
 
 import argparse
 import os
@@ -14,11 +19,11 @@ from typer_bot.utils.config import DB_PATH
 
 
 def validate_backup_sql(sql_content: str) -> bool:
-    """Validate backup SQL - allows CREATE TABLE IF NOT EXISTS and INSERT only.
+    """Reject obviously unsafe SQL before attempting a restore.
 
-    Best-effort check: keyword scanning can be bypassed by embedding keywords in
-    string literals. Real safety comes from the atomic temp-file restore — a bad
-    SQL file only affects the temp DB and leaves the live DB untouched.
+    This is a best-effort blacklist, not a real SQL parser. Real restore safety
+    comes from loading the SQL into a temporary database and replacing the live
+    DB only if that restore completes successfully.
     """
     normalized = re.sub(r"--.*?$", "", sql_content, flags=re.MULTILINE)
     normalized = re.sub(r"/\*.*?\*/", "", normalized, flags=re.DOTALL)
@@ -51,6 +56,7 @@ def validate_backup_sql(sql_content: str) -> bool:
 
 
 def main():
+    """Restore one backup file after explicit operator confirmation."""
     parser = argparse.ArgumentParser(
         prog="restore_db", description="Restore database from backup file"
     )

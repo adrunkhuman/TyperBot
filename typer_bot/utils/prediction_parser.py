@@ -41,16 +41,17 @@ def parse_predictions(input_text: str, expected_count: int = 9) -> tuple[list[st
 def parse_line_predictions(input_text: str, games: list[str]) -> tuple[list[str], list[str]]:
     """Parse predictions from user input with game context.
 
-    Accepts newline-separated or comma-separated predictions.
-    Each segment should contain a score at the end in format like "2:0" or "2-1".
+    Accepts newline-separated or comma-separated predictions. Each segment should
+    contain a score at the end in format like ``2:0`` or ``2-1``. Cancelled or
+    voided fixtures can be marked with ``x`` and numeric scores are normalized to
+    ``home-away`` output regardless of the input separator.
 
     Args:
         input_text: Raw input text (supports commas or newlines as delimiters)
-        games: List of game names for context
+        games: Fixture game list used to validate line count and build errors
 
     Returns: (valid_predictions, errors)
     """
-    # Normalize: commas become newlines, then split and filter empty segments
     normalized = input_text.replace(",", "\n")
     lines = [line.strip() for line in normalized.split("\n") if line.strip()]
 
@@ -68,13 +69,11 @@ def parse_line_predictions(input_text: str, games: list[str]) -> tuple[list[str]
     for i, line in enumerate(lines):
         stripped = line.strip()
 
-        # Check for nullified game marker (x or X)
         if re.search(r"[xX]\s*$", stripped):
             predictions.append("x")
             logger.debug(f"Line {i + 1}: Parsed nullified game (x)")
             continue
 
-        # Check for score pattern
         match = re.search(r"(\d+)\s*[-:]\s*(\d+)\s*$", stripped)
         if match:
             home_score = match.group(1)
@@ -111,7 +110,6 @@ def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
     """Format standings table for Discord using code blocks for proper alignment."""
     lines = []
 
-    # Overall Standings
     lines.append("🏆 **Overall Standings**")
     lines.append("```")
     lines.append("Rank  User                    Exact  Correct  Points")
@@ -120,7 +118,6 @@ def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
     if not standings:
         lines.append("No standings yet!")
     else:
-        # Create lookup for last week's points to calculate delta
         last_week_points = {}
         if last_fixture:
             for score in last_fixture["scores"]:
@@ -130,7 +127,6 @@ def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
             user_name = ascii_username(user["user_name"])
             total_points = user["total_points"]
 
-            # Calculate delta from last week
             delta = ""
             if user["user_id"] in last_week_points:
                 delta = f" (+{last_week_points[user['user_id']]})"
@@ -141,7 +137,6 @@ def format_standings(standings: list[dict], last_fixture: dict | None) -> str:
 
     lines.append("```")
 
-    # Last Week Results
     if last_fixture:
         lines.append("")
         lines.append(f"📊 **Week {last_fixture['week_number']} Results**")
