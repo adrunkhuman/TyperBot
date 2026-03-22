@@ -75,11 +75,11 @@ I recommend **Railway** because it's cheap/free and supports persistent storage 
    - Mount path: `/app/data`
    - If you skip this, your database will vanish every time you deploy.
 4. Set Variables:
-    - `DISCORD_TOKEN`: Get this from Discord Developer Portal.
-    - `DATA_DIR`: (Optional) Base data directory. Code default is `./data`. On Railway, set it to `/app/data` so the database lives on the mounted volume.
-    - `DB_PATH`: (Optional) Database path. Code default is `{DATA_DIR}/typer.db`.
-    - `BACKUP_DIR`: (Optional) Backup storage. Code default is `{DATA_DIR}/backups`.
-   - `TZ`: (Optional) Timezone for deadline inputs in the admin DM workflow. Default `UTC`. Examples: `Europe/Warsaw`, `America/New_York`, `Asia/Tokyo`.
+     - `DISCORD_TOKEN`: Get this from Discord Developer Portal.
+     - `DATA_DIR`: (Optional) Base data directory. Code default is `./data` for local development. On Railway, set it to `/app/data` so the database lives on the mounted volume instead of the container filesystem.
+     - `DB_PATH`: (Optional) Database path. Code default is `{DATA_DIR}/typer.db`.
+     - `BACKUP_DIR`: (Optional) Backup storage. Code default is `{DATA_DIR}/backups`.
+     - `TZ`: (Optional) Timezone for deadline inputs in the admin DM workflow. Default `UTC` so new deployments behave predictably until you choose a league timezone. Examples: `Europe/Warsaw`, `America/New_York`, `Asia/Tokyo`.
    - `REMINDER_CHANNEL_ID`: (Optional) ID of channel to spam reminders in.
    - `LOG_LEVEL`: (Optional) Set to `DEBUG` for verbose logs. Default `INFO`.
    - `ENVIRONMENT`: (Optional) Set to `production` for live bot operation. Other values run smoke-test mode (validates config then exits). Default: `development`.
@@ -87,6 +87,8 @@ I recommend **Railway** because it's cheap/free and supports persistent storage 
 ## Running Locally
 
 By default the bot runs in smoke-test mode: it validates config and exits without connecting to Discord. That is intentional so preview deployments do not fight production for the same token.
+
+Local runs also default to `DATA_DIR=./data` and `TZ=UTC`. That gives predictable filesystem and deadline behavior until you explicitly point production at a persistent volume and pick your league timezone.
 
 If you want a real local bot session, set `ENVIRONMENT=production`.
 
