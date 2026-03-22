@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Coroutine
-from typing import Any
+from typing import Any, Protocol, cast
 
 import discord
 
@@ -17,6 +17,10 @@ from .base import BackButton, FixtureSelect, OwnerRestrictedView, PanelSelection
 logger = logging.getLogger(__name__)
 
 
+class _MessageLookupChannel(Protocol):
+    async def fetch_message(self, message_id: int, /) -> discord.Message: ...
+
+
 async def _cleanup_discord_announcement(
     bot: discord.Client,
     channel_id: str,
@@ -26,9 +30,10 @@ async def _cleanup_discord_announcement(
     """Best-effort Discord cleanup — logs on failure."""
     try:
         channel = bot.get_channel(int(channel_id))
-        if channel is None:
+        if channel is None or not hasattr(channel, "fetch_message"):
             return
-        message = await channel.fetch_message(int(message_id))
+        message_channel = cast(_MessageLookupChannel, channel)
+        message = await message_channel.fetch_message(int(message_id))
         if message.thread is not None:
             await message.thread.delete()
         await message.delete()
