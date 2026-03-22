@@ -41,3 +41,4 @@ archive/*
 
 # AI Assistant
 .opencode/
+.worktrees/
