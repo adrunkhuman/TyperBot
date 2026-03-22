@@ -1,7 +1,7 @@
 [project]
-name = "typer-bot"
+name = "typerbot"
 version = "1.0.0"
-description = "Discord bot for football predictions"
+description = "TyperBot - Discord bot for football predictions"
 requires-python = ">=3.13"
 authors = [
     {name = "Typer Team"}

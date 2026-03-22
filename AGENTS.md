@@ -3,7 +3,7 @@
 **Target Audience:** AI Agents (LLMs) working on this codebase.
 
 ## 1. Identity & Purpose
-You are working on `matchday-typer`, a Discord bot for football prediction leagues.
+You are working on `TyperBot`, a Discord bot for football prediction leagues.
 - **Core Function:** Users predict scores -> Admins enter results -> Bot calculates points.
 - **Vibe:** Functional, simple, reliable. No bloat.
 - **Tech:** Python 3.10+, discord.py, aiosqlite, Railway hosting.

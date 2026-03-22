@@ -1,4 +1,4 @@
-# matchday-typer
+# TyperBot
 
 100% vibecoded, no guarantees given but it seems to work.
 

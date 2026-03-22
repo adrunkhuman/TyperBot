@@ -575,7 +575,7 @@ wheels = [
 ]
 
 [[package]]
-name = "typer-bot"
+name = "typerbot"
 version = "1.0.0"
 source = { editable = "." }
 dependencies = [
