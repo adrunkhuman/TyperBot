@@ -2,108 +2,109 @@
 
 100% vibecoded, no guarantees given but it seems to work.
 
-Admins create fixtures and enter results. Players submit score predictions by thread or DM. The bot stores picks, calculates points, and posts standings.
+Discord bot for weekly football prediction leagues. Admins create fixtures and enter results. Players submit score predictions by thread or DM. The bot stores picks, calculates points, and posts standings.
 
 ## Features
-- **Predictions via Thread**: Post directly in the fixture announcement thread.
-- **Predictions via DM**: Type `/predict` to submit privately.
-- **Easy Format**: Just reply with scores like `2-1` or `2:0`.
-- **Points**: 3 points for exact score, 1 point for correct winner/draw.
-- **Leaderboards**: `/standings` to see the table.
-- **Deadlines**: Set per fixture. Late submissions get 0 points.
-- **Persistent**: Uses SQLite.
+- Thread predictions on fixture announcement threads
+- DM prediction flow via `/predict`
+- Flexible score parsing: `2-1`, `2:1`, `2 : 1`
+- Per-fixture deadlines with late-pick handling
+- Standings, saved predictions, and weekly results posting
+- SQLite persistence with automatic backups after successful score calculation
+
+## Commands
+
+### Player commands
+- `/predict` - start the DM prediction flow
+- `/fixtures` - show open fixtures and deadlines
+- `/mypredictions` - show your saved predictions for open fixtures
+- `/standings` - show the leaderboard and latest scored fixture
+
+### Admin commands
+- `/admin panel` - open the admin panel for deletion, overrides, waivers, and result correction
+- `/admin fixture create` - create a fixture by DM and post its prediction thread
+- `/admin fixture delete [week]` - delete an open fixture
+- `/admin results enter [week]` - enter actual results by DM
+- `/admin results calculate [week]` - calculate scores and post results
+- `/admin results post` - repost results with optional mentions
+
+Admins need a Discord role named `Admin` or `typer-admin`.
 
 ## Permissions
-Bot requires:
-- **Send Messages** & **Read Message History**
-- **Add Reactions**: To confirm predictions.
-- **Create Public Threads**: Auto-creates prediction threads on fixture announcements.
-- **Use Slash Commands**
+- `Send Messages`
+- `Read Message History`
+- `Add Reactions`
+- `Create Public Threads`
+- `Use Slash Commands`
 
-## Workflow State
-- Match data, predictions, results, and scores are persisted in SQLite.
-- Active DM workflows and short-lived cooldowns are intentionally kept in memory.
-- This includes the thread-post rate limiter and the `/admin results calculate` cooldown, so both reset if the bot process restarts.
-- This bot assumes a single-process deployment. If the process restarts, any in-progress fixture/results/prediction DM flow is lost and users need to start again.
-- That tradeoff is deliberate for a small personal bot: simpler code, fewer moving parts, and no extra operational state to migrate or debug.
+## Prediction flow
 
-## How to use
+Players can submit predictions in two ways:
 
-### For Players
+1. Reply in the fixture thread with one line per match.
+2. Run `/predict` or DM the bot and submit the same scores privately.
 
-**Method 1: Thread Predictions (Recommended)**
-1. Look for the fixture announcement with a thread attached
-2. Reply in the thread with your predictions:
-   ```
-   Team A - Team B 2:1
-   Team C - Team D 0:0
-   Team E - Team F 3:2
-   ...
-   ```
- 3. Bot reacts ✅ when saved. Thread submissions are one-shot; use `/predict` or DM the bot to replace an existing prediction.
+Example:
 
-**Method 2: DM Predictions**
-1. Type `/predict` (or DM the bot directly) -> Bot DMs you the games
-2. Reply with scores (same format as above) -> Predictions saved immediately!
-3. If multiple fixtures are open, bot asks which week first and can guide you through the rest
-4. To change, just send a new message
+```text
+Team A - Team B 2:1
+Team C - Team D 0:0
+Team E - Team F 3:2
+```
 
-**Check**: `/mypredictions` to see what you sent.
-**Flex**: `/standings` to see the table.
+Thread submissions are one-shot. To replace a saved prediction, use `/predict` or DM the bot again.
 
-### For Admins
-You need a Discord role named `Admin` or `typer-admin`.
+## Scoring
+- Exact score: 3 points
+- Correct outcome: 1 point
+- Wrong outcome: 0 points
+- Late predictions: 0 points unless an admin waives the penalty
 
-**Fixture Management:**
-- `/admin panel` - Open the admin hub for fixture deletion, prediction overrides, waivers, and result correction
-- `/admin fixture create` - Create a new fixture (DM workflow with games + deadline, auto-creates prediction thread)
-- `/admin fixture delete [week]` - Delete an open fixture (week required if multiple are open)
+## Deployment model
+- Match data, predictions, results, and scores are stored in SQLite.
+- Active DM workflows and short-lived cooldowns are kept in memory.
+- This includes the thread-post rate limiter and the `/admin results calculate` cooldown.
+- The bot is intentionally single-process for v1. If the process restarts, in-progress DM workflows are lost and in-memory cooldowns reset.
 
-**Results Management:**
-- `/admin results enter [week]` - Enter actual game scores (DM workflow)
-- `/admin results calculate [week]` - Calculate scores and post results (no mentions by default)
-- `/admin results post` - Re-post results with option to mention users
+## Configuration
 
-## Hosting (The Easy Way)
+### Required
+- `DISCORD_TOKEN` - Discord bot token
 
-I recommend **Railway** because it's cheap/free and supports persistent storage easily.
+### Optional
+- `ENVIRONMENT` - `production` to run the bot; default is `development`, which only smoke-tests config and exits
+- `DATA_DIR` - base data directory; default `./data` locally, set `/app/data` on Railway
+- `DB_PATH` - database path; default `{DATA_DIR}/typer.db`
+- `BACKUP_DIR` - backup directory; default `{DATA_DIR}/backups`
+- `TZ` - timezone for admin deadline input; default `UTC`
+- `REMINDER_CHANNEL_ID` - reminder channel ID
+- `LOG_LEVEL` - logging level; default `INFO`
+
+## Railway deployment
 
 1. Fork this repo.
 2. New Project on Railway -> Deploy from GitHub.
-3. **CRITICAL STEP**: Add a Volume.
-   - Go to "Volumes", click New.
-   - Mount path: `/app/data`
-   - If you skip this, your database will vanish every time you deploy.
+3. Add a persistent volume mounted at `/app/data`.
 4. Set Variables:
-     - `DISCORD_TOKEN`: Get this from Discord Developer Portal.
-     - `DATA_DIR`: (Optional) Base data directory. Code default is `./data` for local development. On Railway, set it to `/app/data` so the database lives on the mounted volume instead of the container filesystem.
-     - `DB_PATH`: (Optional) Database path. Code default is `{DATA_DIR}/typer.db`.
-     - `BACKUP_DIR`: (Optional) Backup storage. Code default is `{DATA_DIR}/backups`.
-     - `TZ`: (Optional) Timezone for deadline inputs in the admin DM workflow. Default `UTC` so new deployments behave predictably until you choose a league timezone. Examples: `Europe/Warsaw`, `America/New_York`, `Asia/Tokyo`.
-   - `REMINDER_CHANNEL_ID`: (Optional) ID of channel to spam reminders in.
-   - `LOG_LEVEL`: (Optional) Set to `DEBUG` for verbose logs. Default `INFO`.
-   - `ENVIRONMENT`: (Optional) Set to `production` for live bot operation. Other values run smoke-test mode (validates config then exits). Default: `development`.
+   - `DISCORD_TOKEN=<your token>`
+   - `ENVIRONMENT=production`
+   - `DATA_DIR=/app/data`
+   - optional: `TZ=Europe/Warsaw`
 
 ## Running Locally
 
-By default the bot runs in smoke-test mode: it validates config and exits without connecting to Discord. That is intentional so preview deployments do not fight production for the same token.
-
-Local runs also default to `DATA_DIR=./data` and `TZ=UTC`. That gives predictable filesystem and deadline behavior until you explicitly point production at a persistent volume and pick your league timezone.
-
-If you want a real local bot session, set `ENVIRONMENT=production`.
+By default the bot runs in smoke-test mode. It validates config and exits without connecting to Discord. Local runs also default to `DATA_DIR=./data` and `TZ=UTC`.
 
 ```bash
-# Clone and setup
 git clone https://github.com/adrunkhuman/matchday-typer
 cd matchday-typer
 uv sync --group dev
 
-# Smoke test config only (default behavior)
 export DISCORD_TOKEN="your_token"
 uv run python -m typer_bot
 ```
 
-Unix/macOS live run:
+For a real local bot session:
 
 ```bash
 export DISCORD_TOKEN="your_token"
@@ -121,50 +122,33 @@ uv run python -m typer_bot
 
 ## Development
 
-This project uses [uv](https://github.com/astral-sh/uv) for development.
-
 ```bash
-# Install dependencies
 uv sync --group dev
-
-# Run tests
 uv run pytest
-
-# Lint
 uv run ruff check .
+uv run ruff format --check .
+uv run ty check typer_bot
 ```
 
-## Testing
-
-The project has comprehensive test coverage (200+ tests) covering admin commands, core bot logic, handlers, and integration workflows.
+Critical-path test suite:
 
 ```bash
-# Run all tests
-uv run pytest
-
-# Run with coverage
-uv run pytest --cov=typer_bot
-
-# Run specific test file
-uv run pytest tests/test_admin_commands.py -v
+uv run pytest tests/test_user_commands.py tests/test_admin_commands.py tests/test_dm_prediction_handler.py tests/test_thread_prediction_handler.py tests/test_results_handler.py tests/test_integration.py
 ```
-
-Tests run automatically on pull requests via GitHub Actions.
-
-## Username Management
 
 Usernames are updated automatically when users submit predictions.
 
 ## Backup and Restore
 
-**Automatic:** Database is backed up after each successful `/admin results calculate`. Backups are stored in `BACKUP_DIR` and the bot keeps the latest 10.
+- Automatic: the database is backed up after each successful `/admin results calculate`. The bot keeps the latest 10 backups in `BACKUP_DIR`.
+- Manual restore: run from the Railway shell.
 
-**Manual Restore:** Run from Railway console (requires shell access):
 ```bash
 ls /app/data/backups/
 python scripts/restore_db.py /app/data/backups/backup_*.sql
 ```
-Type `YES` to confirm. The script rejects obviously dangerous SQL, restores into a temporary SQLite file, then atomically replaces the live DB only if the restore succeeds. If a live DB already exists, it is copied to a timestamped `.db.bak.*` file first.
+
+The restore script asks for confirmation, restores into a temporary SQLite file first, and only replaces the live database after a successful restore.
 
 ## License
 MIT. Do whatever you want with it.
