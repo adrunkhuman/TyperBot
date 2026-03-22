@@ -13,7 +13,6 @@ Discord bot for weekly football prediction leagues. Admins create fixtures and e
 - SQLite persistence with automatic backups after successful score calculation
 
 ## Commands
-
 ### Player commands
 - `/predict` - start the DM prediction flow
 - `/fixtures` - show open fixtures and deadlines
@@ -38,11 +37,9 @@ Admins need a Discord role named `Admin` or `typer-admin`.
 - `Use Slash Commands`
 
 ## Prediction flow
-
-Players can submit predictions in two ways:
-
-1. Reply in the fixture thread with one line per match.
-2. Run `/predict` or DM the bot and submit the same scores privately.
+- Reply in the fixture thread with one line per match.
+- Run `/predict` or DM the bot and submit the same scores privately.
+- Thread submissions are one-shot. To replace a saved prediction, use `/predict` or DM the bot again.
 
 Example:
 
@@ -52,15 +49,13 @@ Team C - Team D 0:0
 Team E - Team F 3:2
 ```
 
-Thread submissions are one-shot. To replace a saved prediction, use `/predict` or DM the bot again.
-
 ## Scoring
 - Exact score: 3 points
 - Correct outcome: 1 point
 - Wrong outcome: 0 points
 - Late predictions: 0 points unless an admin waives the penalty
 
-## Deployment model
+## Operational constraints
 - Match data, predictions, results, and scores are stored in SQLite.
 - Active DM workflows and short-lived cooldowns are kept in memory.
 - This includes the thread-post rate limiter and the `/admin results calculate` cooldown.
@@ -80,7 +75,9 @@ Thread submissions are one-shot. To replace a saved prediction, use `/predict` o
 - `REMINDER_CHANNEL_ID` - reminder channel ID
 - `LOG_LEVEL` - logging level; default `INFO`
 
-## Railway deployment
+## Deployment
+
+### Railway
 
 1. Fork this repo.
 2. New Project on Railway -> Deploy from GitHub.
@@ -91,7 +88,7 @@ Thread submissions are one-shot. To replace a saved prediction, use `/predict` o
    - `DATA_DIR=/app/data`
    - optional: `TZ=Europe/Warsaw`
 
-## Running Locally
+## Running locally
 
 By default the bot runs in smoke-test mode. It validates config and exits without connecting to Discord. Local runs also default to `DATA_DIR=./data` and `TZ=UTC`.
 
@@ -104,7 +101,7 @@ export DISCORD_TOKEN="your_token"
 uv run python -m typer_bot
 ```
 
-For a real local bot session:
+Live run:
 
 ```bash
 export DISCORD_TOKEN="your_token"
@@ -112,7 +109,7 @@ export ENVIRONMENT=production
 uv run python -m typer_bot
 ```
 
-Windows PowerShell live run:
+Windows PowerShell:
 
 ```powershell
 $env:DISCORD_TOKEN="your_token"
@@ -129,14 +126,6 @@ uv run ruff check .
 uv run ruff format --check .
 uv run ty check typer_bot
 ```
-
-Critical-path test suite:
-
-```bash
-uv run pytest tests/test_user_commands.py tests/test_admin_commands.py tests/test_dm_prediction_handler.py tests/test_thread_prediction_handler.py tests/test_results_handler.py tests/test_integration.py
-```
-
-Usernames are updated automatically when users submit predictions.
 
 ## Backup and Restore
 
