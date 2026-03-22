@@ -300,6 +300,28 @@ class TestResultsCalculateLogic:
             mock_interaction_admin, score_result
         )
 
+    @pytest.mark.asyncio
+    async def test_results_calculate_does_not_record_cooldown_when_scoring_fails(
+        self, admin_cog, mock_interaction_admin, monkeypatch
+    ):
+        """Validation failures should not throttle a retry after the admin fixes results state."""
+        fixture = {"id": 7, "week_number": 7, "games": ["A - B"], "deadline": datetime.now(UTC)}
+
+        monkeypatch.setattr(admin_cog.db, "get_open_fixtures", AsyncMock(return_value=[fixture]))
+        admin_cog.service.calculate_fixture_scores = AsyncMock(
+            side_effect=ValueError("No results entered")
+        )
+        admin_cog._create_backup = AsyncMock()
+        admin_cog._post_calculation_to_channel = AsyncMock()
+
+        await admin_cog.results_calculate.callback(admin_cog, mock_interaction_admin, None)
+
+        user_id = str(mock_interaction_admin.user.id)
+        assert admin_cog.workflow_state.get_calculate_cooldown(user_id) is None
+        assert mock_interaction_admin.response_sent[-1]["content"] == "No results entered"
+        admin_cog._create_backup.assert_not_called()
+        admin_cog._post_calculation_to_channel.assert_not_called()
+
 
 class TestResultsPostFlow:
     @pytest.fixture
