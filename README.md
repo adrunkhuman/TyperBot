@@ -87,6 +87,10 @@ Team E - Team F 3:2
    - `ENVIRONMENT=production`
    - `DATA_DIR=/app/data`
    - optional: `TZ=Europe/Warsaw`
+   - `DISCORD_TOKEN=<your token>`
+   - `ENVIRONMENT=production`
+   - `DATA_DIR=/app/data`
+   - optional: `TZ=Europe/Warsaw`
 
 ## Running locally
 
