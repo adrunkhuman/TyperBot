@@ -19,12 +19,15 @@ class FixtureRepository:
 
     def _row_to_fixture(self, row: aiosqlite.Row) -> dict:
         row_dict = dict(row)
+        games_val = row_dict.get("games")
+        games_text = games_val if isinstance(games_val, str) else ""
         deadline_val = row_dict.get("deadline")
+        deadline_text = deadline_val if isinstance(deadline_val, str) else None
         return {
             "id": row_dict.get("id"),
             "week_number": row_dict.get("week_number"),
-            "games": [g for g in row_dict.get("games", "").split("\n") if g],
-            "deadline": parse_iso(deadline_val) if deadline_val else None,
+            "games": [g for g in games_text.split("\n") if g],
+            "deadline": parse_iso(deadline_text) if deadline_text else None,
             "status": row_dict.get("status"),
             "message_id": row_dict.get("message_id"),
             "channel_id": row_dict.get("channel_id"),

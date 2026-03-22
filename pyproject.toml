@@ -1,6 +1,6 @@
 [project]
 name = "typer-bot"
-version = "0.1.0"
+version = "1.0.0"
 description = "Discord bot for football predictions"
 requires-python = ">=3.13"
 authors = [
