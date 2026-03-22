@@ -148,7 +148,6 @@ class TestHandleDM:
         handled = await prediction_handler.handle_dm(mock_message)
 
         assert handled
-        # processing message + edit with fixture-closed notice
         assert any("closed" in msg for msg in mock_message.author.dm_sent)
 
 

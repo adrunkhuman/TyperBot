@@ -156,6 +156,32 @@ class TestOnMessage:
         assert predictions[0]["predictions"] == ["2-1", "1-1", "0-2"]
         assert "Use `/predict`" in second_message.author.dm_sent[-1]
 
+    @pytest.mark.asyncio
+    async def test_rate_limits_rapid_reposts(self, handler, fixture_with_thread, mock_message):
+        """Second post inside the cooldown window is ignored before any duplicate-save path runs."""
+        mock_message.channel.id = 789012
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        first = await handler.on_message(mock_message)
+
+        second_message = type(mock_message)(
+            content="Team A - Team B 0-0\nTeam C - Team D 0-0\nTeam E - Team F 0-0",
+            message_id="777778",
+            author=mock_message.author,
+            channel=mock_message.channel,
+            guild=mock_message.guild,
+        )
+        second_message.channel.id = 789012
+        second = await handler.on_message(second_message)
+
+        assert first is True
+        assert second is True
+        predictions = await handler.db.get_all_predictions(fixture_with_thread["id"])
+        assert len(predictions) == 1
+        assert predictions[0]["predictions"] == ["2-1", "1-1", "0-2"]
+        assert second_message.reactions_added == []
+        assert second_message.author.dm_sent == []
+
 
 class TestEdgeCases:
     """Test suite for edge cases and boundary conditions."""

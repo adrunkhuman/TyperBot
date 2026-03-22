@@ -24,7 +24,13 @@ PredictionStep = Literal["select", "predict", "continue"]
 
 
 class DMPredictionHandler:
-    """Handles the DM workflow for user predictions."""
+    """Run the stateful DM prediction workflow for one or more open fixtures.
+
+    The flow supports three steps: choosing a week, submitting scores for that
+    week, and deciding whether to continue when more fixtures remain open. DM
+    submissions are overwrite-friendly, unlike thread submissions, so users can
+    intentionally replace an earlier DM prediction while the fixture stays open.
+    """
 
     def __init__(self, db: Database, workflow_state: WorkflowStateStore):
         self.db = db
@@ -148,7 +154,18 @@ class DMPredictionHandler:
         )
 
     async def handle_dm(self, message: discord.Message) -> bool:
-        """Handle a DM message for prediction submission."""
+        """Handle week selection, score entry, or continuation replies in DMs.
+
+        Users can reply with just a week number, or with the week number plus
+        predictions in one message. The handler rebuilds prompts from the latest
+        open-fixture state so it can recover cleanly when fixtures open or close
+        in the middle of a DM session.
+
+        Returns:
+            ``True`` when the message belongs to the DM prediction workflow,
+            including validation failures. ``False`` when another DM handler
+            should get a chance to process it.
+        """
         if message.author.bot or message.guild is not None:
             return False
 

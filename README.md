@@ -75,10 +75,10 @@ I recommend **Railway** because it's cheap/free and supports persistent storage 
    - Mount path: `/app/data`
    - If you skip this, your database will vanish every time you deploy.
 4. Set Variables:
-   - `DISCORD_TOKEN`: Get this from Discord Developer Portal.
-   - `DATA_DIR`: (Optional) Base data directory. Default `/app/data`.
-   - `DB_PATH`: (Optional) Database path. Defaults to `{DATA_DIR}/typer.db`.
-   - `BACKUP_DIR`: (Optional) Backup storage. Defaults to `{DATA_DIR}/backups`.
+    - `DISCORD_TOKEN`: Get this from Discord Developer Portal.
+    - `DATA_DIR`: (Optional) Base data directory. Code default is `./data`. On Railway, set it to `/app/data` so the database lives on the mounted volume.
+    - `DB_PATH`: (Optional) Database path. Code default is `{DATA_DIR}/typer.db`.
+    - `BACKUP_DIR`: (Optional) Backup storage. Code default is `{DATA_DIR}/backups`.
    - `TZ`: (Optional) Timezone for deadline inputs in the admin DM workflow. Default `UTC`. Examples: `Europe/Warsaw`, `America/New_York`, `Asia/Tokyo`.
    - `REMINDER_CHANNEL_ID`: (Optional) ID of channel to spam reminders in.
    - `LOG_LEVEL`: (Optional) Set to `DEBUG` for verbose logs. Default `INFO`.
@@ -86,19 +86,35 @@ I recommend **Railway** because it's cheap/free and supports persistent storage 
 
 ## Running Locally
 
-If you know Python:
+By default the bot runs in smoke-test mode: it validates config and exits without connecting to Discord. That is intentional so preview deployments do not fight production for the same token.
+
+If you want a real local bot session, set `ENVIRONMENT=production`.
 
 ```bash
 # Clone and setup
 git clone https://github.com/adrunkhuman/matchday-typer
 cd matchday-typer
-python -m venv .venv
-source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-pip install .
+uv sync --group dev
 
-# Run
+# Smoke test config only (default behavior)
 export DISCORD_TOKEN="your_token"
-python -m typer_bot
+uv run python -m typer_bot
+```
+
+Unix/macOS live run:
+
+```bash
+export DISCORD_TOKEN="your_token"
+export ENVIRONMENT=production
+uv run python -m typer_bot
+```
+
+Windows PowerShell live run:
+
+```powershell
+$env:DISCORD_TOKEN="your_token"
+$env:ENVIRONMENT="production"
+uv run python -m typer_bot
 ```
 
 ## Development
@@ -139,14 +155,14 @@ Usernames are updated automatically when users submit predictions.
 
 ## Backup and Restore
 
-**Automatic:** Database backed up automatically after each `/admin calculate`. Stored in `/app/data/backups/`, last 10 kept.
+**Automatic:** Database is backed up after each successful `/admin results calculate`. Backups are stored in `BACKUP_DIR` and the bot keeps the latest 10.
 
 **Manual Restore:** Run from Railway console (requires shell access):
 ```bash
 ls /app/data/backups/
 python scripts/restore_db.py /app/data/backups/backup_*.sql
 ```
-Type "YES" to confirm. Current DB backed up to `.bak` file before restore.
+Type `YES` to confirm. The script rejects obviously dangerous SQL, restores into a temporary SQLite file, then atomically replaces the live DB only if the restore succeeds. If a live DB already exists, it is copied to a timestamped `.db.bak.*` file first.
 
 ## License
 MIT. Do whatever you want with it.

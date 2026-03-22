@@ -9,11 +9,11 @@ You are working on `matchday-typer`, a Discord bot for football prediction leagu
 - **Tech:** Python 3.10+, discord.py, aiosqlite, Railway hosting.
 
 ## 2. Critical Constraints
-- **Persistence:** The database (`typer.db`) MUST live in `/app/data` on production (Railway volume).
+- **Persistence:** The database defaults to `./data/typer.db` locally. On production, set `DATA_DIR=/app/data` so the live DB stays on the Railway volume.
 - **Transaction Safety:** Critical operations use atomic transactions (BEGIN/COMMIT/ROLLBACK) to ensure data consistency. Never modify transaction logic without understanding rollback implications.
 - **Race Condition Prevention:** Both DM and thread prediction handlers check for existing predictions before saving to prevent duplicates when users submit via both methods simultaneously.
 - **Configuration:** All data paths configurable via env vars in `utils/config.py`:
-  - `DATA_DIR`: Base directory (default: `/app/data`)
+  - `DATA_DIR`: Base directory (default: `./data`)
   - `DB_PATH`: Full database path (default: `{DATA_DIR}/typer.db`)
   - `BACKUP_DIR`: Backup storage (default: `{DATA_DIR}/backups`)
 - **DM Workflow:** Complex inputs (fixture creation, results entry) happen in DMs to keep channel clean.
@@ -22,11 +22,11 @@ You are working on `matchday-typer`, a Discord bot for football prediction leagu
 - **Async:** All database ops must be async (`aiosqlite`).
 - **Parsing:** Use `utils.prediction_parser.parse_line_predictions` for all score parsing. Do NOT write ad-hoc regex.
 - **Logging:** Use `typer_bot.utils.logger.setup_logging()` early. Do not use `print()`.
-- **Timezones:** All datetime operations use timezone-aware objects. Use `utils.timezone.now()` instead of `datetime.now()`. Configure via `TZ` env var (default: Europe/Warsaw).
+- **Timezones:** All datetime operations use timezone-aware objects. Use `utils.timezone.now()` instead of `datetime.now()`. Configure via `TZ` env var (default: `UTC`).
 - **Permissions:** Bot requires `Send Messages`, `Read Message History`, `Add Reactions`, and `Create Public Threads`.
 
 ## 3. Database Schema
-SQLite. Tables are initialized in `database.py`.
+SQLite. Tables are initialized in `typer_bot/database/connection.py`.
 
 ```sql
 fixtures (
@@ -76,7 +76,7 @@ scores (
 - `typer_bot/utils/prediction_parser.py`: Central logic for parsing "2-1" or "2:1" strings.
 - `typer_bot/utils/scoring.py`: Point calculation rules.
 - `typer_bot/utils/logger.py`: structured logging configuration for Railway.
-- `typer_bot/utils/db_backup.py`: Automatic database backup after fixture completion.
+- `typer_bot/utils/db_backup.py`: Automatic database backup after successful score calculation.
 - `scripts/restore_db.py`: Manual database restore via Railway console.
 
 ## 5. Common Tasks
@@ -85,9 +85,9 @@ scores (
 - **Admin Panel UI:** Edit `commands/admin_panel/`.
 - **Workflow/Cooldown State:** Edit `services/workflow_state.py`. Keep process-local sessions and cooldowns there instead of introducing new module-level dicts.
 - **New Commands:** Add Cog to `commands/` folder, load in `bot.py`.
-- **Database Changes:** Edit `database.py` `initialize()` (Handle migrations manually if needed).
+- **Database Changes:** Edit `typer_bot/database/connection.py` `initialize()` and the focused repositories in `typer_bot/database/` (handle migrations manually if needed).
 - **Debugging:** Check `utils/logger.py` for config. Set `LOG_LEVEL=DEBUG` in env.
-- **Database Restore:** Use `scripts/restore_db.py` from Railway console for manual database restoration from backups.
+- **Database Restore:** Use `scripts/restore_db.py` from Railway console for manual database restoration from backups. The script restores into a temporary SQLite file first, then atomically replaces the live DB only after success.
 
 ## 5.5 Testing Guidelines
 

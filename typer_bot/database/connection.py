@@ -96,7 +96,12 @@ async def _migrate_prediction_columns(db: aiosqlite.Connection) -> None:
 
 
 class Database:
-    """Composition root: owns db_path, schema init, and delegates CRUD to focused repositories."""
+    """Composition root for SQLite setup and the bot's stable data facade.
+
+    Callers use this facade instead of reaching into repositories directly. It
+    owns path setup, schema initialization, additive migrations, and the focused
+    repository objects that perform the actual reads and writes.
+    """
 
     def __init__(self, db_path: str | None = None) -> None:
         self.db_path = db_path or DB_PATH
@@ -111,7 +116,12 @@ class Database:
         self._scores = ScoreRepository(self.db_path)
 
     async def initialize(self) -> None:
-        """Create tables if they don't exist."""
+        """Create tables, enable WAL mode, and apply additive migrations.
+
+        Fresh databases get the current schema. Existing databases are migrated
+        in place by adding missing columns and by collapsing legacy ``results``
+        rows into the current one-row-per-fixture layout.
+        """
         async with aiosqlite.connect(self.db_path) as db:
             async with db.execute("PRAGMA journal_mode=WAL") as cur:
                 row = await cur.fetchone()
@@ -184,15 +194,12 @@ class Database:
             await _migrate_prediction_columns(db)
             await _migrate_results_table(db)
 
-            # Idempotent guard: migration creates this index on legacy databases; this covers
-            # fresh installs where _migrate_results_table returns early.
+            # Legacy DBs create this during migration; fresh installs skip that path.
             await db.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_results_fixture_id_unique ON results(fixture_id)"
             )
 
             await db.commit()
-
-    # -- Fixture delegation --
 
     async def create_fixture(self, week_number, games, deadline):
         return await self._fixtures.create_fixture(week_number, games, deadline)
@@ -230,14 +237,13 @@ class Database:
     async def update_fixture_announcement(self, fixture_id, message_id, channel_id):
         return await self._fixtures.update_fixture_announcement(fixture_id, message_id, channel_id)
 
-    # -- Prediction delegation --
-
     async def save_prediction(self, fixture_id, user_id, user_name, predictions, is_late=False):
         return await self._predictions.save_prediction(
             fixture_id, user_id, user_name, predictions, is_late
         )
 
     async def try_save_prediction(self, fixture_id, user_id, user_name, predictions, is_late=False):
+        """Insert once for thread submissions with atomic duplicate and open checks."""
         return await self._predictions.try_save_prediction(
             fixture_id, user_id, user_name, predictions, is_late
         )
@@ -245,6 +251,7 @@ class Database:
     async def save_prediction_guarded(
         self, fixture_id, user_id, user_name, predictions, is_late=False
     ):
+        """Upsert a DM prediction only while the fixture is still open."""
         return await self._predictions.save_prediction_guarded(
             fixture_id, user_id, user_name, predictions, is_late
         )
@@ -268,6 +275,7 @@ class Database:
         return await self._predictions.set_late_penalty_waiver(fixture_id, user_id, waived)
 
     async def toggle_late_penalty_waiver_with_recalc(self, fixture_id, user_id):
+        """Toggle late-waiver state and recalculate scores when they already exist."""
         return await self._predictions.toggle_late_penalty_waiver_with_recalc(fixture_id, user_id)
 
     async def delete_prediction(self, fixture_id, user_id):
@@ -276,18 +284,15 @@ class Database:
     async def get_all_predictions(self, fixture_id):
         return await self._predictions.get_all_predictions(fixture_id)
 
-    # -- Results delegation --
-
     async def save_results(self, fixture_id, results):
         return await self._results.save_results(fixture_id, results)
 
     async def save_results_with_recalc(self, fixture_id, results):
+        """Replace stored results and recalculate scores for already-scored fixtures."""
         return await self._results.save_results_with_recalc(fixture_id, results)
 
     async def get_results(self, fixture_id):
         return await self._results.get_results(fixture_id)
-
-    # -- Score delegation --
 
     async def fixture_has_scores(self, fixture_id):
         return await self._scores.fixture_has_scores(fixture_id)

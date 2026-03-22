@@ -99,11 +99,32 @@ class TestSetupHook:
         bot_instance.reminder_task.start.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_setup_hook_initializes_dm_router_with_loaded_handlers(self, bot_instance):
+        """DM routing is wired from the loaded admin and user cogs."""
+        with patch("typer_bot.bot.DMRouter") as mock_router:
+            await bot_instance.setup_hook()
+
+        mock_router.assert_called_once_with(
+            bot_instance.cogs["AdminCommands"].fixture_handler,
+            bot_instance.cogs["AdminCommands"].results_handler,
+            bot_instance.cogs["UserCommands"].prediction_handler,
+        )
+        assert bot_instance.dm_router is mock_router.return_value
+
+    @pytest.mark.asyncio
     async def test_setup_hook_raises_on_db_failure(self, bot_instance):
         """Database failure halts startup."""
         bot_instance.db.initialize.side_effect = Exception("DB Error")
 
         with pytest.raises(Exception, match="DB Error"):
+            await bot_instance.setup_hook()
+
+    @pytest.mark.asyncio
+    async def test_setup_hook_raises_when_required_cog_missing(self, bot_instance):
+        """Startup aborts if DM router dependencies were not loaded."""
+        bot_instance.cogs = {"AdminCommands": bot_instance.cogs["AdminCommands"]}
+
+        with pytest.raises(RuntimeError, match="Required cogs not loaded"):
             await bot_instance.setup_hook()
 
 

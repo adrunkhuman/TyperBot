@@ -49,7 +49,12 @@ class PredictionSession:
 
 
 class WorkflowStateStore:
-    """Owns process-local DM sessions and cooldowns."""
+    """Own all process-local workflow sessions and short-lived cooldowns.
+
+    This is the source of truth for fixture-creation DMs, results-entry DMs,
+    multi-step prediction DMs, thread prediction rate limiting, and the admin
+    score-calculation cooldown. None of this state is persisted across restarts.
+    """
 
     def __init__(self):
         self._fixture_sessions: dict[str, FixtureSession] = {}

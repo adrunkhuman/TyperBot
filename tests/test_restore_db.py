@@ -4,6 +4,8 @@ import sqlite3
 import sys
 from unittest.mock import patch
 
+import pytest
+
 from scripts.restore_db import main, validate_backup_sql
 
 VALID_SQL = """\
@@ -31,6 +33,31 @@ class TestValidateBackupSql:
 
 
 class TestRestoreAtomic:
+    def test_restore_cancelled_leaves_live_db_untouched(self, tmp_path):
+        """Operator cancellation exits cleanly without replacing the database."""
+        db_path = tmp_path / "typer.db"
+        conn = sqlite3.connect(db_path)
+        conn.execute("CREATE TABLE sentinel (val TEXT)")
+        conn.execute("INSERT INTO sentinel VALUES ('original')")
+        conn.commit()
+        conn.close()
+
+        backup_file = tmp_path / "backup.sql"
+        backup_file.write_text(VALID_SQL)
+
+        with (
+            patch("scripts.restore_db.DB_PATH", str(db_path)),
+            patch("builtins.input", return_value="NO"),
+            pytest.raises(SystemExit, match="0"),
+        ):
+            sys.argv = ["restore_db", str(backup_file)]
+            main()
+
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute("SELECT val FROM sentinel").fetchall()
+        conn.close()
+        assert rows == [("original",)]
+
     def test_failed_restore_does_not_corrupt_original(self, tmp_path):
         """A restore that fails mid-way must leave the live DB untouched."""
         db_path = tmp_path / "typer.db"
@@ -91,5 +118,36 @@ class TestRestoreAtomic:
         conn.close()
 
         assert "users" in tables
-        assert "old_table" not in tables  # replaced, not merged
+        assert "old_table" not in tables
         assert users == [("Alice",)]
+
+    def test_successful_restore_clears_stale_temp_file_and_creates_backup_copy(self, tmp_path):
+        """Successful restore removes stale temp state and snapshots the old live DB first."""
+        db_path = tmp_path / "typer.db"
+        conn = sqlite3.connect(db_path)
+        conn.execute("CREATE TABLE old_table (x TEXT)")
+        conn.execute("INSERT INTO old_table VALUES ('before')")
+        conn.commit()
+        conn.close()
+
+        stale_tmp = tmp_path / "typer.db.restore_tmp"
+        stale_tmp.write_text("stale")
+
+        backup_file = tmp_path / "backup.sql"
+        backup_file.write_text(VALID_SQL)
+
+        with (
+            patch("scripts.restore_db.DB_PATH", str(db_path)),
+            patch("builtins.input", return_value="YES"),
+        ):
+            sys.argv = ["restore_db", str(backup_file)]
+            main()
+
+        assert not stale_tmp.exists()
+        backup_copies = list(tmp_path.glob("typer.db.bak.*"))
+        assert len(backup_copies) == 1
+
+        backup_conn = sqlite3.connect(backup_copies[0])
+        old_rows = backup_conn.execute("SELECT x FROM old_table").fetchall()
+        backup_conn.close()
+        assert old_rows == [("before",)]

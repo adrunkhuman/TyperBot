@@ -18,7 +18,12 @@ PREDICTION_RATE_LIMIT_SECONDS = 1
 
 
 class ThreadPredictionHandler:
-    """Handles predictions posted in fixture announcement threads."""
+    """Accept one-shot predictions posted in fixture announcement threads.
+
+    Only threads tied to an open fixture announcement are treated as prediction
+    surfaces. Valid submissions are first-write-wins, rapid reposts are rate
+    limited, and duplicate or permission-edge-case feedback falls back to DMs.
+    """
 
     def __init__(self, bot: discord.Client, db: Database, workflow_state: WorkflowStateStore):
         self.bot = bot
@@ -26,9 +31,12 @@ class ThreadPredictionHandler:
         self.workflow_state = workflow_state
 
     async def on_message(self, message: discord.Message):
-        """Handle messages in fixture threads.
+        """Handle a possible prediction posted inside a fixture thread.
 
-        Returns True if message was handled, False otherwise.
+        Chatter that contains no score lines is ignored so prediction threads can
+        still be used conversationally. Returns ``True`` when the message hit a
+        known fixture thread and was processed, rejected, or rate limited;
+        returns ``False`` when the message is outside this workflow.
         """
         if message.author.bot or message.guild is None:
             return False

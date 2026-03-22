@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 
 
 class ReplacePredictionModal(discord.ui.Modal):
+    """Collect corrected prediction lines and trigger optional score recalculation."""
+
     def __init__(self, parent_view: PredictionsPanelView, fixture: dict, prediction: dict):
         super().__init__(title=f"Replace Week {fixture['week_number']} Prediction")
         self.parent_view = parent_view
@@ -71,6 +73,8 @@ class ReplacePredictionModal(discord.ui.Modal):
 
 
 class CorrectResultsModal(discord.ui.Modal):
+    """Collect corrected results input for a fixture from the admin panel."""
+
     def __init__(self, parent_view: ResultsPanelView, fixture: dict):
         super().__init__(title=f"Correct Week {fixture['week_number']} Results")
         self.parent_view = parent_view
