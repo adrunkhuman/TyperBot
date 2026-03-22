@@ -1,3 +1,3 @@
-"""Typer Bot - Football Predictions Discord Bot."""
+"""TyperBot - Football Predictions Discord Bot."""
 
 __all__ = ["TyperBot"]

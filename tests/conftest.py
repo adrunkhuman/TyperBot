@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for typer-bot tests."""
+"""Shared pytest fixtures for TyperBot tests."""
 
 import tempfile
 from datetime import UTC, datetime, timedelta
