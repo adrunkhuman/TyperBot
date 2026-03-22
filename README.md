@@ -140,4 +140,4 @@ python scripts/restore_db.py /app/data/backups/backup_*.sql
 The restore script asks for confirmation, restores into a temporary SQLite file first, and only replaces the live database after a successful restore.
 
 ## License
-MIT. Do whatever you want with it.
+MIT.
