@@ -33,9 +33,19 @@ class PredictionsPanelView(OwnerRestrictedView):
         self.clear_items()
         self.add_item(self.fixture_select)
         self.add_item(self.user_select)
-        self.add_item(ViewPredictionsButton(self))
-        self.add_item(ReplacePredictionButton(self))
-        self.add_item(ToggleWaiverButton(self))
+        self.add_item(ViewPredictionsButton(self, disabled=self.selection.fixture_id is None))
+        self.add_item(
+            ReplacePredictionButton(
+                self,
+                disabled=self.selection.fixture_id is None or self.selection.user_id is None,
+            )
+        )
+        self.add_item(
+            ToggleWaiverButton(
+                self,
+                disabled=self.selection.fixture_id is None or self.selection.user_id is None,
+            )
+        )
         self.add_item(BackButton(self))
 
     async def load_fixture_options(self) -> None:
@@ -91,19 +101,23 @@ class PredictionUserSelect(discord.ui.Select):
             await interaction.response.send_message("No predictions available.", ephemeral=True)
             return
 
-        self.parent_view.selection.user_id = self.values[0]
+        selected_user_id = self.values[0]
         fixture_id = self.parent_view.selection.fixture_id
         if fixture_id is None:
             await interaction.response.send_message("Select a fixture first.", ephemeral=True)
             return
 
-        prediction = await self.parent_view.db.get_prediction(fixture_id, self.values[0])
+        prediction = await self.parent_view.db.get_prediction(fixture_id, selected_user_id)
         if prediction is None:
+            self.parent_view.selection.user_id = None
             self.parent_view.selection.status_message = "Prediction no longer exists."
         else:
+            self.parent_view.selection.user_id = selected_user_id
             self.parent_view.selection.status_message = (
                 f"Selected {prediction['user_name']} ({_prediction_status_text(prediction)})."
             )
+
+        self.parent_view._refresh_items()
 
         await interaction.response.edit_message(
             content=self.parent_view.render_content(),
@@ -112,9 +126,13 @@ class PredictionUserSelect(discord.ui.Select):
 
 
 class ViewPredictionsButton(discord.ui.Button):
-    def __init__(self, parent_view: PredictionsPanelView):
+    def __init__(self, parent_view: PredictionsPanelView, disabled: bool = False):
         self.parent_view = parent_view
-        super().__init__(label="View Predictions", style=discord.ButtonStyle.secondary)
+        super().__init__(
+            label="View Predictions",
+            style=discord.ButtonStyle.secondary,
+            disabled=disabled,
+        )
 
     async def callback(self, interaction: discord.Interaction):
         fixture_id = self.parent_view.selection.fixture_id
@@ -141,9 +159,13 @@ class ViewPredictionsButton(discord.ui.Button):
 
 
 class ReplacePredictionButton(discord.ui.Button):
-    def __init__(self, parent_view: PredictionsPanelView):
+    def __init__(self, parent_view: PredictionsPanelView, disabled: bool = False):
         self.parent_view = parent_view
-        super().__init__(label="Replace Prediction", style=discord.ButtonStyle.primary)
+        super().__init__(
+            label="Replace Prediction",
+            style=discord.ButtonStyle.primary,
+            disabled=disabled,
+        )
 
     async def callback(self, interaction: discord.Interaction):
         fixture_id = self.parent_view.selection.fixture_id
@@ -167,9 +189,13 @@ class ReplacePredictionButton(discord.ui.Button):
 
 
 class ToggleWaiverButton(discord.ui.Button):
-    def __init__(self, parent_view: PredictionsPanelView):
+    def __init__(self, parent_view: PredictionsPanelView, disabled: bool = False):
         self.parent_view = parent_view
-        super().__init__(label="Toggle Late Waiver", style=discord.ButtonStyle.success)
+        super().__init__(
+            label="Toggle Late Waiver",
+            style=discord.ButtonStyle.success,
+            disabled=disabled,
+        )
 
     async def callback(self, interaction: discord.Interaction):
         fixture_id = self.parent_view.selection.fixture_id

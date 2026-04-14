@@ -12,12 +12,17 @@ from typer_bot.commands.admin_panel import (
     AdminPanelHomeView,
     CorrectResultsModal,
     DeleteConfirmView,
+    FixturesPanelView,
     PredictionsPanelView,
     ReplacePredictionModal,
     ResultsPanelView,
 )
 from typer_bot.commands.admin_panel.fixtures import _cleanup_discord_announcement
 from typer_bot.database import Database
+
+
+def _get_button(view: discord.ui.View, label: str) -> discord.ui.Button:
+    return next(child for child in view.children if getattr(child, "label", None) == label)
 
 
 class TestAdminPanelCommand:
@@ -97,6 +102,46 @@ class TestPredictionPanelFlows:
         assert edited_view.user_select.disabled is True
         assert len(edited_view.user_select.options) == 1
         assert edited_view.user_select.options[0].label == "No predictions available"
+
+    @pytest.mark.asyncio
+    async def test_prediction_panel_buttons_enable_as_selections_are_made(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "user-1",
+            "User One",
+            ["1-0", "1-1", "0-2"],
+            False,
+        )
+
+        view = PredictionsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
+        await view.load_fixture_options()
+
+        assert _get_button(view, "View Predictions").disabled is True
+        assert _get_button(view, "Replace Prediction").disabled is True
+        assert _get_button(view, "Toggle Late Waiver").disabled is True
+
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+
+        assert _get_button(view, "View Predictions").disabled is False
+        assert _get_button(view, "Replace Prediction").disabled is True
+        assert _get_button(view, "Toggle Late Waiver").disabled is True
+
+        view.user_select._values = ["user-1"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        assert _get_button(view, "Replace Prediction").disabled is False
+        assert _get_button(view, "Toggle Late Waiver").disabled is False
 
     @pytest.mark.asyncio
     async def test_prediction_panel_replace_opens_modal(
@@ -203,6 +248,29 @@ class TestFixturePanelFlows:
         edited_view = mock_interaction_admin.response_sent[-1]["view"]
         assert edited_view.fixture_select.disabled is False
         assert edited_view.fixture_select.options[0].label == "Week 4 [OPEN]"
+
+    @pytest.mark.asyncio
+    async def test_fixture_panel_delete_button_enables_after_fixture_selection(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            5, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+
+        view = FixturesPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
+        )
+        await view.load_fixture_options()
+
+        assert _get_button(view, "Delete Fixture").disabled is True
+
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+
+        assert _get_button(view, "Delete Fixture").disabled is False
 
     @pytest.mark.asyncio
     async def test_fixture_panel_delete_confirmation_shows_games(
@@ -370,6 +438,32 @@ class TestResultsPanelFlows:
         assert mock_interaction_admin.modal_sent["modal"].title == "Correct Week 3 Results"
 
     @pytest.mark.asyncio
+    async def test_results_panel_buttons_enable_after_fixture_selection(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            4, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+
+        view = ResultsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
+        await view.load_fixture_options()
+
+        assert _get_button(view, "View Results").disabled is True
+        assert _get_button(view, "Correct Results").disabled is True
+
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+
+        assert _get_button(view, "View Results").disabled is False
+        assert _get_button(view, "Correct Results").disabled is False
+
+    @pytest.mark.asyncio
     async def test_results_panel_requires_existing_results(
         self,
         admin_cog,
@@ -442,6 +536,39 @@ class TestAdminPanelModals:
         await modal.on_submit(mock_interaction_admin)
 
         assert "no longer have permission" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_prediction_panel_clears_actions_for_deleted_prediction(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            9, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "user-1",
+            "User One",
+            ["1-0", "1-1", "0-0"],
+            False,
+        )
+        view = PredictionsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        await admin_cog.db.delete_prediction(fixture_id, "user-1")
+
+        view.user_select._values = ["user-1"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        assert view.selection.user_id is None
+        assert "Prediction no longer exists" in mock_interaction_admin.response_sent[-1]["content"]
+        assert _get_button(view, "Replace Prediction").disabled is True
+        assert _get_button(view, "Toggle Late Waiver").disabled is True
 
     @pytest.mark.asyncio
     async def test_correct_results_modal_rechecks_admin_permission(

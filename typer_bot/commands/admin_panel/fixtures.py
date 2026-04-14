@@ -69,7 +69,7 @@ class FixturesPanelView(OwnerRestrictedView):
     def _refresh_items(self) -> None:
         self.clear_items()
         self.add_item(self.fixture_select)
-        self.add_item(FixturesDeleteButton(self))
+        self.add_item(FixturesDeleteButton(self, disabled=self.selection.fixture_id is None))
         self.add_item(BackButton(self))
 
     async def load_fixture_options(self) -> None:
@@ -85,9 +85,13 @@ class FixturesPanelView(OwnerRestrictedView):
 
 
 class FixturesDeleteButton(discord.ui.Button):
-    def __init__(self, parent_view: FixturesPanelView):
+    def __init__(self, parent_view: FixturesPanelView, disabled: bool = False):
         self.parent_view = parent_view
-        super().__init__(label="Delete Fixture", style=discord.ButtonStyle.danger)
+        super().__init__(
+            label="Delete Fixture",
+            style=discord.ButtonStyle.danger,
+            disabled=disabled,
+        )
 
     async def callback(self, interaction: discord.Interaction):
         fixture_id = self.parent_view.selection.fixture_id
