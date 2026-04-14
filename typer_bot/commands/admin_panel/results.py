@@ -88,12 +88,13 @@ class CorrectResultsButton(discord.ui.Button):
         if fixture is None:
             await interaction.response.send_message("Fixture not found.", ephemeral=True)
             return
-        if not await self.parent_view.db.get_results(fixture_id):
+        results = await self.parent_view.db.get_results(fixture_id)
+        if not results:
             await interaction.response.send_message(
                 "No results are stored for that fixture yet. Use `/admin results enter` first.",
                 ephemeral=True,
             )
             return
 
-        modal = CorrectResultsModal(self.parent_view, fixture)
+        modal = CorrectResultsModal(self.parent_view, fixture, results)
         await interaction.response.send_modal(modal)

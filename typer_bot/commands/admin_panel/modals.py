@@ -75,7 +75,7 @@ class ReplacePredictionModal(discord.ui.Modal):
 class CorrectResultsModal(discord.ui.Modal):
     """Collect corrected results input for a fixture from the admin panel."""
 
-    def __init__(self, parent_view: ResultsPanelView, fixture: dict):
+    def __init__(self, parent_view: ResultsPanelView, fixture: dict, results: list[str] | None):
         super().__init__(title=f"Correct Week {fixture['week_number']} Results")
         self.parent_view = parent_view
         self.fixture = fixture
@@ -83,6 +83,17 @@ class CorrectResultsModal(discord.ui.Modal):
             label="Results",
             style=discord.TextStyle.paragraph,
             placeholder="One line per match, e.g. Team A - Team B 2:1",
+            default=(
+                "\n".join(
+                    _format_prediction_line(index, game, result)
+                    for index, (game, result) in enumerate(
+                        zip(fixture["games"], results, strict=False),
+                        1,
+                    )
+                )
+                if results
+                else None
+            ),
             required=True,
             max_length=4000,
         )

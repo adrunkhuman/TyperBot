@@ -368,6 +368,9 @@ class TestResultsPanelFlows:
         await correct_button.callback(mock_interaction_admin)
 
         assert mock_interaction_admin.modal_sent["modal"].title == "Correct Week 3 Results"
+        assert mock_interaction_admin.modal_sent["modal"].results_input.default == (
+            "1. Team A - Team B 1-0\n2. Team C - Team D 1-1\n3. Team E - Team F 0-0"
+        )
 
     @pytest.mark.asyncio
     async def test_results_panel_requires_existing_results(
@@ -460,7 +463,7 @@ class TestAdminPanelModals:
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
         assert fixture is not None
 
-        modal = CorrectResultsModal(view, fixture)
+        modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])
         modal.results_input._value = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
         member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
         member.roles = []
@@ -486,10 +489,33 @@ class TestAdminPanelModals:
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
         assert fixture is not None
 
-        modal = CorrectResultsModal(view, fixture)
+        modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])
         modal.results_input._value = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
         await admin_cog.db.delete_fixture(fixture_id)
 
         await modal.on_submit(mock_interaction_admin)
 
         assert "Fixture not found" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_correct_results_modal_prefills_stored_results(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            7, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        view = ResultsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+
+        modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])
+
+        assert modal.results_input.default == (
+            "1. Team A - Team B 1-0\n2. Team C - Team D 1-1\n3. Team E - Team F 0-0"
+        )
