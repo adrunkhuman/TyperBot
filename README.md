@@ -36,6 +36,10 @@ Admins need a Discord role named `Admin` or `typer-admin`.
 - `Create Public Threads`
 - `Use Slash Commands`
 
+## Privileged Intents
+- Enable `Message Content Intent` in the Discord Developer Portal
+- Enable `Server Members Intent` in the Discord Developer Portal
+
 ## Prediction flow
 - Reply in the fixture thread with one line per match.
 - Run `/predict` or DM the bot and submit the same scores privately.
@@ -67,7 +71,7 @@ Team E - Team F 3:2
 - `DISCORD_TOKEN` - Discord bot token
 
 ### Optional
-- `ENVIRONMENT` - `production` to run the bot; default is `development`, which only smoke-tests config and exits
+- `ENVIRONMENT` - environment label; use `production` for production deploys, default is `development`
 - `DATA_DIR` - base data directory; default `./data` locally, set `/app/data` on Railway
 - `DB_PATH` - database path; default `{DATA_DIR}/typer.db`
 - `BACKUP_DIR` - backup directory; default `{DATA_DIR}/backups`
@@ -88,9 +92,11 @@ Team E - Team F 3:2
    - `DATA_DIR=/app/data`
    - optional: `TZ=Europe/Warsaw`
 
+`ENVIRONMENT` is labeling only. Any deployment with a valid `DISCORD_TOKEN` will connect to Discord and process events. Use a separate token for previews and manual testing. If `DISCORD_TOKEN` is unset, startup fails instead of connecting. Do not run multiple deployments against the same live token.
+
 ## Running locally
 
-By default the bot runs in smoke-test mode. It validates config and exits without connecting to Discord. Local runs also default to `DATA_DIR=./data` and `TZ=UTC`.
+Local runs default to `ENVIRONMENT=development`, `DATA_DIR=./data`, and `TZ=UTC`.
 
 ```bash
 git clone https://github.com/adrunkhuman/TyperBot
@@ -98,14 +104,7 @@ cd TyperBot
 uv sync --group dev
 
 export DISCORD_TOKEN="your_token"
-uv run python -m typer_bot
-```
-
-Live run:
-
-```bash
-export DISCORD_TOKEN="your_token"
-export ENVIRONMENT=production
+export ENVIRONMENT=development
 uv run python -m typer_bot
 ```
 
@@ -113,7 +112,7 @@ Windows PowerShell:
 
 ```powershell
 $env:DISCORD_TOKEN="your_token"
-$env:ENVIRONMENT="production"
+$env:ENVIRONMENT="development"
 uv run python -m typer_bot
 ```
 
@@ -123,7 +122,7 @@ Use a separate bot token in a private test guild. Point it at an isolated data d
 
 ```powershell
 $env:DISCORD_TOKEN="your_test_bot_token"
-$env:ENVIRONMENT="production"
+$env:ENVIRONMENT="development"
 $env:DATA_DIR="./.local/manual-discord-test"
 uv run python -m typer_bot.dev.seed_test_data --tester-user-id "your_discord_user_id"
 uv run python -m typer_bot

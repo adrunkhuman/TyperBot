@@ -5,6 +5,7 @@ from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import discord
 import pytest
 
 from typer_bot.bot import TyperBot, main
@@ -399,16 +400,57 @@ class TestMainFunction:
         assert exc_info.value.code == 1
 
     @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token", "ENVIRONMENT": "development"})
+    @patch("typer_bot.bot.TyperBot")
     @patch("typer_bot.bot.logger")
-    def test_main_smoke_test_mode(self, mock_logger):
-        """Smoke test mode validates configuration without connecting."""
+    def test_main_runs_bot_in_non_production_environment(self, mock_logger, mock_bot_cls):
+        """Non-production environments still connect to Discord."""
+        mock_bot = mock_bot_cls.return_value
+
+        main()
+
+        mock_logger.info.assert_any_call("Running in non-production environment: %s", "development")
+        mock_bot.run.assert_called_once_with("valid_token", log_handler=None)
+
+    @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token"}, clear=True)
+    @patch("typer_bot.bot.TyperBot")
+    @patch("typer_bot.bot.logger")
+    def test_main_runs_bot_when_environment_is_unset(self, mock_logger, mock_bot_cls):
+        """Missing ENVIRONMENT still boots with the default non-production label."""
+        mock_bot = mock_bot_cls.return_value
+
+        main()
+
+        mock_logger.info.assert_any_call("Running in non-production environment: %s", "development")
+        mock_bot.run.assert_called_once_with("valid_token", log_handler=None)
+
+    @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token", "ENVIRONMENT": "production"})
+    @patch("typer_bot.bot.TyperBot")
+    @patch("typer_bot.bot.logger")
+    def test_main_runs_bot_in_production_environment(self, mock_logger, mock_bot_cls):
+        """Production environment uses the production label and still boots normally."""
+        mock_bot = mock_bot_cls.return_value
+
+        main()
+
+        mock_logger.info.assert_any_call("Running in production environment")
+        mock_bot.run.assert_called_once_with("valid_token", log_handler=None)
+
+    @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token", "ENVIRONMENT": "production"})
+    @patch("typer_bot.bot.TyperBot")
+    @patch("typer_bot.bot.logger")
+    def test_main_logs_clear_error_for_missing_privileged_intents(self, mock_logger, mock_bot_cls):
+        """Privileged intent failures should point to the developer portal setting."""
+        mock_bot = mock_bot_cls.return_value
+        mock_bot.run.side_effect = discord.PrivilegedIntentsRequired(shard_id=None)
+
         with pytest.raises(SystemExit) as exc_info:
             main()
-        assert exc_info.value.code == 0
-        mock_logger.info.assert_any_call(
-            "ENVIRONMENT is not 'production'; running config smoke test only"
+
+        assert exc_info.value.code == 1
+        mock_logger.exception.assert_called_once_with(
+            "❌ Privileged intents are not enabled in the Discord developer portal. "
+            "Enable Message Content Intent and Server Members Intent for this bot application."
         )
-        mock_logger.info.assert_any_call("Smoke test passed; stopping before Discord connect")
 
 
 class TestOnMessage:

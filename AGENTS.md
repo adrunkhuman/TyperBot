@@ -163,8 +163,9 @@ prek run ruff            # Run specific hook
 
 ## 8. Deployment Environment
 - **Configuration:** The `ENVIRONMENT` variable controls bot behavior:
-  - `production`: Bot connects to Discord and runs normally
-  - Not set/`development`: Bot runs in "smoke test" mode - validates config then exits
-- **Purpose:** Prevents race conditions when multiple deployments (e.g., PR previews) share the same Discord token
+  - `production`: Production deployment label
+  - Not set/`development`: Non-production environment label
+- **Runtime:** The bot still connects to Discord in non-production environments; use a separate token for manual testing and previews
+- **Token Safety:** Any deployment with a valid token will connect; never run multiple environments against the same live token
 - **Railway:** Set `ENVIRONMENT=production` in Railway variables for production deployments
 - **Portability:** Works on any platform (Railway, Coolify, local, etc.) - just set the variable accordingly
