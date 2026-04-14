@@ -19,6 +19,7 @@ venv.bak/
 # Environment
 .env
 .env.local
+.local/
 
 # IDE
 .vscode/

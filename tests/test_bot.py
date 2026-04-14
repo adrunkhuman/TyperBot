@@ -406,8 +406,9 @@ class TestMainFunction:
             main()
         assert exc_info.value.code == 0
         mock_logger.info.assert_any_call(
-            "⚠️  ENVIRONMENT is not 'production' - running in smoke test mode"
+            "ENVIRONMENT is not 'production'; running config smoke test only"
         )
+        mock_logger.info.assert_any_call("Smoke test passed; stopping before Discord connect")
 
 
 class TestOnMessage:
