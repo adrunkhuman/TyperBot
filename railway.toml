@@ -7,7 +7,8 @@ restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
 
 # Environment Configuration:
-# Set ENVIRONMENT=production in Railway variables for production deployments.
-# PR deployments without ENVIRONMENT=production will run in smoke test mode
-# (bot starts, validates config, then exits successfully without connecting to Discord).
-# This prevents race conditions when multiple deployments share the same token.
+# Set ENVIRONMENT=production in Railway variables for the live deploy.
+# Non-production values still run the bot; they only change environment labeling.
+# Any deployment with a valid DISCORD_TOKEN will connect to Discord.
+# Use a separate token for previews/manual testing. If DISCORD_TOKEN is unset,
+# the process exits at startup instead of connecting.

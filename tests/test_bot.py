@@ -399,16 +399,40 @@ class TestMainFunction:
         assert exc_info.value.code == 1
 
     @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token", "ENVIRONMENT": "development"})
+    @patch("typer_bot.bot.TyperBot")
     @patch("typer_bot.bot.logger")
-    def test_main_smoke_test_mode(self, mock_logger):
-        """Smoke test mode validates configuration without connecting."""
-        with pytest.raises(SystemExit) as exc_info:
-            main()
-        assert exc_info.value.code == 0
-        mock_logger.info.assert_any_call(
-            "ENVIRONMENT is not 'production'; running config smoke test only"
-        )
-        mock_logger.info.assert_any_call("Smoke test passed; stopping before Discord connect")
+    def test_main_runs_bot_in_non_production_environment(self, mock_logger, mock_bot_cls):
+        """Non-production environments still connect to Discord."""
+        mock_bot = mock_bot_cls.return_value
+
+        main()
+
+        mock_logger.info.assert_any_call("Running in non-production environment: %s", "development")
+        mock_bot.run.assert_called_once_with("valid_token", log_handler=None)
+
+    @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token"}, clear=True)
+    @patch("typer_bot.bot.TyperBot")
+    @patch("typer_bot.bot.logger")
+    def test_main_runs_bot_when_environment_is_unset(self, mock_logger, mock_bot_cls):
+        """Missing ENVIRONMENT still boots with the default non-production label."""
+        mock_bot = mock_bot_cls.return_value
+
+        main()
+
+        mock_logger.info.assert_any_call("Running in non-production environment: %s", "development")
+        mock_bot.run.assert_called_once_with("valid_token", log_handler=None)
+
+    @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token", "ENVIRONMENT": "production"})
+    @patch("typer_bot.bot.TyperBot")
+    @patch("typer_bot.bot.logger")
+    def test_main_runs_bot_in_production_environment(self, mock_logger, mock_bot_cls):
+        """Production environment uses the production label and still boots normally."""
+        mock_bot = mock_bot_cls.return_value
+
+        main()
+
+        mock_logger.info.assert_any_call("Running in production environment")
+        mock_bot.run.assert_called_once_with("valid_token", log_handler=None)
 
 
 class TestOnMessage:

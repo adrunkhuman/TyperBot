@@ -1,7 +1,7 @@
 """Deployment-sensitive configuration defaults.
 
-The bot boots in smoke-test mode unless ``ENVIRONMENT`` is set to a production
-value.
+``ENVIRONMENT`` describes whether the bot is running in production or in some
+other environment. It does not control whether the bot connects to Discord.
 
 ``DATA_DIR`` intentionally defaults to ``./data`` so local development writes
 into a repo-adjacent folder without depending on Railway's volume mount.

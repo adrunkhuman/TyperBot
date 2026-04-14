@@ -15,7 +15,6 @@ from typer_bot.handlers.thread_prediction_handler import ThreadPredictionHandler
 from typer_bot.services import WorkflowStateStore
 from typer_bot.services.dm_router import DMRouter
 from typer_bot.utils import format_for_discord, now
-from typer_bot.utils.config import IS_PRODUCTION
 from typer_bot.utils.logger import set_log_context, set_trace_id
 
 logger = logging.getLogger(__name__)
@@ -367,10 +366,13 @@ def main():
         raise RuntimeError("Token validation failed unexpectedly")
     logger.info("✅ Token configured")
 
-    if not IS_PRODUCTION:
-        logger.info("ENVIRONMENT is not 'production'; running config smoke test only")
-        logger.info("Smoke test passed; stopping before Discord connect")
-        sys.exit(0)
+    environment = os.getenv("ENVIRONMENT", "development")
+    is_production = environment.lower() in ("production", "prod")
+
+    if is_production:
+        logger.info("Running in production environment")
+    else:
+        logger.info("Running in non-production environment: %s", environment)
 
     logger.info("Creating TyperBot instance...")
 
