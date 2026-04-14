@@ -380,6 +380,12 @@ def main():
         bot = TyperBot()
         logger.info("Starting bot.run()...")
         bot.run(token, log_handler=None)
+    except discord.PrivilegedIntentsRequired:
+        logger.exception(
+            "❌ Privileged intents are not enabled in the Discord developer portal. "
+            "Enable Message Content Intent and Server Members Intent for this bot application."
+        )
+        sys.exit(1)
     except discord.LoginFailure:
         logger.exception("❌ Discord login failed - check if DISCORD_TOKEN is valid")
         sys.exit(1)

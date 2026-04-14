@@ -36,6 +36,10 @@ Admins need a Discord role named `Admin` or `typer-admin`.
 - `Create Public Threads`
 - `Use Slash Commands`
 
+## Privileged Intents
+- Enable `Message Content Intent` in the Discord Developer Portal
+- Enable `Server Members Intent` in the Discord Developer Portal
+
 ## Prediction flow
 - Reply in the fixture thread with one line per match.
 - Run `/predict` or DM the bot and submit the same scores privately.

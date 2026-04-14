@@ -5,6 +5,7 @@ from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import discord
 import pytest
 
 from typer_bot.bot import TyperBot, main
@@ -433,6 +434,23 @@ class TestMainFunction:
 
         mock_logger.info.assert_any_call("Running in production environment")
         mock_bot.run.assert_called_once_with("valid_token", log_handler=None)
+
+    @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token", "ENVIRONMENT": "production"})
+    @patch("typer_bot.bot.TyperBot")
+    @patch("typer_bot.bot.logger")
+    def test_main_logs_clear_error_for_missing_privileged_intents(self, mock_logger, mock_bot_cls):
+        """Privileged intent failures should point to the developer portal setting."""
+        mock_bot = mock_bot_cls.return_value
+        mock_bot.run.side_effect = discord.PrivilegedIntentsRequired(shard_id=None)
+
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+
+        assert exc_info.value.code == 1
+        mock_logger.exception.assert_called_once_with(
+            "❌ Privileged intents are not enabled in the Discord developer portal. "
+            "Enable Message Content Intent and Server Members Intent for this bot application."
+        )
 
 
 class TestOnMessage:
