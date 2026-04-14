@@ -136,7 +136,10 @@ The seed command resets that local test database and creates one mixed scenario:
 
 Outside `./.local/manual-discord-test`, add `--force-reset`.
 
-The seed command works the same way in a PR deployment shell. Seed the DB, then use the bot as-is.
+`--force-reset` deletes the target DB, its `-wal` and `-shm` files, and the configured backup directory before reseeding.
+
+In a PR deployment shell, use the same command against that deployment's `DB_PATH` and `BACKUP_DIR`.
+Those paths usually are not `./.local/manual-discord-test`, so add `--force-reset`.
 
 Create a real fixture when you need to test announcement posting, thread creation, reactions, or DMs. The seed data is only there to save setup time.
 

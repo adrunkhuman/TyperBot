@@ -368,8 +368,8 @@ def main():
     logger.info("✅ Token configured")
 
     if not IS_PRODUCTION:
-        logger.info("⚠️  ENVIRONMENT is not 'production' - running in smoke test mode")
-        logger.info("✅ Smoke test successful - deployment validated, exiting")
+        logger.info("ENVIRONMENT is not 'production'; running config smoke test only")
+        logger.info("Smoke test passed; stopping before Discord connect")
         sys.exit(0)
 
     logger.info("Creating TyperBot instance...")

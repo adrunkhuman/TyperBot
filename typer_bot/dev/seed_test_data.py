@@ -84,6 +84,25 @@ async def seed_mixed_test_data(
     *,
     force_reset: bool = False,
 ) -> None:
+    """Reset the target SQLite files and seed one mixed manual-testing scenario.
+
+    Args:
+        db_path: SQLite database file to recreate and seed.
+        backup_dir: Backup directory removed before reseeding.
+        tester_user_id: Real Discord user ID added only to the open-fixture seed data.
+        force_reset: Allows resetting paths outside ``./.local/manual-discord-test``.
+
+    Raises:
+        ValueError: Target paths are outside the default manual-test directory and
+            ``force_reset`` is not enabled.
+
+    Notes:
+        The reset removes the database file, its WAL/SHM sidecars, and the backup
+        directory. The seed creates three fixtures: one scored past fixture, one
+        open fixture with saved predictions, and one overdue fixture with a late
+        prediction. This touches SQLite only. It does not post announcements,
+        create threads, or run any Discord workflows.
+    """
     _reset_database_files(db_path, backup_dir, force_reset)
 
     db = Database(db_path)
