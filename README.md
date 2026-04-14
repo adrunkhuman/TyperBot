@@ -117,6 +117,29 @@ $env:ENVIRONMENT="production"
 uv run python -m typer_bot
 ```
 
+## Manual Discord Testing
+
+Use a separate bot token in a private test guild. Point it at an isolated data directory, not your normal local or Railway database.
+
+```powershell
+$env:DISCORD_TOKEN="your_test_bot_token"
+$env:ENVIRONMENT="production"
+$env:DATA_DIR="./.local/manual-discord-test"
+uv run python -m typer_bot.dev.seed_test_data --tester-user-id "your_discord_user_id"
+uv run python -m typer_bot
+```
+
+The seed command resets that local test database and creates one mixed scenario:
+- one scored past fixture for standings/history
+- one open fixture with saved predictions
+- one late open fixture with a late prediction
+
+Outside `./.local/manual-discord-test`, add `--force-reset`.
+
+The seed command works the same way in a PR deployment shell. Seed the DB, then use the bot as-is.
+
+Create a real fixture when you need to test announcement posting, thread creation, reactions, or DMs. The seed data is only there to save setup time.
+
 ## Development
 
 ```bash
