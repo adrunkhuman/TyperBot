@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from tests.conftest import MockInteraction, MockUser
+from tests.conftest import MockInteraction, MockThread, MockUser
 from typer_bot.commands.user_commands import (
     ContinuePredictView,
     FixtureSelectView,
@@ -20,6 +20,23 @@ from typer_bot.utils import format_standings
 async def user_commands(mock_bot, database):
     mock_bot.db = database
     return UserCommands(mock_bot)
+
+
+async def _attach_prediction_threads(user_commands, database, fixture_ids, mock_guild):
+    threads = {}
+    for index, fixture_id in enumerate(fixture_ids, start=1):
+        message_id = str(700000 + index)
+        await database.update_fixture_announcement(
+            fixture_id,
+            message_id=message_id,
+            channel_id="123456",
+        )
+        threads[int(message_id)] = MockThread(
+            thread_id=message_id, name=f"week-{fixture_id}", guild=mock_guild
+        )
+
+    user_commands.bot.get_channel.side_effect = lambda channel_id: threads.get(channel_id)
+    return threads
 
 
 class TestPredictCommand:
@@ -111,6 +128,9 @@ class TestPredictCommand:
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")
     async def test_predict_modal_shows_parse_errors(self, user_commands, mock_interaction):
+        await _attach_prediction_threads(
+            user_commands, user_commands.db, [1], mock_interaction.guild
+        )
         await user_commands.predict.callback(user_commands, mock_interaction)
 
         modal = mock_interaction.modal_sent["modal"]
@@ -125,7 +145,10 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        await database.create_fixture(2, sample_games, deadline)
+        fixture_two_id = await database.create_fixture(2, sample_games, deadline)
+        await _attach_prediction_threads(
+            user_commands, database, [1, fixture_two_id], mock_interaction.guild
+        )
 
         await user_commands.predict.callback(user_commands, mock_interaction)
 
@@ -148,6 +171,7 @@ class TestPredictCommand:
     async def test_predict_modal_terminal_success_without_other_open_fixtures(
         self, user_commands, mock_interaction, database
     ):
+        await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
         await user_commands.predict.callback(user_commands, mock_interaction)
 
         modal = mock_interaction.modal_sent["modal"]
@@ -165,6 +189,7 @@ class TestPredictCommand:
     async def test_predict_modal_overwrites_existing_prediction(
         self, user_commands, mock_interaction, database
     ):
+        await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
         await database.save_prediction(
             1,
             str(mock_interaction.user.id),
@@ -190,6 +215,7 @@ class TestPredictCommand:
     async def test_predict_modal_marks_late_prediction(
         self, user_commands, mock_interaction, database
     ):
+        await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
         fixture = await database.get_fixture_by_id(1)
         assert fixture is not None
         fixture["deadline"] = datetime.now(UTC) - timedelta(minutes=1)
@@ -214,6 +240,9 @@ class TestPredictCommand:
     async def test_predict_modal_reports_closed_fixture_during_submit(
         self, user_commands, mock_interaction, monkeypatch
     ):
+        await _attach_prediction_threads(
+            user_commands, user_commands.db, [1], mock_interaction.guild
+        )
         await user_commands.predict.callback(user_commands, mock_interaction)
 
         modal = mock_interaction.modal_sent["modal"]
@@ -238,6 +267,9 @@ class TestPredictCommand:
     async def test_predict_modal_reports_database_error(
         self, user_commands, mock_interaction, monkeypatch
     ):
+        await _attach_prediction_threads(
+            user_commands, user_commands.db, [1], mock_interaction.guild
+        )
         await user_commands.predict.callback(user_commands, mock_interaction)
 
         modal = mock_interaction.modal_sent["modal"]
@@ -262,7 +294,10 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        await database.create_fixture(2, sample_games, deadline)
+        fixture_two_id = await database.create_fixture(2, sample_games, deadline)
+        await _attach_prediction_threads(
+            user_commands, database, [1, fixture_two_id], mock_interaction.guild
+        )
 
         await user_commands.predict.callback(user_commands, mock_interaction)
         picker = mock_interaction.response_sent[0]["view"]
@@ -287,8 +322,11 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        await database.create_fixture(1, sample_games, deadline)
-        await database.create_fixture(2, sample_games, deadline)
+        fixture_one_id = await database.create_fixture(1, sample_games, deadline)
+        fixture_two_id = await database.create_fixture(2, sample_games, deadline)
+        await _attach_prediction_threads(
+            user_commands, database, [fixture_one_id, fixture_two_id], mock_interaction.guild
+        )
 
         await user_commands.predict.callback(user_commands, mock_interaction)
         picker = mock_interaction.response_sent[0]["view"]
@@ -322,8 +360,12 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
+        fixture_ids = []
         for week in range(1, 28):
-            await database.create_fixture(week, sample_games, deadline)
+            fixture_ids.append(await database.create_fixture(week, sample_games, deadline))
+        await _attach_prediction_threads(
+            user_commands, database, fixture_ids, mock_interaction.guild
+        )
 
         await user_commands.predict.callback(user_commands, mock_interaction)
         picker = mock_interaction.response_sent[0]["view"]
@@ -412,8 +454,11 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        await database.create_fixture(1, sample_games, deadline)
-        await database.create_fixture(2, sample_games, deadline)
+        fixture_one_id = await database.create_fixture(1, sample_games, deadline)
+        fixture_two_id = await database.create_fixture(2, sample_games, deadline)
+        await _attach_prediction_threads(
+            user_commands, database, [fixture_one_id, fixture_two_id], mock_interaction.guild
+        )
 
         await user_commands.predict.callback(user_commands, mock_interaction)
         picker = mock_interaction.response_sent[0]["view"]
@@ -445,8 +490,11 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        await database.create_fixture(1, sample_games, deadline)
-        await database.create_fixture(2, sample_games, deadline)
+        fixture_one_id = await database.create_fixture(1, sample_games, deadline)
+        fixture_two_id = await database.create_fixture(2, sample_games, deadline)
+        await _attach_prediction_threads(
+            user_commands, database, [fixture_one_id, fixture_two_id], mock_interaction.guild
+        )
 
         await user_commands.predict.callback(user_commands, mock_interaction)
         picker = mock_interaction.response_sent[0]["view"]
@@ -460,7 +508,7 @@ class TestPredictCommand:
         )
         await modal.on_submit(mock_interaction)
         await database.save_scores(
-            2,
+            fixture_two_id,
             [
                 {
                     "user_id": "u1",

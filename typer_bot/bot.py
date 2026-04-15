@@ -294,7 +294,7 @@ class TyperBot(commands.Bot):
                                 )
                             else:
                                 logger.info(
-                                    f"Fixture {fixture['id']} has no thread (users can use /predict)"
+                                    f"Fixture {fixture['id']} has no thread (/predict cannot post publicly)"
                                 )
                             found = True
                             break

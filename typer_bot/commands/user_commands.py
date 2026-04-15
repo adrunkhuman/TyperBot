@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+from contextlib import suppress
+
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -19,6 +22,7 @@ from typer_bot.utils import (
 
 SELECT_PAGE_SIZE = 25
 BUTTON_PAGE_SIZE = 23
+logger = logging.getLogger(__name__)
 
 
 def _prediction_template(games: list[str]) -> str:
@@ -29,6 +33,39 @@ def _remaining_open_fixtures(
     open_fixtures: list[dict], completed_fixture_ids: set[int]
 ) -> list[dict]:
     return [fixture for fixture in open_fixtures if fixture["id"] not in completed_fixture_ids]
+
+
+def _format_thread_prediction_message(
+    fixture: dict, user_id: int, predictions: list[str], *, is_update: bool, is_late: bool
+) -> str:
+    heading = "Updated prediction" if is_update else "Prediction"
+    content = [f"**{heading} from <@{user_id}> for Week {fixture['week_number']}**", ""]
+    for index, (game, prediction) in enumerate(zip(fixture["games"], predictions, strict=False), 1):
+        content.append(f"{index}. {game} **{prediction}**")
+    if is_late:
+        content.append("")
+        content.append("⚠️ Late prediction.")
+    return "\n".join(content)
+
+
+async def _get_prediction_thread(bot: commands.Bot, fixture: dict) -> discord.Thread | None:
+    message_id = fixture.get("message_id")
+    if not message_id:
+        return None
+
+    thread = bot.get_channel(int(message_id))
+    if isinstance(thread, discord.Thread):
+        return thread
+
+    fetch_channel = getattr(bot, "fetch_channel", None)
+    if fetch_channel is None:
+        return None
+
+    try:
+        fetched = await fetch_channel(int(message_id))
+    except discord.HTTPException:
+        return None
+    return fetched if isinstance(fetched, discord.Thread) else None
 
 
 def _page_slice(items: list[dict], page: int, page_size: int) -> list[dict]:
@@ -115,6 +152,7 @@ class ContinuePredictButton(discord.ui.Button):
 
         existing_prediction = await view.db.get_prediction(self.fixture["id"], view.owner_user_id)
         modal = PredictModal(
+            view.bot,
             view.db,
             latest_fixture,
             interaction.user.display_name,
@@ -130,11 +168,13 @@ class ContinuePredictView(PaginatedFixtureView):
     def __init__(
         self,
         db: Database,
+        bot: commands.Bot,
         owner_user_id: str,
         remaining_fixtures: list[dict],
         completed_fixture_ids: set[int],
     ):
         super().__init__(owner_user_id, timeout=3600)
+        self.bot = bot
         self.db = db
         self.completed_fixture_ids = completed_fixture_ids
         self.fixtures = remaining_fixtures
@@ -182,6 +222,7 @@ class FixtureSelect(discord.ui.Select):
 
         existing_prediction = await view.db.get_prediction(fixture_id, view.owner_user_id)
         modal = PredictModal(
+            view.bot,
             view.db,
             fixture,
             interaction.user.display_name,
@@ -197,11 +238,13 @@ class FixtureSelectView(PaginatedFixtureView):
     def __init__(
         self,
         db: Database,
+        bot: commands.Bot,
         owner_user_id: str,
         fixtures: list[dict],
         completed_fixture_ids: set[int] | None = None,
     ):
         super().__init__(owner_user_id, timeout=3600)
+        self.bot = bot
         self.db = db
         self.fixtures = fixtures
         self.page_size = SELECT_PAGE_SIZE
@@ -224,6 +267,7 @@ class PredictModal(discord.ui.Modal):
 
     def __init__(
         self,
+        bot: commands.Bot,
         db: Database,
         fixture: dict,
         user_name: str,
@@ -231,6 +275,7 @@ class PredictModal(discord.ui.Modal):
         existing_prediction: dict | None = None,
     ):
         super().__init__(title=f"Predict Week {fixture['week_number']}")
+        self.bot = bot
         self.db = db
         self.fixture = fixture
         self.user_name = user_name
@@ -269,7 +314,34 @@ class PredictModal(discord.ui.Modal):
             await interaction.response.send_message("\n".join(errors), ephemeral=True)
             return
 
+        thread = await _get_prediction_thread(self.bot, fixture)
+        if thread is None:
+            await interaction.response.send_message(
+                "This fixture does not have a usable prediction thread yet. Ask an admin to restore it before using `/predict`.",
+                ephemeral=True,
+            )
+            return
+
         is_late = now() > fixture["deadline"]
+        existing_prediction = await self.db.get_prediction(fixture["id"], str(interaction.user.id))
+        public_message = None
+        try:
+            public_message = await thread.send(
+                _format_thread_prediction_message(
+                    fixture,
+                    interaction.user.id,
+                    predictions,
+                    is_update=existing_prediction is not None,
+                    is_late=is_late,
+                )
+            )
+        except discord.HTTPException:
+            await interaction.response.send_message(
+                "This fixture does not have a usable prediction thread yet. Ask an admin to restore it before using `/predict`.",
+                ephemeral=True,
+            )
+            return
+
         try:
             result = await self.db.save_prediction_guarded(
                 fixture["id"],
@@ -279,12 +351,26 @@ class PredictModal(discord.ui.Modal):
                 is_late,
             )
         except Exception:
+            logger.exception(
+                "Failed to save modal prediction",
+                extra={
+                    "fixture_id": fixture["id"],
+                    "user_id": str(interaction.user.id),
+                    "source": "predict_modal",
+                },
+            )
+            if public_message is not None:
+                with suppress(Exception):
+                    await public_message.delete()
             await interaction.response.send_message(
                 "Something went wrong while saving your prediction. Please try again.",
                 ephemeral=True,
             )
             return
         if result == SaveResult.FIXTURE_CLOSED:
+            if public_message is not None:
+                with suppress(Exception):
+                    await public_message.delete()
             await interaction.response.send_message(
                 "This fixture closed before your prediction could be saved. Use `/predict` to refresh the list.",
                 ephemeral=True,
@@ -294,7 +380,7 @@ class PredictModal(discord.ui.Modal):
         content = format_predictions_preview(fixture["games"], predictions)
         deadline_str = format_for_discord(fixture["deadline"], "F")
         relative_str = format_for_discord(fixture["deadline"], "R")
-        content += f"\n\n**Deadline:** {deadline_str} ({relative_str})"
+        content += f"\n\n**Posted publicly in the fixture thread.**\n**Deadline:** {deadline_str} ({relative_str})"
         if is_late:
             content += "\n\n⚠️ **Late prediction!** You will receive 0 points for this round."
 
@@ -305,6 +391,7 @@ class PredictModal(discord.ui.Modal):
         if remaining_fixtures:
             view = ContinuePredictView(
                 self.db,
+                self.bot,
                 str(interaction.user.id),
                 remaining_fixtures,
                 completed_fixture_ids,
@@ -390,6 +477,7 @@ class UserCommands(commands.Cog):
                 fixture["id"], str(interaction.user.id)
             )
             modal = PredictModal(
+                self.bot,
                 self.db,
                 fixture,
                 interaction.user.display_name,
@@ -398,7 +486,7 @@ class UserCommands(commands.Cog):
             await interaction.response.send_modal(modal)
             return
 
-        view = FixtureSelectView(self.db, str(interaction.user.id), open_fixtures)
+        view = FixtureSelectView(self.db, self.bot, str(interaction.user.id), open_fixtures)
         await interaction.response.send_message(
             "Multiple fixtures are open. Choose which week you want to predict first.",
             ephemeral=True,
@@ -413,7 +501,7 @@ class UserCommands(commands.Cog):
         user_help = """## 📖 User Commands
 
 **For Players:**
-• `/predict` - Submit predictions via modal
+• `/predict` - Fill predictions in a modal, then post them publicly to the fixture thread
 • `/fixtures` - View all open fixtures
 • `/standings` - See overall leaderboard
 • `/mypredictions` - Check your submitted predictions for open fixtures
@@ -434,7 +522,8 @@ class UserCommands(commands.Cog):
 1. Type `/predict` in the channel
 2. If multiple fixtures are open, choose the week from the picker
 3. Enter your predictions in the modal
-4. Save, then use the buttons to continue to other open fixtures
+4. Submit, and the bot posts them publicly in the fixture thread
+5. Use the buttons to continue to other open fixtures
 
 **Scoring:**
 • Exact score: 3 points
@@ -444,7 +533,7 @@ class UserCommands(commands.Cog):
 
 **Input formats:** Use `2:0`, `2-0`, or `2 : 0`
 
-**To change a prediction:** Use `/predict` again. Thread posts do not edit existing picks."""
+**To change a prediction:** Use `/predict` again. The bot will post your updated prediction publicly in the fixture thread."""
 
         admin_help = """\n\n## 🔧 Admin Commands
 

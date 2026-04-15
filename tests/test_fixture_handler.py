@@ -614,7 +614,7 @@ class TestViewBehavioral:
         assert fixture["message_id"] == "999999"
         interaction.response.edit_message.assert_called_once()
         interaction.followup.send.assert_called_once_with(
-            "⚠️ Fixture created but I couldn't create a prediction thread. Users can still use `/predict`.",
+            "⚠️ Fixture created but I couldn't create a prediction thread. Restore the thread before users can predict.",
             ephemeral=True,
         )
 

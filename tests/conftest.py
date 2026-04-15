@@ -3,7 +3,7 @@
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
@@ -53,6 +53,7 @@ class MockThread(discord.Thread):
         self._guild = guild
         self.reactions_added = []
         self.reactions_cleared = False
+        self.messages_sent = []
 
     @property
     def id(self):
@@ -75,6 +76,15 @@ class MockThread(discord.Thread):
 
     async def clear_reactions(self):
         self.reactions_added.clear()
+
+    async def send(self, content: str = None, **kwargs):
+        msg = {"content": content}
+        msg.update(kwargs)
+        self.messages_sent.append(msg)
+        mock_msg = MagicMock()
+        mock_msg.id = len(self.messages_sent)
+        mock_msg.delete = AsyncMock()
+        return mock_msg
 
 
 class MockGuild:
