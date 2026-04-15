@@ -135,6 +135,36 @@ class TestFixtureDeleteLogic:
         fixture = await database.get_fixture_by_id(fixture_id)
         assert fixture is None
 
+    @pytest.mark.asyncio
+    async def test_fixture_delete_shows_picker_when_multiple_open(
+        self, admin_cog, mock_interaction_admin, sample_games
+    ):
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        await admin_cog.db.create_fixture(1, sample_games, deadline)
+        await admin_cog.db.create_fixture(2, sample_games, deadline)
+
+        await admin_cog.fixture_delete.callback(admin_cog, mock_interaction_admin, None)
+
+        assert "Multiple fixtures are open" in mock_interaction_admin.response_sent[0]["content"]
+        assert isinstance(mock_interaction_admin.response_sent[0]["view"], discord.ui.View)
+
+    @pytest.mark.asyncio
+    async def test_fixture_delete_picker_opens_confirmation(
+        self, admin_cog, mock_interaction_admin, sample_games
+    ):
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        first_id = await admin_cog.db.create_fixture(1, sample_games, deadline)
+        await admin_cog.db.create_fixture(2, sample_games, deadline)
+
+        await admin_cog.fixture_delete.callback(admin_cog, mock_interaction_admin, None)
+
+        view = mock_interaction_admin.response_sent[0]["view"]
+        select = view.children[0]
+        select._values = [str(first_id)]
+        await select.callback(mock_interaction_admin)
+
+        assert "Delete Week 1?" in mock_interaction_admin.response_sent[-1]["content"]
+
 
 class TestResultsEnterLogic:
     """Test suite for results enter command logic."""
@@ -286,7 +316,7 @@ class TestResultsCalculateLogic:
         await admin_cog.results_calculate.callback(admin_cog, mock_interaction_admin, None)
 
         user_id = str(mock_interaction_admin.user.id)
-        assert admin_cog.workflow_state.get_calculate_cooldown(user_id) is not None
+        assert admin_cog.get_calculate_cooldown(user_id) is not None
         admin_cog.service.calculate_fixture_scores.assert_called_once_with(7)
         admin_cog._create_backup.assert_called_once()
         admin_cog._post_calculation_to_channel.assert_called_once_with(
@@ -310,7 +340,7 @@ class TestResultsCalculateLogic:
         await admin_cog.results_calculate.callback(admin_cog, mock_interaction_admin, None)
 
         user_id = str(mock_interaction_admin.user.id)
-        assert admin_cog.workflow_state.get_calculate_cooldown(user_id) is None
+        assert admin_cog.get_calculate_cooldown(user_id) is None
         assert mock_interaction_admin.response_sent[-1]["content"] == "No results entered"
         admin_cog._create_backup.assert_not_called()
         admin_cog._post_calculation_to_channel.assert_not_called()
@@ -321,7 +351,7 @@ class TestResultsCalculateLogic:
     ):
         """Cooldown should stop duplicate clicks before any scoring work starts."""
         user_id = str(mock_interaction_admin.user.id)
-        admin_cog.workflow_state.record_calculate_cooldown(user_id, current_time=now().timestamp())
+        admin_cog.record_calculate_cooldown(user_id, current_time=now().timestamp())
         admin_cog.service.calculate_fixture_scores = AsyncMock()
 
         await admin_cog.results_calculate.callback(admin_cog, mock_interaction_admin, None)
@@ -521,35 +551,50 @@ class TestCalculationPostFormat:
 class TestCooldownLogic:
     """Test suite for rate limiting cooldown."""
 
-    def test_cooldown_enforced(self, workflow_state):
+    @pytest.fixture
+    def admin_cog(self, mock_bot, database):
+        mock_bot.db = database
+        return AdminCommands(mock_bot)
+
+    def test_cooldown_enforced(self, admin_cog):
         """Rate limiting prevents leaderboard recalculation spam."""
         import time
 
         user_id = "user123"
         current_time = time.time()
-        workflow_state.record_calculate_cooldown(user_id, current_time=current_time)
+        admin_cog.record_calculate_cooldown(user_id, current_time=current_time)
 
-        remaining = workflow_state.get_calculate_cooldown_remaining(
+        remaining = admin_cog.get_calculate_cooldown_remaining(
             user_id,
             current_time=current_time,
             cooldown_seconds=CALCULATE_COOLDOWN,
         )
         assert remaining > 0
 
-    def test_cooldown_expires(self, workflow_state):
+    def test_cooldown_expires(self, admin_cog):
         """Cooldown expires after 30 seconds."""
         import time
 
         user_id = "user123"
         current_time = time.time()
-        workflow_state.record_calculate_cooldown(user_id, current_time=current_time - 31)
+        admin_cog.record_calculate_cooldown(user_id, current_time=current_time - 31)
 
-        remaining = workflow_state.get_calculate_cooldown_remaining(
+        remaining = admin_cog.get_calculate_cooldown_remaining(
             user_id,
             current_time=current_time,
             cooldown_seconds=CALCULATE_COOLDOWN,
         )
         assert remaining == 0.0
+
+    def test_cleanup_expired_state_removes_stale_entries(self, admin_cog):
+        admin_cog.record_calculate_cooldown(
+            "user123",
+            current_time=now().timestamp() - timedelta(hours=2).total_seconds(),
+        )
+
+        removed = admin_cog.cleanup_expired_state()
+
+        assert removed == 1
 
 
 class TestMultiOpenFixtureTargeting:
@@ -567,7 +612,7 @@ class TestMultiOpenFixtureTargeting:
         mock_interaction_admin,
         sample_games,
     ):
-        """Delete command blocks ambiguous actions when multiple fixtures are open."""
+        """Delete command shows a picker when multiple fixtures are open."""
         deadline = datetime.now(UTC) + timedelta(days=1)
         await admin_cog.db.create_fixture(1, sample_games, deadline)
         await admin_cog.db.create_fixture(2, sample_games, deadline)
@@ -576,8 +621,8 @@ class TestMultiOpenFixtureTargeting:
 
         assert len(mock_interaction_admin.response_sent) == 1
         content = mock_interaction_admin.response_sent[0]["content"]
-        assert "Multiple fixtures are currently open" in content
-        assert "Open weeks: 1, 2" in content
+        assert "Multiple fixtures are open" in content
+        assert mock_interaction_admin.response_sent[0]["view"] is not None
 
     @pytest.mark.asyncio
     async def test_results_enter_targets_explicit_week(
@@ -613,7 +658,7 @@ class TestMultiOpenFixtureTargeting:
         assert len(mock_interaction_admin.response_sent) == 1
         content = mock_interaction_admin.response_sent[0]["content"]
         assert "Multiple fixtures are currently open" in content
-        assert admin_cog.workflow_state.get_calculate_cooldown(user_id) is None
+        assert admin_cog.get_calculate_cooldown(user_id) is None
 
     @pytest.mark.asyncio
     async def test_results_enter_rejects_duplicate_open_week_numbers(

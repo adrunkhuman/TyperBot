@@ -138,7 +138,7 @@ class TestOnMessage:
         mock_message.channel.id = 789012
         mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
         await handler.on_message(mock_message)
-        handler.workflow_state.clear_thread_prediction_cooldowns()
+        handler.clear_thread_prediction_cooldowns()
 
         second_message = type(mock_message)(
             content="Team A - Team B 0-0\nTeam C - Team D 0-0\nTeam E - Team F 0-0",
@@ -181,6 +181,13 @@ class TestOnMessage:
         assert predictions[0]["predictions"] == ["2-1", "1-1", "0-2"]
         assert second_message.reactions_added == []
         assert second_message.author.dm_sent == []
+
+    def test_cleanup_expired_state_removes_stale_cooldowns(self, handler):
+        handler.record_thread_prediction_attempt("user-1", datetime.now(UTC) - timedelta(hours=2))
+
+        removed = handler.cleanup_expired_state()
+
+        assert removed == 1
 
 
 class TestEdgeCases:

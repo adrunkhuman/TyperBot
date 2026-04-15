@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 
 from typer_bot.database import Database
 from typer_bot.handlers.thread_prediction_handler import ThreadPredictionHandler
-from typer_bot.services import WorkflowStateStore
 from typer_bot.utils import format_for_discord, now
 from typer_bot.utils.logger import set_log_context, set_trace_id
 
@@ -37,8 +36,7 @@ class TyperBot(commands.Bot):
         super().__init__(command_prefix="!", intents=intents, help_command=None)
 
         self.db = Database()
-        self.workflow_state = WorkflowStateStore()
-        self.thread_handler = ThreadPredictionHandler(self, self.db, self.workflow_state)
+        self.thread_handler = ThreadPredictionHandler(self, self.db)
         logger.info("Database instance created")
 
     async def on_interaction(self, interaction: discord.Interaction):
@@ -201,7 +199,10 @@ class TyperBot(commands.Bot):
 
     @tasks.loop(minutes=5)
     async def _cleanup_sessions_task(self) -> None:
-        removed = self.workflow_state.cleanup_all_expired()
+        admin_cog = self.cogs.get("AdminCommands")
+        removed = self.thread_handler.cleanup_expired_state()
+        if admin_cog is not None:
+            removed += admin_cog.cleanup_expired_state()  # type: ignore[attr-defined]
         if removed:
             logger.debug(f"Cooldown cleanup removed {removed} expired entr(y/ies)")
 

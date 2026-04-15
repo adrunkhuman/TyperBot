@@ -2,11 +2,11 @@
 
 import logging
 from contextlib import suppress
+from datetime import datetime, timedelta
 
 import discord
 
 from typer_bot.database import Database, SaveResult
-from typer_bot.services.workflow_state import WorkflowStateStore
 from typer_bot.utils import now, parse_line_predictions
 from typer_bot.utils.logger import LogContextManager, log_event
 
@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 MAX_MESSAGE_LENGTH = 5000
 
 PREDICTION_RATE_LIMIT_SECONDS = 1
+COOLDOWN_ENTRY_EXPIRY = timedelta(hours=1)
 
 
 class ThreadPredictionHandler:
@@ -25,10 +26,45 @@ class ThreadPredictionHandler:
     limited, and duplicate or permission-edge-case feedback falls back to DMs.
     """
 
-    def __init__(self, bot: discord.Client, db: Database, workflow_state: WorkflowStateStore):
+    def __init__(self, bot: discord.Client, db: Database):
         self.bot = bot
         self.db = db
-        self.workflow_state = workflow_state
+        self._thread_prediction_cooldowns: dict[str, datetime] = {}
+
+    def record_thread_prediction_attempt(
+        self, user_id: str, current_time: datetime
+    ) -> datetime | None:
+        """Record a thread prediction attempt and return the previous timestamp.
+
+        Also prunes cooldown entries older than `COOLDOWN_ENTRY_EXPIRY` so the
+        rate-limit check does not require a separate cleanup pass.
+        """
+        previous_attempt = self._thread_prediction_cooldowns.get(user_id)
+        self._thread_prediction_cooldowns[user_id] = current_time
+
+        cutoff = current_time - COOLDOWN_ENTRY_EXPIRY
+        expired_users = [
+            stored_user_id
+            for stored_user_id, timestamp in self._thread_prediction_cooldowns.items()
+            if timestamp < cutoff
+        ]
+        for stored_user_id in expired_users:
+            self._thread_prediction_cooldowns.pop(stored_user_id, None)
+
+        return previous_attempt
+
+    def get_thread_prediction_cooldown(self, user_id: str) -> datetime | None:
+        return self._thread_prediction_cooldowns.get(user_id)
+
+    def clear_thread_prediction_cooldowns(self) -> None:
+        self._thread_prediction_cooldowns.clear()
+
+    def cleanup_expired_state(self) -> int:
+        cutoff = now() - COOLDOWN_ENTRY_EXPIRY
+        expired = [uid for uid, ts in self._thread_prediction_cooldowns.items() if ts < cutoff]
+        for uid in expired:
+            self._thread_prediction_cooldowns.pop(uid, None)
+        return len(expired)
 
     async def on_message(self, message: discord.Message):
         """Handle a possible prediction posted inside a fixture thread.
@@ -58,7 +94,7 @@ class ThreadPredictionHandler:
         ):
             # Update and check the cooldown in one step so rapid reposts cannot race each other.
             current_time = now()
-            last_time = self.workflow_state.record_thread_prediction_attempt(user_id, current_time)
+            last_time = self.record_thread_prediction_attempt(user_id, current_time)
             if (
                 last_time
                 and (current_time - last_time).total_seconds() < PREDICTION_RATE_LIMIT_SECONDS
