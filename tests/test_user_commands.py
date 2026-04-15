@@ -67,6 +67,28 @@ class TestPredictCommand:
         assert isinstance(mock_interaction.modal_sent["modal"], PredictModal)
 
     @pytest.mark.asyncio
+    async def test_multiple_open_fixture_picker_paginates_past_25(
+        self, user_commands, mock_interaction, database, sample_games
+    ):
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        for week in range(1, 27):
+            await database.create_fixture(week, sample_games, deadline)
+
+        await user_commands.predict.callback(user_commands, mock_interaction)
+
+        view = mock_interaction.response_sent[0]["view"]
+        next_button = next(
+            child for child in view.children if getattr(child, "label", None) == "Next"
+        )
+        await next_button.callback(mock_interaction)
+
+        select = mock_interaction.response_sent[-1]["view"].children[0]
+        select._values = ["26"]
+        await select.callback(mock_interaction)
+
+        assert mock_interaction.modal_sent["modal"].title == "Predict Week 26"
+
+    @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")
     async def test_predict_modal_prefills_existing_prediction(
         self, user_commands, mock_interaction, database
@@ -294,6 +316,42 @@ class TestPredictCommand:
         assert await database.get_prediction(2, str(mock_interaction.user.id)) is not None
         assert "You're done for now." in mock_interaction.response_sent[-1]["content"]
         assert "view" not in mock_interaction.response_sent[-1]
+
+    @pytest.mark.asyncio
+    async def test_continue_predict_view_paginates_past_25(
+        self, user_commands, mock_interaction, database, sample_games
+    ):
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        for week in range(1, 28):
+            await database.create_fixture(week, sample_games, deadline)
+
+        await user_commands.predict.callback(user_commands, mock_interaction)
+        picker = mock_interaction.response_sent[0]["view"]
+        select = picker.children[0]
+        select._values = ["1"]
+        await select.callback(mock_interaction)
+
+        first_modal = mock_interaction.modal_sent["modal"]
+        first_modal.predictions_input._value = (
+            "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        )
+        await first_modal.on_submit(mock_interaction)
+
+        continue_view = mock_interaction.response_sent[-1]["view"]
+        next_button = next(
+            child for child in continue_view.children if getattr(child, "label", None) == "Next"
+        )
+        await next_button.callback(mock_interaction)
+
+        paged_continue_view = mock_interaction.response_sent[-1]["view"]
+        week_27_button = next(
+            child
+            for child in paged_continue_view.children
+            if getattr(child, "label", None) == "Predict Week 27"
+        )
+        await week_27_button.callback(mock_interaction)
+
+        assert mock_interaction.modal_sent["modal"].title == "Predict Week 27"
 
     @pytest.mark.asyncio
     async def test_fixture_picker_rejects_wrong_user(

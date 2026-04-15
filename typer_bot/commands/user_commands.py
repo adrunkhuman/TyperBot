@@ -17,6 +17,9 @@ from typer_bot.utils import (
     parse_line_predictions,
 )
 
+SELECT_PAGE_SIZE = 25
+BUTTON_PAGE_SIZE = 23
+
 
 def _prediction_template(games: list[str]) -> str:
     return "\n".join(f"{game} 2:0" for game in games)
@@ -26,6 +29,59 @@ def _remaining_open_fixtures(
     open_fixtures: list[dict], completed_fixture_ids: set[int]
 ) -> list[dict]:
     return [fixture for fixture in open_fixtures if fixture["id"] not in completed_fixture_ids]
+
+
+def _page_slice(items: list[dict], page: int, page_size: int) -> list[dict]:
+    start = page * page_size
+    end = start + page_size
+    return items[start:end]
+
+
+class PaginationButton(discord.ui.Button):
+    def __init__(self, *, direction: int, label: str):
+        super().__init__(label=label, style=discord.ButtonStyle.secondary)
+        self.direction = direction
+
+    async def callback(self, interaction: discord.Interaction):
+        view = self.view
+        if not isinstance(view, PaginatedFixtureView):
+            await interaction.response.send_message(
+                "Selection flow is no longer available.", ephemeral=True
+            )
+            return
+        if str(interaction.user.id) != view.owner_user_id:
+            await interaction.response.send_message(
+                "You don't have permission to do this!", ephemeral=True
+            )
+            return
+
+        view.page += self.direction
+        view._refresh_items()
+        await interaction.response.edit_message(view=view)
+
+
+class PaginatedFixtureView(discord.ui.View):
+    def __init__(self, owner_user_id: str, *, timeout: float = 3600):
+        super().__init__(timeout=timeout)
+        self.owner_user_id = owner_user_id
+        self.page = 0
+        self.fixtures: list[dict] = []
+        self.page_size = SELECT_PAGE_SIZE
+
+    @property
+    def total_pages(self) -> int:
+        return max(1, (len(self.fixtures) + self.page_size - 1) // self.page_size)
+
+    def _refresh_pagination_items(self) -> None:
+        if self.total_pages == 1:
+            return
+
+        previous_button = PaginationButton(direction=-1, label="Previous")
+        previous_button.disabled = self.page == 0
+        next_button = PaginationButton(direction=1, label="Next")
+        next_button.disabled = self.page >= self.total_pages - 1
+        self.add_item(previous_button)
+        self.add_item(next_button)
 
 
 class ContinuePredictButton(discord.ui.Button):
@@ -68,7 +124,7 @@ class ContinuePredictButton(discord.ui.Button):
         await interaction.response.send_modal(modal)
 
 
-class ContinuePredictView(discord.ui.View):
+class ContinuePredictView(PaginatedFixtureView):
     """Offer remaining open fixtures after a successful prediction save."""
 
     def __init__(
@@ -78,19 +134,25 @@ class ContinuePredictView(discord.ui.View):
         remaining_fixtures: list[dict],
         completed_fixture_ids: set[int],
     ):
-        super().__init__(timeout=3600)
+        super().__init__(owner_user_id, timeout=3600)
         self.db = db
-        self.owner_user_id = owner_user_id
         self.completed_fixture_ids = completed_fixture_ids
-        for fixture in remaining_fixtures[:25]:
+        self.fixtures = remaining_fixtures
+        self.page_size = BUTTON_PAGE_SIZE
+        self._refresh_items()
+
+    def _refresh_items(self) -> None:
+        self.clear_items()
+        for fixture in _page_slice(self.fixtures, self.page, self.page_size):
             self.add_item(ContinuePredictButton(fixture))
+        self._refresh_pagination_items()
 
 
 class FixtureSelect(discord.ui.Select):
     def __init__(self, fixtures: list[dict]):
         options = [
             discord.SelectOption(label=f"Week {fixture['week_number']}", value=str(fixture["id"]))
-            for fixture in fixtures[:25]
+            for fixture in fixtures
         ]
         super().__init__(
             placeholder="Select a fixture", min_values=1, max_values=1, options=options
@@ -129,7 +191,7 @@ class FixtureSelect(discord.ui.Select):
         await interaction.response.send_modal(modal)
 
 
-class FixtureSelectView(discord.ui.View):
+class FixtureSelectView(PaginatedFixtureView):
     """Let a user choose which open fixture to predict first."""
 
     def __init__(
@@ -139,11 +201,17 @@ class FixtureSelectView(discord.ui.View):
         fixtures: list[dict],
         completed_fixture_ids: set[int] | None = None,
     ):
-        super().__init__(timeout=3600)
+        super().__init__(owner_user_id, timeout=3600)
         self.db = db
-        self.owner_user_id = owner_user_id
+        self.fixtures = fixtures
+        self.page_size = SELECT_PAGE_SIZE
         self.completed_fixture_ids = completed_fixture_ids or set()
-        self.add_item(FixtureSelect(fixtures))
+        self._refresh_items()
+
+    def _refresh_items(self) -> None:
+        self.clear_items()
+        self.add_item(FixtureSelect(_page_slice(self.fixtures, self.page, self.page_size)))
+        self._refresh_pagination_items()
 
 
 class PredictModal(discord.ui.Modal):
