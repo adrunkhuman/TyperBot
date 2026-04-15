@@ -16,7 +16,6 @@ from typer_bot.commands.admin_panel import (
     _build_delete_confirmation_content,
 )
 from typer_bot.database import Database
-from typer_bot.handlers import FixtureCreationHandler, ResultsEntryHandler
 from typer_bot.services import AdminService, WorkflowStateStore
 from typer_bot.services.admin_service import FixtureScoreResult
 from typer_bot.utils import format_fixture_results, format_standings, is_admin, now
@@ -55,8 +54,6 @@ class AdminCommands(commands.Cog):
         self.db: Database = bot.db  # type: ignore
         self.workflow_state: WorkflowStateStore = bot.workflow_state  # type: ignore[attr-defined]
         self.service = AdminService(self.db)
-        self.fixture_handler = FixtureCreationHandler(bot, self.db, self.workflow_state)
-        self.results_handler = ResultsEntryHandler(bot, self.db, self.workflow_state)
 
     @staticmethod
     def _format_open_weeks(open_fixtures: list[dict]) -> str:

@@ -2,11 +2,11 @@
 
 100% vibecoded, no guarantees given but it seems to work.
 
-Discord bot for weekly football prediction leagues. Admins create fixtures and enter results. Players submit score predictions by thread or DM. The bot stores picks, calculates points, and posts standings.
+Discord bot for weekly football prediction leagues. Admins create fixtures and enter results. Players submit score predictions in fixture threads or through `/predict`, which posts publicly into those threads. The bot stores picks, calculates points, and posts standings.
 
 ## Features
 - Thread predictions on fixture announcement threads
-- DM prediction flow via `/predict`
+- `/predict` modal flow that posts publicly into fixture threads
 - Flexible score parsing: `2-1`, `2:1`, `2 : 1`
 - Per-fixture deadlines with late-pick handling
 - Standings, saved predictions, and weekly results posting
@@ -14,16 +14,16 @@ Discord bot for weekly football prediction leagues. Admins create fixtures and e
 
 ## Commands
 ### Player commands
-- `/predict` - start the DM prediction flow
+- `/predict` - open a modal and post predictions publicly into the fixture thread
 - `/fixtures` - show open fixtures and deadlines
 - `/mypredictions` - show your saved predictions for open fixtures
 - `/standings` - show the leaderboard and latest scored fixture
 
 ### Admin commands
 - `/admin panel` - open the admin panel for deletion, overrides, waivers, and result correction
-- `/admin fixture create` - create a fixture by DM and post its prediction thread
+- `/admin fixture create` - create a fixture by modal and post its prediction thread
 - `/admin fixture delete [week]` - delete an open fixture
-- `/admin results enter [week]` - enter actual results by DM
+- `/admin results enter [week]` - enter actual results by modal
 - `/admin results calculate [week]` - calculate scores and post results
 - `/admin results post` - repost results with optional mentions
 
@@ -42,8 +42,8 @@ Admins need a Discord role named `Admin` or `typer-admin`.
 
 ## Prediction flow
 - Reply in the fixture thread with one line per match.
-- Run `/predict` or DM the bot and submit the same scores privately.
-- Thread submissions are one-shot. To replace a saved prediction, use `/predict` or DM the bot again.
+- Run `/predict` anywhere in the server to fill a modal, then have the bot post your prediction publicly into the fixture thread.
+- To replace a saved prediction, use `/predict` again; the bot posts a new public `Updated prediction` message in the thread.
 
 Example:
 
@@ -61,9 +61,9 @@ Team E - Team F 3:2
 
 ## Operational constraints
 - Match data, predictions, results, and scores are stored in SQLite.
-- Active DM workflows and short-lived cooldowns are kept in memory.
+- Short-lived cooldowns are kept in memory.
 - This includes the thread-post rate limiter and the `/admin results calculate` cooldown.
-- The bot is intentionally single-process for v1. If the process restarts, in-progress DM workflows are lost and in-memory cooldowns reset.
+- The bot is intentionally single-process for v1. If the process restarts, in-memory cooldowns reset.
 
 ## Configuration
 
@@ -140,7 +140,7 @@ Outside `./.local/manual-discord-test`, add `--force-reset`.
 In a PR deployment shell, use the same command against that deployment's `DB_PATH` and `BACKUP_DIR`.
 Those paths usually are not `./.local/manual-discord-test`, so add `--force-reset`.
 
-Create a real fixture when you need to test announcement posting, thread creation, reactions, or DMs. The seed data is only there to save setup time.
+Create a real fixture when you need to test announcement posting, thread creation, reactions, or modal-to-thread prediction posting. The seed data is only there to save setup time.
 
 ## Development
 

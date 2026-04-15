@@ -8,8 +8,7 @@ from typing import TYPE_CHECKING
 import discord
 
 from typer_bot.database import Database
-from typer_bot.handlers.fixture_handler import MAX_GAMES, FixtureCreationHandler
-from typer_bot.utils import APP_TZ, is_admin, now, parse_line_predictions
+from typer_bot.utils import APP_TZ, format_for_discord, is_admin, now, parse_line_predictions
 
 from .base import _build_detail_lines, _format_prediction_line, _prediction_status_text
 
@@ -18,12 +17,27 @@ if TYPE_CHECKING:
     from .results import ResultsPanelView
 
 
+MAX_GAMES = 100
+
+
 def _default_fixture_deadline(current_time: datetime) -> datetime:
     days_until_friday = (4 - current_time.weekday()) % 7
     if days_until_friday == 0 and current_time.hour >= 18:
         days_until_friday = 7
     deadline = current_time + timedelta(days=days_until_friday)
     return deadline.replace(hour=18, minute=0, second=0, microsecond=0)
+
+
+def _build_fixture_preview_text(week_number: int, games: list[str], deadline: datetime) -> str:
+    lines = [f"**Week {week_number} Fixture Preview**", ""]
+    lines.extend(f"{index}. {game}" for index, game in enumerate(games, 1))
+    lines.extend(
+        [
+            "",
+            f"**Deadline:** {format_for_discord(deadline, 'F')} ({format_for_discord(deadline, 'R')})",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def _parse_fixture_games(games_text: str) -> list[str]:
@@ -92,11 +106,7 @@ class CreateFixtureConfirmView(discord.ui.View):
             return
 
         fixture_id, allocated_week = await self.db.create_next_fixture(self.games, self.deadline)
-        final_preview = FixtureCreationHandler._build_fixture_preview_text(
-            allocated_week,
-            self.games,
-            self.deadline,
-        )
+        final_preview = _build_fixture_preview_text(allocated_week, self.games, self.deadline)
 
         created_text = f"**Week {allocated_week} Fixture Created!**\n\n{final_preview}"
         if allocated_week != self.preview_week_number:
@@ -204,11 +214,7 @@ class CreateFixtureModal(discord.ui.Modal):
             return
 
         preview_week_number = await self.db.get_max_week_number() + 1
-        preview = FixtureCreationHandler._build_fixture_preview_text(
-            preview_week_number,
-            games,
-            deadline,
-        )
+        preview = _build_fixture_preview_text(preview_week_number, games, deadline)
         open_fixtures = await self.db.get_open_fixtures()
         if open_fixtures:
             open_weeks = ", ".join(str(fixture["week_number"]) for fixture in open_fixtures)

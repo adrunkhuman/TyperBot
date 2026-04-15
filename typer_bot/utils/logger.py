@@ -13,8 +13,8 @@ Event Type Naming Convention:
         - prediction.duplicate_blocked: Race condition prevented duplicate
         - fixture.created: New fixture created by admin
         - results.entered: Admin entered actual scores
-        - session.fixture.started: Fixture creation DM flow began
-        - session.fixture.completed: Fixture creation flow ended
+        - fixture.created: Admin created a new fixture
+        - prediction.fixture_closed: Prediction rejected after a fixture closed
         - transaction.begin/commit/rollback: Database transaction boundaries
 
     Severity Guidelines:

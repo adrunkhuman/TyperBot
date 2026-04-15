@@ -11,12 +11,12 @@ You are working on `TyperBot`, a Discord bot for football prediction leagues.
 ## 2. Critical Constraints
 - **Persistence:** The database defaults to `./data/typer.db` locally. On production, set `DATA_DIR=/app/data` so the live DB stays on the Railway volume.
 - **Transaction Safety:** Critical operations use atomic transactions (BEGIN/COMMIT/ROLLBACK) to ensure data consistency. Never modify transaction logic without understanding rollback implications.
-- **Race Condition Prevention:** Both DM and thread prediction handlers check for existing predictions before saving to prevent duplicates when users submit via both methods simultaneously.
+- **Prediction Contract:** Fixture threads are the public source of truth. `/predict` is a structured composer that posts publicly into the selected fixture thread.
 - **Configuration:** All data paths configurable via env vars in `utils/config.py`:
   - `DATA_DIR`: Base directory (default: `./data`)
   - `DB_PATH`: Full database path (default: `{DATA_DIR}/typer.db`)
   - `BACKUP_DIR`: Backup storage (default: `{DATA_DIR}/backups`)
-- **DM Workflow:** Complex inputs (fixture creation, results entry) happen in DMs to keep channel clean.
+- **Modal Workflow:** Complex inputs (fixture creation, results entry, `/predict`) use Discord modals instead of DM sessions.
 - **Thread Predictions:** Users can post predictions in public threads under fixture announcements (NEW - see handlers/thread_prediction_handler.py).
 - **Rate Limiting:** Thread predictions are rate-limited to 1 per second per user. Cooldown entries auto-expire after 1 hour.
 - **Async:** All database ops must be async (`aiosqlite`).
@@ -64,14 +64,11 @@ scores (
 
 ## 4. Codebase Map
 - `typer_bot/bot.py`: Entry point and setup hook.
-- `typer_bot/commands/user_commands.py`: Public slash commands plus the DM message listener that delegates user prediction DMs.
+- `typer_bot/commands/user_commands.py`: Public slash commands, including modal-driven `/predict` flow.
 - `typer_bot/commands/admin_commands.py`: `/admin` command surface and orchestration for admin workflows.
 - `typer_bot/commands/admin_panel/`: Admin panel UI views, selects, and modals split out of `admin_commands.py`.
-- `typer_bot/handlers/dm_prediction_handler.py`: DM workflow for user predictions across one or more open fixtures.
 - `typer_bot/handlers/thread_prediction_handler.py`: Thread-based prediction processing (on_message).
-- `typer_bot/handlers/fixture_handler.py`: DM workflow for fixture creation.
-- `typer_bot/handlers/results_handler.py`: DM workflow for results entry.
-- `typer_bot/services/workflow_state.py`: Central owner for in-memory DM sessions and short-lived cooldowns.
+- `typer_bot/services/workflow_state.py`: Central owner for process-local cooldown state.
 - `typer_bot/utils/config.py`: Centralized configuration (data paths via env vars).
 - `typer_bot/utils/prediction_parser.py`: Central logic for parsing "2-1" or "2:1" strings.
 - `typer_bot/utils/scoring.py`: Point calculation rules.
@@ -81,9 +78,8 @@ scores (
 
 ## 5. Common Tasks
 - **Fixing Parsing:** Edit `prediction_parser.py`.
-- **Prediction DM Flow:** Edit `handlers/dm_prediction_handler.py`.
 - **Admin Panel UI:** Edit `commands/admin_panel/`.
-- **Workflow/Cooldown State:** Edit `services/workflow_state.py`. Keep process-local sessions and cooldowns there instead of introducing new module-level dicts.
+- **Workflow/Cooldown State:** Edit `services/workflow_state.py`. Keep process-local cooldowns there instead of introducing new module-level dicts.
 - **New Commands:** Add Cog to `commands/` folder, load in `bot.py`.
 - **Database Changes:** Edit `typer_bot/database/connection.py` `initialize()` and the focused repositories in `typer_bot/database/` (handle migrations manually if needed).
 - **Debugging:** Check `utils/logger.py` for config. Set `LOG_LEVEL=DEBUG` in env.
@@ -119,12 +115,10 @@ uv run pytest --tb=short         # Shorter traceback output
 ```
 
 ## 6. Known Quirks
-- **Handler Coordination:** `handlers/dm_prediction_handler.py` checks `WorkflowStateStore.has_results_session()` before processing DMs. This prevents an admin's result-entry messages from being mistaken for prediction updates. Always check for conflicting sessions through `WorkflowStateStore`.
 - **Double Digits:** Scores like `10-0` are allowed.
 - **Format:** Users provide flexible separators (`-`, `:`, `–`).
-- **Rate Limiting:** Thread predictions limited to 1/second per user. DM predictions have no rate limit.
-- **Session Timeouts:** Fixture creation, results entry, and DM prediction flows auto-expire after 1 hour of inactivity.
-- **Workflow State Ownership:** Process-local sessions plus thread/admin calculate cooldowns live in `services/workflow_state.py`; they are not persisted and reset on process restart.
+- **Rate Limiting:** Thread predictions limited to 1/second per user.
+- **Workflow State Ownership:** Process-local thread/admin cooldowns live in `services/workflow_state.py`; they are not persisted and reset on process restart.
 - **Token Safety:** Bot validates DISCORD_TOKEN at startup (rejects placeholders like "your_bot_token_here"). Token values are never logged.
 
 ## 7. Code Quality & Pre-commit Hooks

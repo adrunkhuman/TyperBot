@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 from typer_bot.database import Database
 from typer_bot.handlers.thread_prediction_handler import ThreadPredictionHandler
 from typer_bot.services import WorkflowStateStore
-from typer_bot.services.dm_router import DMRouter
 from typer_bot.utils import format_for_discord, now
 from typer_bot.utils.logger import set_log_context, set_trace_id
 
@@ -40,7 +39,6 @@ class TyperBot(commands.Bot):
         self.db = Database()
         self.workflow_state = WorkflowStateStore()
         self.thread_handler = ThreadPredictionHandler(self, self.db, self.workflow_state)
-        self.dm_router: DMRouter | None = None
         logger.info("Database instance created")
 
     async def on_interaction(self, interaction: discord.Interaction):
@@ -52,14 +50,11 @@ class TyperBot(commands.Bot):
         set_log_context(user_id=user_id, guild_id=guild_id, source="command")
 
     async def on_message(self, message: discord.Message):
-        """Route inbound messages through thread handling, DM routing, or cogs.
+        """Route inbound messages through thread handling or the normal cog pipeline.
 
         Thread predictions run first so public fixture threads behave like a
-        dedicated submission surface. Non-thread guild messages fall back to the
-        normal command/cog pipeline. DMs bypass listener ordering entirely and go
-        through ``DMRouter`` once ``setup_hook`` has wired the handlers together;
-        plain user prediction DMs are no longer consumed after the /predict modal
-        migration.
+        dedicated submission surface. All other messages, including DMs, fall
+        back to the normal command/cog pipeline.
         """
         if message.author.bot:
             return
@@ -76,16 +71,7 @@ class TyperBot(commands.Bot):
             if handled:
                 return
 
-            if message.guild is None:
-                # DMs: explicit router owns precedence — no cog listener ordering dependency.
-                if self.dm_router is None:
-                    logger.warning(
-                        "DM received before router initialised, dropping: user=%s", user_id
-                    )
-                    return
-                await self.dm_router.route(message)
-            else:
-                await super().on_message(message)
+            await super().on_message(message)
         finally:
             from typer_bot.utils.logger import clear_log_context, clear_trace_id
 
@@ -125,15 +111,6 @@ class TyperBot(commands.Bot):
         except Exception:
             logger.exception("Failed to load admin_commands")
             raise
-
-        admin_cog = self.cogs.get("AdminCommands")
-        if admin_cog is None:
-            raise RuntimeError("Required cogs not loaded before DM router initialisation")
-        self.dm_router = DMRouter(
-            admin_cog.fixture_handler,  # type: ignore[attr-defined]
-            admin_cog.results_handler,  # type: ignore[attr-defined]
-        )
-        logger.info("DM router initialised")
 
         logger.info("Syncing slash commands...")
         try:
@@ -226,7 +203,7 @@ class TyperBot(commands.Bot):
     async def _cleanup_sessions_task(self) -> None:
         removed = self.workflow_state.cleanup_all_expired()
         if removed:
-            logger.debug(f"Session cleanup removed {removed} expired DM session(s)")
+            logger.debug(f"Cooldown cleanup removed {removed} expired entr(y/ies)")
 
     @_cleanup_sessions_task.before_loop
     async def _before_cleanup_sessions(self):

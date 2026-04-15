@@ -10,7 +10,6 @@ from discord import app_commands
 from discord.ext import commands
 
 from typer_bot.database import Database, SaveResult
-from typer_bot.services import WorkflowStateStore
 from typer_bot.utils import (
     format_for_discord,
     format_predictions_preview,
@@ -415,7 +414,6 @@ class UserCommands(commands.Cog):
         self.bot = bot
         # TyperBot injects these attrs; discord.py typing cannot see them.
         self.db: Database = bot.db  # type: ignore
-        self.workflow_state: WorkflowStateStore = bot.workflow_state  # type: ignore[attr-defined]
 
     @staticmethod
     def _chunk_message(content: str, limit: int = 2000) -> list[str]:

@@ -26,5 +26,5 @@ def is_admin(interaction: discord.Interaction) -> bool:
 
 
 def is_admin_member(member: discord.Member | None) -> bool:
-    """Check if member has admin role (for DM workflows)."""
+    """Check if a guild member currently has an admin role."""
     return _has_admin_role(member) if member else False

@@ -50,8 +50,6 @@ class TestSetupHook:
         mock_tree = MagicMock()
         mock_tree.sync = AsyncMock(return_value=[])
         mock_admin_cog = MagicMock()
-        mock_admin_cog.fixture_handler = MagicMock()
-        mock_admin_cog.results_handler = MagicMock()
         mock_user_cog = MagicMock()
         mock_cogs = {"AdminCommands": mock_admin_cog, "UserCommands": mock_user_cog}
         with (
@@ -99,31 +97,11 @@ class TestSetupHook:
         bot_instance.reminder_task.start.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_setup_hook_initializes_dm_router_with_loaded_handlers(self, bot_instance):
-        """DM routing is wired from the loaded admin cogs that still own DM handlers."""
-        with patch("typer_bot.bot.DMRouter") as mock_router:
-            await bot_instance.setup_hook()
-
-        mock_router.assert_called_once_with(
-            bot_instance.cogs["AdminCommands"].fixture_handler,
-            bot_instance.cogs["AdminCommands"].results_handler,
-        )
-        assert bot_instance.dm_router is mock_router.return_value
-
-    @pytest.mark.asyncio
     async def test_setup_hook_raises_on_db_failure(self, bot_instance):
         """Database failure halts startup."""
         bot_instance.db.initialize.side_effect = Exception("DB Error")
 
         with pytest.raises(Exception, match="DB Error"):
-            await bot_instance.setup_hook()
-
-    @pytest.mark.asyncio
-    async def test_setup_hook_raises_when_required_cog_missing(self, bot_instance):
-        """Startup aborts if DM router dependencies were not loaded."""
-        bot_instance.cogs = {"UserCommands": bot_instance.cogs["UserCommands"]}
-
-        with pytest.raises(RuntimeError, match="Required cogs not loaded"):
             await bot_instance.setup_hook()
 
 
@@ -490,84 +468,56 @@ class TestOnMessage:
             mock_set_trace.assert_called_once_with("msg-123456")
 
 
-class TestOnMessageDMRouting:
-    """Test suite verifying DM messages are routed through DMRouter."""
+class TestOnMessageRouting:
+    """Test suite verifying non-thread messages use the normal command pipeline."""
 
     @pytest.fixture
     def bot_instance(self):
-        mock_router = MagicMock()
-        mock_router.route = AsyncMock(return_value=True)
         with patch("typer_bot.bot.commands.Bot.__init__", return_value=None):
             bot = TyperBot.__new__(TyperBot)
             bot.thread_handler = MagicMock()
             bot.thread_handler.on_message = AsyncMock(return_value=False)
-            bot.dm_router = mock_router
             yield bot
 
     @pytest.mark.asyncio
-    async def test_dm_routes_through_dm_router(self, bot_instance):
-        """DMs are dispatched to the router, not to cog listeners."""
+    async def test_dm_messages_fall_through_to_command_pipeline(self, bot_instance):
+        """DMs are no longer specially routed after DM workflow removal."""
         mock_message = MagicMock()
         mock_message.author.bot = False
         mock_message.guild = None
         mock_message.id = 1
 
-        await bot_instance.on_message(mock_message)
+        with patch("discord.ext.commands.Bot.on_message", new_callable=AsyncMock) as mock_super:
+            await bot_instance.on_message(mock_message)
 
-        bot_instance.dm_router.route.assert_awaited_once_with(mock_message)
-
-    @pytest.mark.asyncio
-    async def test_plain_user_dm_is_ignored_when_router_returns_false(self, bot_instance):
-        """User DMs without an active admin session are ignored after /predict moved to modals."""
-        bot_instance.dm_router.route = AsyncMock(return_value=False)
-        mock_message = MagicMock()
-        mock_message.author.bot = False
-        mock_message.guild = None
-        mock_message.content = "Team A - Team B 2-1"
-        mock_message.id = 5
-
-        await bot_instance.on_message(mock_message)
-
-        bot_instance.dm_router.route.assert_awaited_once_with(mock_message)
+        mock_super.assert_awaited_once_with(mock_message)
 
     @pytest.mark.asyncio
-    async def test_guild_messages_skip_dm_router(self, bot_instance):
-        """Guild messages go through normal command processing, not the DM router."""
+    async def test_guild_messages_use_command_pipeline(self, bot_instance):
+        """Guild messages still go through normal command processing."""
         mock_message = MagicMock()
         mock_message.author.bot = False
         mock_message.guild = MagicMock()
         mock_message.id = 2
 
-        with patch("discord.ext.commands.Bot.on_message", new_callable=AsyncMock):
+        with patch("discord.ext.commands.Bot.on_message", new_callable=AsyncMock) as mock_super:
             await bot_instance.on_message(mock_message)
 
-        bot_instance.dm_router.route.assert_not_awaited()
+        mock_super.assert_awaited_once_with(mock_message)
 
     @pytest.mark.asyncio
-    async def test_none_router_logs_warning_and_drops_dm(self, bot_instance):
-        """DMs received before the router is ready are logged and dropped."""
-        bot_instance.dm_router = None
-        mock_message = MagicMock()
-        mock_message.author.bot = False
-        mock_message.guild = None
-        mock_message.id = 3
-
-        with patch("typer_bot.bot.logger") as mock_logger:
-            await bot_instance.on_message(mock_message)
-            mock_logger.warning.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_thread_handler_takes_priority_over_dm_router(self, bot_instance):
-        """Thread messages are consumed before reaching the DM router."""
+    async def test_thread_handler_takes_priority_over_command_pipeline(self, bot_instance):
+        """Handled thread predictions short-circuit the normal command pipeline."""
         bot_instance.thread_handler.on_message = AsyncMock(return_value=True)
         mock_message = MagicMock()
         mock_message.author.bot = False
-        mock_message.guild = None
+        mock_message.guild = MagicMock()
         mock_message.id = 4
 
-        await bot_instance.on_message(mock_message)
+        with patch("discord.ext.commands.Bot.on_message", new_callable=AsyncMock) as mock_super:
+            await bot_instance.on_message(mock_message)
 
-        bot_instance.dm_router.route.assert_not_awaited()
+        mock_super.assert_not_awaited()
 
 
 class TestOnInteraction:

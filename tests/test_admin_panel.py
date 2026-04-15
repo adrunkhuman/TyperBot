@@ -58,6 +58,31 @@ class TestAdminPanelCommand:
         assert "Deadline:" in mock_interaction_admin.response_sent[-1]["content"]
 
     @pytest.mark.asyncio
+    async def test_create_fixture_modal_default_deadline_rolls_to_next_friday_after_cutoff(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        modal = CreateFixtureModal(
+            admin_cog.db, mock_interaction_admin.channel, str(mock_interaction_admin.user.id)
+        )
+        modal.games_input._value = "\n".join(sample_games)
+        modal.deadline_input._value = ""
+
+        with patch(
+            "typer_bot.commands.admin_panel.modals.now",
+            return_value=datetime(2026, 4, 17, 19, 0, tzinfo=UTC),
+        ):
+            await modal.on_submit(mock_interaction_admin)
+
+        view = mock_interaction_admin.response_sent[-1]["view"]
+        assert view.deadline.year == 2026
+        assert view.deadline.month == 4
+        assert view.deadline.day == 24
+        assert view.deadline.hour == 18
+
+    @pytest.mark.asyncio
     async def test_create_fixture_modal_warns_when_other_fixtures_are_open(
         self,
         admin_cog,
@@ -76,6 +101,40 @@ class TestAdminPanelCommand:
         assert "already open" in mock_interaction_admin.response_sent[-1]["content"]
 
     @pytest.mark.asyncio
+    async def test_create_fixture_modal_rejects_empty_games_list(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        modal = CreateFixtureModal(
+            admin_cog.db, mock_interaction_admin.channel, str(mock_interaction_admin.user.id)
+        )
+        modal.games_input._value = "   \n   "
+        modal.deadline_input._value = ""
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert "No games provided" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_create_fixture_modal_rejects_more_than_100_games(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        modal = CreateFixtureModal(
+            admin_cog.db, mock_interaction_admin.channel, str(mock_interaction_admin.user.id)
+        )
+        modal.games_input._value = "\n".join(
+            f"Team {index:03d} - Team {index + 1:03d}" for index in range(101)
+        )
+        modal.deadline_input._value = ""
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert "Too many games" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
     async def test_create_fixture_modal_rejects_invalid_deadline(
         self,
         admin_cog,
@@ -91,6 +150,39 @@ class TestAdminPanelCommand:
         await modal.on_submit(mock_interaction_admin)
 
         assert "Invalid date format" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_create_fixture_modal_parses_supported_deadline_formats(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        modal = CreateFixtureModal(
+            admin_cog.db, mock_interaction_admin.channel, str(mock_interaction_admin.user.id)
+        )
+        modal.games_input._value = "\n".join(sample_games)
+        modal.deadline_input._value = "20.04.2026 18:00"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        first_view = mock_interaction_admin.response_sent[-1]["view"]
+        assert first_view.deadline.year == 2026
+        assert first_view.deadline.month == 4
+        assert first_view.deadline.day == 20
+
+        modal = CreateFixtureModal(
+            admin_cog.db, mock_interaction_admin.channel, str(mock_interaction_admin.user.id)
+        )
+        modal.games_input._value = "\n".join(sample_games)
+        modal.deadline_input._value = "21/04/2026 18:00"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        second_view = mock_interaction_admin.response_sent[-1]["view"]
+        assert second_view.deadline.year == 2026
+        assert second_view.deadline.month == 4
+        assert second_view.deadline.day == 21
 
     @pytest.mark.asyncio
     async def test_create_fixture_modal_rechecks_admin_permission(
