@@ -585,7 +585,7 @@ class UserCommands(commands.Cog):
 • `15.02.2024 18:00`
 • `15/02/2024 18:00`
 
-⚠️ No DMs are required for `/predict`, `/admin fixture create`, or `/admin results enter`."""
+Use the commands above directly in Discord."""
 
         await interaction.response.send_message(user_help, ephemeral=True)
 

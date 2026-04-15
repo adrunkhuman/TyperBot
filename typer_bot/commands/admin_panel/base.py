@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from .fixtures import FixturesPanelView
     from .predictions import PredictionsPanelView
     from .results import ResultsPanelView
+    from .unified import UnifiedAdminPanelView
 
 MAX_SELECT_OPTIONS = 25
 MAX_PANEL_CONTENT_LENGTH = 1900
@@ -87,7 +88,7 @@ def _prediction_status_text(prediction: dict) -> str:
 
 @dataclass(slots=True)
 class PanelSelectionState:
-    """Shared render state for admin panel subviews.
+    """Shared render state for admin panel views.
 
     `fixture_label`, `user_label`, and `detail_lines` drive the inline panel body.
     `status_message` carries transient feedback after selections or admin actions.
@@ -104,8 +105,8 @@ class PanelSelectionState:
 class OwnerRestrictedView(discord.ui.View):
     """Base view that only accepts interactions from the opening admin.
 
-    The owner check persists across nested panel navigation so one admin cannot
-    click through another admin's ephemeral management flow.
+    The owner check persists across unified-panel refreshes and modal callbacks
+    so one admin cannot click through another admin's ephemeral management flow.
     """
 
     def __init__(
@@ -136,54 +137,6 @@ class OwnerRestrictedView(discord.ui.View):
         return True
 
 
-class AdminPanelHomeView(OwnerRestrictedView):
-    """Top-level admin panel router for fixture, prediction, and results flows."""
-
-    @discord.ui.button(label="Fixtures", style=discord.ButtonStyle.secondary)
-    async def fixtures(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        from .fixtures import FixturesPanelView
-
-        view = FixturesPanelView(self.db, self.service, self.owner_user_id, bot=self.bot)
-        await view.load_fixture_options()
-        await interaction.response.edit_message(content=view.render_content(), view=view)
-
-    @discord.ui.button(label="Predictions", style=discord.ButtonStyle.primary)
-    async def predictions(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        from .predictions import PredictionsPanelView
-
-        view = PredictionsPanelView(self.db, self.service, self.owner_user_id)
-        await view.load_fixture_options()
-        await interaction.response.edit_message(content=view.render_content(), view=view)
-
-    @discord.ui.button(label="Results", style=discord.ButtonStyle.success)
-    async def results(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        from .results import ResultsPanelView
-
-        view = ResultsPanelView(self.db, self.service, self.owner_user_id)
-        await view.load_fixture_options()
-        await interaction.response.edit_message(content=view.render_content(), view=view)
-
-
-class BackButton(discord.ui.Button):
-    """Return from a subview to the home panel while preserving ownership."""
-
-    def __init__(self, parent_view: OwnerRestrictedView):
-        self.parent_view = parent_view
-        super().__init__(label="Back", style=discord.ButtonStyle.secondary)
-
-    async def callback(self, interaction: discord.Interaction):
-        view = AdminPanelHomeView(
-            self.parent_view.db,
-            self.parent_view.service,
-            self.parent_view.owner_user_id,
-            bot=self.parent_view.bot,
-        )
-        await interaction.response.edit_message(
-            content="**Admin Panel**\nChoose the workflow you want to manage.",
-            view=view,
-        )
-
-
 class FixtureSelect(discord.ui.Select):
     """Shared fixture selector that updates panel selection state in place.
 
@@ -195,7 +148,10 @@ class FixtureSelect(discord.ui.Select):
 
     def __init__(
         self,
-        parent_view: FixturesPanelView | PredictionsPanelView | ResultsPanelView,
+        parent_view: FixturesPanelView
+        | PredictionsPanelView
+        | ResultsPanelView
+        | UnifiedAdminPanelView,
     ):
         self.parent_view = parent_view
         super().__init__(
