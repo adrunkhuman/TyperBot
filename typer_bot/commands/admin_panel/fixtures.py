@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 import discord
 
@@ -12,7 +12,6 @@ from typer_bot.services import AdminService
 from typer_bot.utils import is_admin
 
 from .base import (
-    BackButton,
     FixtureSelect,
     OwnerRestrictedView,
     PanelSelectionState,
@@ -20,6 +19,9 @@ from .base import (
 )
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from .unified import UnifiedAdminPanelView
 
 
 class _MessageLookupChannel(Protocol):
@@ -75,7 +77,6 @@ class FixturesPanelView(OwnerRestrictedView):
         self.clear_items()
         self.add_item(self.fixture_select)
         self.add_item(FixturesDeleteButton(self, disabled=self.selection.fixture_id is None))
-        self.add_item(BackButton(self))
 
     async def load_fixture_options(self) -> None:
         fixtures = await self.db.get_open_fixtures()
@@ -102,7 +103,9 @@ class FixturesPanelView(OwnerRestrictedView):
 
 
 class FixturesDeleteButton(discord.ui.Button):
-    def __init__(self, parent_view: FixturesPanelView, disabled: bool = False):
+    def __init__(
+        self, parent_view: FixturesPanelView | UnifiedAdminPanelView, disabled: bool = False
+    ):
         self.parent_view = parent_view
         super().__init__(
             label="Delete Fixture",

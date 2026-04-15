@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import discord
 
 from typer_bot.database import Database
@@ -9,7 +11,6 @@ from typer_bot.services import AdminService
 
 from .base import (
     MAX_SELECT_OPTIONS,
-    BackButton,
     FixtureSelect,
     OwnerRestrictedView,
     PanelSelectionState,
@@ -18,6 +19,9 @@ from .base import (
     _render_panel_content,
 )
 from .modals import ReplacePredictionModal
+
+if TYPE_CHECKING:
+    from .unified import UnifiedAdminPanelView
 
 
 class PredictionsPanelView(OwnerRestrictedView):
@@ -50,7 +54,6 @@ class PredictionsPanelView(OwnerRestrictedView):
                 disabled=self.selection.fixture_id is None or self.selection.user_id is None,
             )
         )
-        self.add_item(BackButton(self))
 
     async def load_fixture_options(self) -> None:
         fixtures = await self.db.get_recent_fixtures(MAX_SELECT_OPTIONS)
@@ -101,7 +104,7 @@ class PredictionsPanelView(OwnerRestrictedView):
 class PredictionUserSelect(discord.ui.Select):
     """Select a user who already has a prediction for the chosen fixture."""
 
-    def __init__(self, parent_view: PredictionsPanelView):
+    def __init__(self, parent_view: PredictionsPanelView | UnifiedAdminPanelView):
         self.parent_view = parent_view
         super().__init__(
             placeholder="Select user",
@@ -181,7 +184,9 @@ class PredictionUserSelect(discord.ui.Select):
 
 
 class ReplacePredictionButton(discord.ui.Button):
-    def __init__(self, parent_view: PredictionsPanelView, disabled: bool = False):
+    def __init__(
+        self, parent_view: PredictionsPanelView | UnifiedAdminPanelView, disabled: bool = False
+    ):
         self.parent_view = parent_view
         super().__init__(
             label="Replace Prediction",
@@ -233,7 +238,9 @@ class ReplacePredictionButton(discord.ui.Button):
 
 
 class ViewPredictionsButton(discord.ui.Button):
-    def __init__(self, parent_view: PredictionsPanelView, disabled: bool = False):
+    def __init__(
+        self, parent_view: PredictionsPanelView | UnifiedAdminPanelView, disabled: bool = False
+    ):
         self.parent_view = parent_view
         super().__init__(
             label="View Predictions",
@@ -293,7 +300,9 @@ class ViewPredictionsButton(discord.ui.Button):
 
 
 class ToggleWaiverButton(discord.ui.Button):
-    def __init__(self, parent_view: PredictionsPanelView, disabled: bool = False):
+    def __init__(
+        self, parent_view: PredictionsPanelView | UnifiedAdminPanelView, disabled: bool = False
+    ):
         self.parent_view = parent_view
         super().__init__(
             label="Toggle Late Waiver",

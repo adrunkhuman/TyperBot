@@ -9,7 +9,6 @@ import pytest
 from tests.conftest import MockInteraction, MockUser
 from typer_bot.commands.admin_commands import AdminCommands
 from typer_bot.commands.admin_panel import (
-    AdminPanelHomeView,
     CorrectResultsModal,
     CreateFixtureModal,
     DeleteConfirmView,
@@ -18,6 +17,7 @@ from typer_bot.commands.admin_panel import (
     PredictionsPanelView,
     ReplacePredictionModal,
     ResultsPanelView,
+    UnifiedAdminPanelView,
 )
 from typer_bot.commands.admin_panel.fixtures import _cleanup_discord_announcement
 from typer_bot.database import Database
@@ -452,18 +452,14 @@ class TestPredictionPanelFlows:
     ):
         await admin_cog.db.create_fixture(1, sample_games, datetime.now(UTC) + timedelta(days=1))
 
-        home_view = AdminPanelHomeView(
+        unified_view = UnifiedAdminPanelView(
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
         )
-        predictions_button = next(
-            child for child in home_view.children if getattr(child, "label", None) == "Predictions"
-        )
-        await predictions_button.callback(mock_interaction_admin)
+        await unified_view.load_fixture_options()
 
-        edited_view = mock_interaction_admin.response_sent[-1]["view"]
-        assert edited_view.user_select.disabled is True
-        assert len(edited_view.user_select.options) == 1
-        assert edited_view.user_select.options[0].label == "No predictions available"
+        assert unified_view.user_select.disabled is True
+        assert len(unified_view.user_select.options) == 1
+        assert unified_view.user_select.options[0].label == "No predictions available"
 
     @pytest.mark.asyncio
     async def test_prediction_panel_buttons_enable_as_selections_are_made(
@@ -887,17 +883,13 @@ class TestFixturePanelFlows:
     ):
         await admin_cog.db.create_fixture(4, sample_games, datetime.now(UTC) + timedelta(days=1))
 
-        view = AdminPanelHomeView(
+        view = UnifiedAdminPanelView(
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
         )
-        fixture_button = next(
-            child for child in view.children if getattr(child, "label", None) == "Fixtures"
-        )
-        await fixture_button.callback(mock_interaction_admin)
+        await view.load_fixture_options()
 
-        edited_view = mock_interaction_admin.response_sent[-1]["view"]
-        assert edited_view.fixture_select.disabled is False
-        assert edited_view.fixture_select.options[0].label == "Week 4 [OPEN]"
+        assert view.fixture_select.disabled is False
+        assert view.fixture_select.options[0].label == "Week 4 [OPEN]"
 
     @pytest.mark.asyncio
     async def test_fixture_panel_delete_button_enables_after_fixture_selection(
@@ -935,22 +927,16 @@ class TestFixturePanelFlows:
             6, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
-        view = AdminPanelHomeView(
+        view = UnifiedAdminPanelView(
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
         )
-        fixture_button = next(
-            child for child in view.children if getattr(child, "label", None) == "Fixtures"
-        )
-        await fixture_button.callback(mock_interaction_admin)
+        await view.load_fixture_options()
 
-        fixtures_view = mock_interaction_admin.response_sent[-1]["view"]
-        fixtures_view.fixture_select._values = [str(fixture_id)]
-        await fixtures_view.fixture_select.callback(mock_interaction_admin)
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
 
         delete_button = next(
-            child
-            for child in fixtures_view.children
-            if getattr(child, "label", None) == "Delete Fixture"
+            child for child in view.children if getattr(child, "label", None) == "Delete Fixture"
         )
         await delete_button.callback(mock_interaction_admin)
 
@@ -1221,6 +1207,83 @@ class TestResultsPanelFlows:
         content = mock_interaction_admin.response_sent[-1]["content"]
         assert len(content) <= 1900
         assert "content truncated" in content
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_correct_results_clears_stale_user_on_success(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            32, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "user-1",
+            "User One",
+            ["1-0", "1-1", "0-2"],
+            False,
+        )
+        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["user-1"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+        modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])
+        modal.results_input._value = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert view.selection.user_id is None
+        assert view.selection.user_label == ""
+        assert "User:" not in mock_interaction_admin.response_sent[-1]["content"]
+        assert "1. Team A - Team B 2-1" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_correct_results_clears_stale_user_on_deleted_fixture(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            33, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "user-1",
+            "User One",
+            ["1-0", "1-1", "0-2"],
+            False,
+        )
+        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["user-1"]
+        await view.user_select.callback(mock_interaction_admin)
+        await admin_cog.db.delete_fixture(fixture_id)
+
+        correct_button = _get_button(view, "Correct Results")
+        await correct_button.callback(mock_interaction_admin)
+
+        assert view.selection.fixture_id is None
+        assert view.selection.user_id is None
+        assert view.user_select.disabled is True
+        assert "Fixture no longer exists" in mock_interaction_admin.response_sent[-1]["content"]
 
 
 class TestAdminPanelModals:

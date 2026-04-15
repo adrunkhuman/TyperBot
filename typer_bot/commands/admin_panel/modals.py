@@ -15,6 +15,7 @@ from .base import _build_detail_lines, _format_prediction_line, _prediction_stat
 if TYPE_CHECKING:
     from .predictions import PredictionsPanelView
     from .results import ResultsPanelView
+    from .unified import UnifiedAdminPanelView
 
 
 MAX_GAMES = 100
@@ -362,7 +363,12 @@ class EnterResultsModal(discord.ui.Modal):
 class ReplacePredictionModal(discord.ui.Modal):
     """Collect corrected prediction lines and trigger optional score recalculation."""
 
-    def __init__(self, parent_view: PredictionsPanelView, fixture: dict, prediction: dict):
+    def __init__(
+        self,
+        parent_view: PredictionsPanelView | UnifiedAdminPanelView,
+        fixture: dict,
+        prediction: dict,
+    ):
         super().__init__(title=f"Replace Week {fixture['week_number']} Prediction")
         self.parent_view = parent_view
         self.fixture = fixture
@@ -446,9 +452,20 @@ class ReplacePredictionModal(discord.ui.Modal):
 
 
 class CorrectResultsModal(discord.ui.Modal):
-    """Collect corrected results input for a fixture from the admin panel."""
+    """Collect corrected results input for a fixture from the admin panel.
 
-    def __init__(self, parent_view: ResultsPanelView, fixture: dict, results: list[str] | None):
+    Successful submits update the parent panel inline, clear any stale selected
+    prediction user, and may trigger score recalculation. If the fixture
+    disappears mid-flow, the parent panel reloads its selectors before
+    re-rendering the error state.
+    """
+
+    def __init__(
+        self,
+        parent_view: ResultsPanelView | UnifiedAdminPanelView,
+        fixture: dict,
+        results: list[str] | None,
+    ):
         super().__init__(title=f"Correct Week {fixture['week_number']} Results")
         self.parent_view = parent_view
         self.fixture = fixture
@@ -492,9 +509,14 @@ class CorrectResultsModal(discord.ui.Modal):
             if str(exc) == "Fixture not found":
                 self.parent_view.selection.fixture_id = None
                 self.parent_view.selection.fixture_label = ""
+                self.parent_view.selection.user_id = None
+                self.parent_view.selection.user_label = ""
                 self.parent_view.selection.detail_lines = []
                 self.parent_view.selection.status_message = str(exc)
                 await self.parent_view.load_fixture_options()
+                load_user_options = getattr(self.parent_view, "load_user_options", None)
+                if callable(load_user_options):
+                    await load_user_options()
                 self.parent_view._refresh_items()
                 await interaction.response.edit_message(
                     content=self.parent_view.render_content(),
@@ -511,8 +533,13 @@ class CorrectResultsModal(discord.ui.Modal):
         if recalculation is not None:
             self.parent_view.selection.status_message += " Scores were recalculated."
 
+        self.parent_view.selection.user_id = None
+        self.parent_view.selection.user_label = ""
         self.parent_view.selection.detail_lines = _build_detail_lines(fixture["games"], _results)
 
+        load_user_options = getattr(self.parent_view, "load_user_options", None)
+        if callable(load_user_options):
+            await load_user_options()
         self.parent_view._refresh_items()
 
         await interaction.response.edit_message(

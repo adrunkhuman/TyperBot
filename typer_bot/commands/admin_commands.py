@@ -10,10 +10,10 @@ from discord import app_commands
 from discord.ext import commands
 
 from typer_bot.commands.admin_panel import (
-    AdminPanelHomeView,
     CreateFixtureModal,
     DeleteConfirmView,
     EnterResultsModal,
+    UnifiedAdminPanelView,
     _build_delete_confirmation_content,
 )
 from typer_bot.database import Database
@@ -269,9 +269,10 @@ class AdminCommands(commands.Cog):
     @admin.command(name="panel", description="Open the admin management panel")
     @admin_only()
     async def panel(self, interaction: discord.Interaction):
-        view = AdminPanelHomeView(self.db, self.service, str(interaction.user.id), bot=self.bot)
+        view = UnifiedAdminPanelView(self.db, self.service, str(interaction.user.id), bot=self.bot)
+        await view.load_fixture_options()
         await interaction.response.send_message(
-            "**Admin Panel**\nChoose the workflow you want to manage.",
+            view.render_content(),
             view=view,
             ephemeral=True,
         )

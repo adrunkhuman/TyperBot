@@ -1,6 +1,5 @@
 """Admin panel views and interaction components."""
 
-from .base import AdminPanelHomeView
 from .fixtures import (
     DeleteConfirmView,
     FixturesPanelView,
@@ -14,9 +13,9 @@ from .modals import (
 )
 from .predictions import PredictionsPanelView
 from .results import ResultsPanelView
+from .unified import UnifiedAdminPanelView
 
 __all__ = [
-    "AdminPanelHomeView",
     "CorrectResultsModal",
     "CreateFixtureModal",
     "DeleteConfirmView",
@@ -25,5 +24,6 @@ __all__ = [
     "PredictionsPanelView",
     "ReplacePredictionModal",
     "ResultsPanelView",
+    "UnifiedAdminPanelView",
     "_build_delete_confirmation_content",
 ]
