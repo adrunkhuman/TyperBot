@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Coroutine
-from typing import Any, Protocol, cast
+from typing import Protocol, cast
 
 import discord
 
@@ -211,60 +210,3 @@ class DeleteConfirmView(discord.ui.View):
             content="Deletion cancelled. The fixture is still active.",
             view=None,
         )
-
-
-StartFixtureDM = Callable[
-    [discord.User | discord.Member, str, int, int],
-    Coroutine[Any, Any, bool],
-]
-
-
-class OpenFixtureWarningView(discord.ui.View):
-    """Shown when an admin tries to create a fixture while others are already open."""
-
-    def __init__(
-        self,
-        start_fixture_dm: StartFixtureDM,
-        user_id: str,
-        channel_id: int,
-        guild_id: int,
-    ):
-        super().__init__(timeout=60)
-        self.start_fixture_dm = start_fixture_dm
-        self.user_id = user_id
-        self.channel_id = channel_id
-        self.guild_id = guild_id
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if str(interaction.user.id) != self.user_id:
-            await interaction.response.send_message(
-                "You don't have permission to do this!", ephemeral=True
-            )
-            return False
-        if not is_admin(interaction):
-            await interaction.response.send_message(
-                "You no longer have permission to use admin commands.", ephemeral=True
-            )
-            return False
-        return True
-
-    @discord.ui.button(label="Yes, Proceed", style=discord.ButtonStyle.danger)
-    async def proceed(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        await interaction.response.edit_message(
-            content="Check your DMs! I've sent you instructions for creating the fixture.",
-            view=None,
-        )
-        if not await self.start_fixture_dm(
-            interaction.user,
-            self.user_id,
-            self.channel_id,
-            self.guild_id,
-        ):
-            await interaction.followup.send(
-                "I can't send you DMs. Please enable DMs from server members and try again.",
-                ephemeral=True,
-            )
-
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.gray)
-    async def cancel(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        await interaction.response.edit_message(content="Fixture creation cancelled.", view=None)

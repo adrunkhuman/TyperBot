@@ -5,47 +5,35 @@ from datetime import UTC, datetime, timedelta
 from typer_bot.utils import now
 
 
-class TestSessionCleanup:
-    def test_fixture_sessions_expire_when_accessed(self, workflow_state):
-        session = workflow_state.start_fixture_session("user-1", 123, 456)
-        session.created_at = datetime.now(UTC) - timedelta(hours=2)
-
-        assert workflow_state.get_fixture_session("user-1") is None
-
-    def test_results_sessions_expire_when_accessed(self, workflow_state):
-        session = workflow_state.start_results_session("user-1", 99, 456)
-        session.created_at = datetime.now(UTC) - timedelta(hours=2)
-
-        assert workflow_state.get_results_session("user-1") is None
-
-
 class TestCleanupAllExpired:
     def test_returns_zero_when_nothing_expired(self, workflow_state):
-        workflow_state.start_fixture_session("user-1", 123, 456)
-        workflow_state.start_results_session("user-2", 99, 456)
+        workflow_state.record_thread_prediction_attempt("user-1", datetime.now(UTC))
+        workflow_state.record_calculate_cooldown("user-2", current_time=now().timestamp())
 
         assert workflow_state.cleanup_all_expired() == 0
 
     def test_counts_expired_sessions_across_all_types(self, workflow_state):
-        s1 = workflow_state.start_fixture_session("user-1", 123, 456)
-        s2 = workflow_state.start_results_session("user-2", 99, 456)
-
-        stale = datetime.now(UTC) - timedelta(hours=2)
-        s1.created_at = stale
-        s2.created_at = stale
+        workflow_state.record_thread_prediction_attempt(
+            "user-1", datetime.now(UTC) - timedelta(hours=2)
+        )
+        workflow_state.record_calculate_cooldown(
+            "user-2",
+            current_time=(datetime.now(UTC) - timedelta(hours=2)).timestamp(),
+        )
 
         assert workflow_state.cleanup_all_expired() == 2
 
     def test_only_removes_expired_leaves_fresh(self, workflow_state):
-        # Backdate after both inserts; starting a fixture session triggers lazy cleanup.
-        stale = workflow_state.start_fixture_session("stale-user", 123, 456)
-        workflow_state.start_fixture_session("fresh-user", 123, 456)
-        stale.created_at = datetime.now(UTC) - timedelta(hours=2)
+        workflow_state.record_thread_prediction_attempt(
+            "stale-user", datetime.now(UTC) - timedelta(hours=2)
+        )
+        fresh_time = datetime.now(UTC)
+        workflow_state.record_thread_prediction_attempt("fresh-user", fresh_time)
 
         removed = workflow_state.cleanup_all_expired()
 
-        assert removed == 1
-        assert workflow_state.get_fixture_session("fresh-user") is not None
+        assert removed == 0
+        assert workflow_state.get_thread_prediction_cooldown("fresh-user") == fresh_time
 
 
 class TestCooldownTracking:

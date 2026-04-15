@@ -251,7 +251,7 @@ class Database:
     async def save_prediction_guarded(
         self, fixture_id, user_id, user_name, predictions, is_late=False
     ):
-        """Upsert a DM prediction only while the fixture is still open."""
+        """Upsert a prediction only while the fixture is still open."""
         return await self._predictions.save_prediction_guarded(
             fixture_id, user_id, user_name, predictions, is_late
         )

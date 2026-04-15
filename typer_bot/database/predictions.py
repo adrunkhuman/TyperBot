@@ -144,8 +144,9 @@ class PredictionRepository:
         """Upsert a prediction, but only when the fixture is still open.
 
         Unlike try_save_prediction(), allows overwriting an existing prediction
-        (intentional re-submission via DM). Returns FIXTURE_CLOSED if the fixture
-        was closed between the handler's read and this write; SAVED otherwise.
+        (intentional re-submission via `/predict` or admin correction paths).
+        Returns FIXTURE_CLOSED if the fixture was closed between the caller's
+        read and this write; SAVED otherwise.
 
         Args:
             fixture_id: ID of the fixture to predict.
