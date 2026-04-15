@@ -31,6 +31,10 @@ def _has_button(view: discord.ui.View, label: str) -> bool:
     return any(getattr(child, "label", None) == label for child in view.children)
 
 
+def _selected_option_labels(select: discord.ui.Select) -> list[str]:
+    return [option.label for option in select.options if option.default]
+
+
 class TestAdminPanelCommand:
     """The slash entrypoint should open the panel."""
 
@@ -507,6 +511,8 @@ class TestPredictionPanelFlows:
         assert "3. Team E - Team F 0-2" in mock_interaction_admin.response_sent[-1]["content"]
         assert _get_button(view, "Replace Prediction").disabled is False
         assert _get_button(view, "Toggle Late Waiver").disabled is False
+        assert _selected_option_labels(view.fixture_select) == ["Week 1 [OPEN]"]
+        assert _selected_option_labels(view.user_select) == ["User One"]
 
     @pytest.mark.asyncio
     async def test_prediction_panel_shows_no_predictions_inline_after_fixture_selection(
@@ -715,6 +721,116 @@ class TestPredictionPanelFlows:
         await replace_button.callback(mock_interaction_admin)
 
         assert mock_interaction_admin.modal_sent["modal"].title == "Replace Week 1 Prediction"
+
+    @pytest.mark.asyncio
+    async def test_prediction_panel_toggle_waiver_dms_affected_user(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            34, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-0", "1-1", "0-2"],
+            True,
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = target_user
+
+        view = PredictionsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
+        view.bot = admin_cog.bot
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        toggle_button = _get_button(view, "Toggle Late Waiver")
+        await toggle_button.callback(mock_interaction_admin)
+
+        assert "late waiver" in target_user.dm_sent[-1].lower()
+        assert _selected_option_labels(view.fixture_select) == ["Week 34 [OPEN]"]
+        assert _selected_option_labels(view.user_select) == ["User One"]
+
+    @pytest.mark.asyncio
+    async def test_prediction_panel_toggle_waiver_ignores_dm_failures(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            35, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-0", "1-1", "0-2"],
+            True,
+        )
+        failing_user = MagicMock()
+        failing_user.send = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "dm blocked"))
+        admin_cog.bot.get_user.return_value = failing_user
+
+        view = PredictionsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
+        view.bot = admin_cog.bot
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        toggle_button = _get_button(view, "Toggle Late Waiver")
+        await toggle_button.callback(mock_interaction_admin)
+
+        assert "waiver enabled" in mock_interaction_admin.response_sent[-1]["content"].lower()
+
+    @pytest.mark.asyncio
+    async def test_prediction_panel_toggle_waiver_fetches_uncached_user(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            40, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-0", "1-1", "0-2"],
+            True,
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = None
+        admin_cog.bot.fetch_user = AsyncMock(return_value=target_user)
+
+        view = PredictionsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
+        view.bot = admin_cog.bot
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        toggle_button = _get_button(view, "Toggle Late Waiver")
+        await toggle_button.callback(mock_interaction_admin)
+
+        admin_cog.bot.fetch_user.assert_awaited_once()
+        assert "late waiver" in target_user.dm_sent[-1].lower()
 
     @pytest.mark.asyncio
     async def test_prediction_panel_replace_recovers_when_prediction_is_deleted(
@@ -1220,12 +1336,13 @@ class TestResultsPanelFlows:
         )
         await admin_cog.db.save_prediction(
             fixture_id,
-            "user-1",
+            "111",
             "User One",
             ["1-0", "1-1", "0-2"],
             False,
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        admin_cog.bot.get_user.return_value = None
 
         view = UnifiedAdminPanelView(
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
@@ -1233,7 +1350,7 @@ class TestResultsPanelFlows:
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
-        view.user_select._values = ["user-1"]
+        view.user_select._values = ["111"]
         await view.user_select.callback(mock_interaction_admin)
 
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
@@ -1247,6 +1364,8 @@ class TestResultsPanelFlows:
         assert view.selection.user_label == ""
         assert "User:" not in mock_interaction_admin.response_sent[-1]["content"]
         assert "1. Team A - Team B 2-1" in mock_interaction_admin.response_sent[-1]["content"]
+        assert _selected_option_labels(view.user_select) == []
+        assert _selected_option_labels(view.fixture_select) == ["Week 32 [OPEN]"]
 
     @pytest.mark.asyncio
     async def test_unified_panel_correct_results_clears_stale_user_on_deleted_fixture(
@@ -1260,7 +1379,7 @@ class TestResultsPanelFlows:
         )
         await admin_cog.db.save_prediction(
             fixture_id,
-            "user-1",
+            "111",
             "User One",
             ["1-0", "1-1", "0-2"],
             False,
@@ -1273,7 +1392,7 @@ class TestResultsPanelFlows:
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
-        view.user_select._values = ["user-1"]
+        view.user_select._values = ["111"]
         await view.user_select.callback(mock_interaction_admin)
         await admin_cog.db.delete_fixture(fixture_id)
 
@@ -1629,6 +1748,142 @@ class TestAdminPanelModals:
         assert "User: User One (on time)" in mock_interaction_admin.response_sent[-1]["content"]
 
     @pytest.mark.asyncio
+    async def test_replace_prediction_modal_dms_affected_user(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            36, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-0", "1-1", "0-0"],
+            False,
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = target_user
+
+        view = PredictionsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
+        view.bot = admin_cog.bot
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        prediction = await admin_cog.db.get_prediction(fixture_id, "111")
+        assert fixture is not None
+        assert prediction is not None
+
+        modal = ReplacePredictionModal(view, fixture, prediction)
+        modal.predictions_input._value = (
+            "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        )
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert "updated your Week 36 prediction" in target_user.dm_sent[-1]
+        assert _selected_option_labels(view.fixture_select) == ["Week 36 [OPEN]"]
+        assert _selected_option_labels(view.user_select) == ["User One"]
+
+    @pytest.mark.asyncio
+    async def test_replace_prediction_modal_ignores_dm_failures(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            37, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-0", "1-1", "0-0"],
+            False,
+        )
+        failing_user = MagicMock()
+        failing_user.send = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "dm blocked"))
+        admin_cog.bot.get_user.return_value = failing_user
+
+        view = PredictionsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
+        view.bot = admin_cog.bot
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        prediction = await admin_cog.db.get_prediction(fixture_id, "111")
+        assert fixture is not None
+        assert prediction is not None
+
+        modal = ReplacePredictionModal(view, fixture, prediction)
+        modal.predictions_input._value = (
+            "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        )
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert (
+            "Replaced User One's prediction" in mock_interaction_admin.response_sent[-1]["content"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_replace_prediction_modal_fetches_uncached_user(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            41, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-0", "1-1", "0-0"],
+            False,
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = None
+        admin_cog.bot.fetch_user = AsyncMock(return_value=target_user)
+
+        view = PredictionsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
+        view.bot = admin_cog.bot
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        prediction = await admin_cog.db.get_prediction(fixture_id, "111")
+        assert fixture is not None
+        assert prediction is not None
+
+        modal = ReplacePredictionModal(view, fixture, prediction)
+        modal.predictions_input._value = (
+            "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        )
+
+        await modal.on_submit(mock_interaction_admin)
+
+        admin_cog.bot.fetch_user.assert_awaited_once()
+        assert "updated your Week 41 prediction" in target_user.dm_sent[-1]
+
+    @pytest.mark.asyncio
     async def test_replace_prediction_modal_recovers_when_prediction_disappears(
         self,
         admin_cog,
@@ -1786,3 +2041,151 @@ class TestAdminPanelModals:
         )
         assert "1. Team A - Team B 2-1" in mock_interaction_admin.response_sent[-1]["content"]
         assert "Fixture: Week 16 [OPEN]" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_correct_results_modal_dms_all_fixture_participants(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            38, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.save_prediction(
+            fixture_id, "111", "User One", ["1-0", "1-1", "0-0"], False
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id, "222", "User Two", ["0-0", "2-2", "1-1"], False
+        )
+        user_one = MockUser("111", "User One")
+        user_two = MockUser("222", "User Two")
+        admin_cog.bot.get_user.side_effect = lambda user_id: {111: user_one, 222: user_two}.get(
+            user_id
+        )
+
+        view = ResultsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
+        view.bot = admin_cog.bot
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+
+        modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])
+        modal.results_input._value = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert "Results were corrected for Week 38." in user_one.dm_sent[-1]
+        assert "Results were corrected for Week 38." in user_two.dm_sent[-1]
+
+    @pytest.mark.asyncio
+    async def test_correct_results_modal_ignores_dm_failures(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            39, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.save_prediction(
+            fixture_id, "111", "User One", ["1-0", "1-1", "0-0"], False
+        )
+        failing_user = MagicMock()
+        failing_user.send = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "dm blocked"))
+        admin_cog.bot.get_user.return_value = failing_user
+
+        view = ResultsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
+        view.bot = admin_cog.bot
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+
+        modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])
+        modal.results_input._value = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert (
+            "Saved corrected results for week 39."
+            in mock_interaction_admin.response_sent[-1]["content"]
+        )
+
+    @pytest.mark.asyncio
+    async def test_correct_results_modal_continues_after_one_dm_failure(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            42, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.save_prediction(
+            fixture_id, "111", "User One", ["1-0", "1-1", "0-0"], False
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id, "222", "User Two", ["0-0", "2-2", "1-1"], False
+        )
+        failing_user = MagicMock()
+        failing_user.send = AsyncMock(side_effect=discord.HTTPException(MagicMock(), "dm blocked"))
+        user_two = MockUser("222", "User Two")
+        admin_cog.bot.get_user.side_effect = lambda user_id: {111: failing_user, 222: user_two}.get(
+            user_id
+        )
+
+        view = ResultsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
+        view.bot = admin_cog.bot
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+
+        modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])
+        modal.results_input._value = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert "Results were corrected for Week 42." in user_two.dm_sent[-1]
+
+    @pytest.mark.asyncio
+    async def test_correct_results_modal_continues_after_fetch_user_failure(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            43, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.save_prediction(
+            fixture_id, "111", "User One", ["1-0", "1-1", "0-0"], False
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id, "222", "User Two", ["0-0", "2-2", "1-1"], False
+        )
+        user_two = MockUser("222", "User Two")
+        admin_cog.bot.get_user.return_value = None
+        admin_cog.bot.fetch_user = AsyncMock(
+            side_effect=[discord.HTTPException(MagicMock(), "fetch failed"), user_two]
+        )
+
+        view = ResultsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+        )
+        view.bot = admin_cog.bot
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+
+        modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])
+        modal.results_input._value = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert "Results were corrected for Week 43." in user_two.dm_sent[-1]

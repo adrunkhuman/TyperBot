@@ -10,7 +10,12 @@ import discord
 from typer_bot.database import Database
 from typer_bot.utils import APP_TZ, format_for_discord, is_admin, now, parse_line_predictions
 
-from .base import _build_detail_lines, _format_prediction_line, _prediction_status_text
+from .base import (
+    _build_detail_lines,
+    _format_prediction_line,
+    _notify_user_dm,
+    _prediction_status_text,
+)
 
 if TYPE_CHECKING:
     from .predictions import PredictionsPanelView
@@ -361,7 +366,11 @@ class EnterResultsModal(discord.ui.Modal):
 
 
 class ReplacePredictionModal(discord.ui.Modal):
-    """Collect corrected prediction lines and trigger optional score recalculation."""
+    """Collect corrected prediction lines and trigger optional score recalculation.
+
+    Successful submits also send a best-effort DM to the affected user. DM
+    delivery failures are logged and do not block the admin action.
+    """
 
     def __init__(
         self,
@@ -450,14 +459,28 @@ class ReplacePredictionModal(discord.ui.Modal):
             view=self.parent_view,
         )
 
+        notification_lines = [
+            f"An admin updated your Week {fixture['week_number']} prediction.",
+            "",
+            *self.parent_view.selection.detail_lines,
+        ]
+        if recalculation is not None:
+            notification_lines.extend(["", "Scores were recalculated."])
+        await _notify_user_dm(
+            self.parent_view.bot,
+            updated_prediction["user_id"],
+            "\n".join(notification_lines),
+            context="prediction replacement",
+        )
+
 
 class CorrectResultsModal(discord.ui.Modal):
     """Collect corrected results input for a fixture from the admin panel.
 
     Successful submits update the parent panel inline, clear any stale selected
-    prediction user, and may trigger score recalculation. If the fixture
-    disappears mid-flow, the parent panel reloads its selectors before
-    re-rendering the error state.
+    prediction user, may trigger score recalculation, and send best-effort DMs
+    to all participants for that fixture. If the fixture disappears mid-flow,
+    the parent panel reloads its selectors before re-rendering the error state.
     """
 
     def __init__(
@@ -546,3 +569,20 @@ class CorrectResultsModal(discord.ui.Modal):
             content=self.parent_view.render_content(),
             view=self.parent_view,
         )
+
+        predictions = await self.parent_view.db.get_all_predictions(fixture["id"])
+        dm_message_lines = [
+            f"Results were corrected for Week {fixture['week_number']}.",
+            "",
+            *self.parent_view.selection.detail_lines,
+        ]
+        if recalculation is not None:
+            dm_message_lines.extend(["", "Scores were recalculated."])
+        dm_message = "\n".join(dm_message_lines)
+        for prediction in predictions:
+            await _notify_user_dm(
+                self.parent_view.bot,
+                prediction["user_id"],
+                dm_message,
+                context="results correction",
+            )

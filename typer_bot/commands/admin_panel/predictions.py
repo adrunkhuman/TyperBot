@@ -15,6 +15,7 @@ from .base import (
     OwnerRestrictedView,
     PanelSelectionState,
     _build_detail_lines,
+    _notify_user_dm,
     _prediction_status_text,
     _render_panel_content,
 )
@@ -102,7 +103,11 @@ class PredictionsPanelView(OwnerRestrictedView):
 
 
 class PredictionUserSelect(discord.ui.Select):
-    """Select a user who already has a prediction for the chosen fixture."""
+    """Select a user who already has a prediction for the chosen fixture.
+
+    Refreshed option lists re-mark the active user as `default` so Discord keeps
+    the visible selection after panel re-renders.
+    """
 
     def __init__(self, parent_view: PredictionsPanelView | UnifiedAdminPanelView):
         self.parent_view = parent_view
@@ -125,10 +130,16 @@ class PredictionUserSelect(discord.ui.Select):
                 label=prediction["user_name"][:100],
                 value=prediction["user_id"],
                 description=_prediction_status_text(prediction)[:100],
+                default=self.parent_view.selection.user_id == prediction["user_id"],
             )
             for prediction in ordered[:MAX_SELECT_OPTIONS]
         ]
         self.disabled = False
+
+    def sync_selected_option(self) -> None:
+        selected_value = self.parent_view.selection.user_id
+        for option in self.options:
+            option.default = option.value == selected_value
 
     async def callback(self, interaction: discord.Interaction):
         if self.values[0] == "none":
@@ -174,6 +185,8 @@ class PredictionUserSelect(discord.ui.Select):
                 fixture["games"], prediction["predictions"]
             )
             self.parent_view.selection.status_message = ""
+
+        self.sync_selected_option()
 
         self.parent_view._refresh_items()
 
@@ -300,6 +313,8 @@ class ViewPredictionsButton(discord.ui.Button):
 
 
 class ToggleWaiverButton(discord.ui.Button):
+    """Toggle the late waiver flag and best-effort DM the affected user."""
+
     def __init__(
         self, parent_view: PredictionsPanelView | UnifiedAdminPanelView, disabled: bool = False
     ):
@@ -413,4 +428,15 @@ class ToggleWaiverButton(discord.ui.Button):
         await interaction.response.edit_message(
             content=self.parent_view.render_content(),
             view=self.parent_view,
+        )
+
+        status_line = "enabled" if prediction["late_penalty_waived"] else "disabled"
+        notification = f"An admin {status_line} the late waiver for your Week {fixture['week_number']} prediction."
+        if recalculation is not None:
+            notification += " Scores were recalculated."
+        await _notify_user_dm(
+            self.parent_view.bot,
+            prediction["user_id"],
+            notification,
+            context="late waiver update",
         )
