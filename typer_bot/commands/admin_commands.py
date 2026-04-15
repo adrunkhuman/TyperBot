@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
 
 import discord
@@ -11,9 +10,9 @@ from discord.ext import commands
 
 from typer_bot.commands.admin_panel import (
     AdminPanelHomeView,
+    CreateFixtureModal,
     DeleteConfirmView,
     EnterResultsModal,
-    OpenFixtureWarningView,
     _build_delete_confirmation_content,
 )
 from typer_bot.database import Database
@@ -118,45 +117,6 @@ class AdminCommands(commands.Cog):
         except Exception as exc:
             logger.warning(f"Backup failed but calculation succeeded: {exc}")
 
-    async def _start_fixture_dm(
-        self,
-        user: discord.User | discord.Member,
-        user_id: str,
-        channel_id: int,
-        guild_id: int,
-    ) -> bool:
-        """Returns True if the DM was sent successfully."""
-        if self.workflow_state.has_results_session(user_id):
-            with contextlib.suppress(Exception):
-                await user.send(
-                    "❌ You have an active results entry session. "
-                    "Finish or cancel it before starting a new fixture."
-                )
-            return False
-
-        self.fixture_handler.start_session(user_id, channel_id, guild_id)
-        max_week = await self.db.get_max_week_number()
-        predicted_week = max_week + 1
-        try:
-            await user.send(
-                f"**Create New Fixture — Week {predicted_week}**\n\n"
-                f"Based on current data, this will be **Week {predicted_week}** "
-                f"(may change if fixtures are created or deleted before you confirm).\n\n"
-                "Step 1/2: Send me the list of games in this format:\n"
-                "```\n"
-                "Team A - Team B\n"
-                "Team C - Team D\n"
-                "Team E - Team F\n"
-                "...\n"
-                "```\n"
-                "One game per line."
-            )
-        except Exception as exc:
-            reason = "dm_forbidden" if isinstance(exc, discord.Forbidden) else "dm_error"
-            self.fixture_handler.cancel_session(user_id, reason=reason)
-            return False
-        return True
-
     async def _post_calculation_to_channel(
         self,
         interaction: discord.Interaction,
@@ -206,51 +166,34 @@ class AdminCommands(commands.Cog):
             ephemeral=True,
         )
 
-    @fixture.command(name="create", description="Create a new fixture (DM workflow)")
+    @fixture.command(name="create", description="Create a new fixture via modal")
     @admin_only()
     async def fixture_create(self, interaction: discord.Interaction):
-        user_id = str(interaction.user.id)
-        if interaction.channel_id is None or interaction.guild_id is None:
+        if interaction.channel is None or interaction.guild is None:
             await interaction.response.send_message(
                 "Error: Invalid interaction context.", ephemeral=True
             )
             return
 
-        if self.workflow_state.has_results_session(user_id):
+        channel = interaction.channel
+        if isinstance(channel, discord.Thread):
+            parent = channel.parent
+            if not isinstance(parent, discord.TextChannel):
+                await interaction.response.send_message(
+                    "Fixture creation must be started from a server text channel.",
+                    ephemeral=True,
+                )
+                return
+            channel = parent
+        elif not isinstance(channel, discord.TextChannel):
             await interaction.response.send_message(
-                "❌ You have an active results entry session. "
-                "Finish or cancel it before starting a new fixture.",
+                "Fixture creation must be started from a server text channel.",
                 ephemeral=True,
             )
             return
 
-        open_fixtures = await self.db.get_open_fixtures()
-        if open_fixtures:
-            open_weeks = self._format_open_weeks(open_fixtures)
-            view = OpenFixtureWarningView(
-                self._start_fixture_dm, user_id, interaction.channel_id, interaction.guild_id
-            )
-            await interaction.response.send_message(
-                f"Week(s) **{open_weeks}** are already open. Create another fixture anyway?",
-                view=view,
-                ephemeral=True,
-            )
-            return
-
-        await interaction.response.send_message(
-            "Check your DMs! I've sent you instructions for creating the fixture.",
-            ephemeral=True,
-        )
-        if not await self._start_fixture_dm(
-            interaction.user,
-            user_id,
-            interaction.channel_id,
-            interaction.guild_id,
-        ):
-            await interaction.followup.send(
-                "I can't send you DMs. Please enable DMs from server members and try again.",
-                ephemeral=True,
-            )
+        modal = CreateFixtureModal(self.db, channel, str(interaction.user.id))
+        await interaction.response.send_modal(modal)
 
     @fixture.command(name="delete", description="Delete an open fixture")
     @admin_only()

@@ -135,7 +135,7 @@ class UserCommands(commands.Cog):
 **For Admins:**
 • `/admin panel` - Open the admin hub for fixture deletion, overrides, waivers, and result correction
 **Fixture Management:**
-• `/admin fixture create` - Create new fixture (DM workflow, auto-creates thread)
+• `/admin fixture create` - Create new fixture (modal + confirm, auto-creates thread)
 • `/admin fixture delete [week]` - Delete an open fixture
 
 **Results Management:**
@@ -146,10 +146,9 @@ class UserCommands(commands.Cog):
 **Admin Workflow:**
 1. **Create Fixture:**
    - `/admin fixture create`
-   - Bot DMs you
-   - Send game list (one per line)
-   - Choose deadline (default or custom)
-   - Confirm
+   - Modal opens in Discord
+   - Enter game list and optional deadline
+   - Review preview and confirm
    - Bot auto-creates thread for predictions
 
 2. **Enter Results:**
