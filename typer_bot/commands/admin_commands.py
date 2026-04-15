@@ -12,6 +12,7 @@ from discord.ext import commands
 from typer_bot.commands.admin_panel import (
     AdminPanelHomeView,
     DeleteConfirmView,
+    EnterResultsModal,
     OpenFixtureWarningView,
     _build_delete_confirmation_content,
 )
@@ -278,7 +279,7 @@ class AdminCommands(commands.Cog):
             ephemeral=True,
         )
 
-    @results.command(name="enter", description="Enter results for an open fixture (DM workflow)")
+    @results.command(name="enter", description="Enter results for an open fixture")
     @admin_only()
     async def results_enter(self, interaction: discord.Interaction, week: int | None = None):
         fixture = await self._resolve_open_fixture(
@@ -298,55 +299,8 @@ class AdminCommands(commands.Cog):
             )
             return
 
-        user_id = str(interaction.user.id)
-        if interaction.guild_id is None:
-            await interaction.response.send_message(
-                "Error: Invalid interaction context.", ephemeral=True
-            )
-            return
-
-        if self.workflow_state.has_fixture_session(user_id):
-            await interaction.response.send_message(
-                "❌ You have an active fixture creation session. "
-                "Finish or cancel it before entering results.",
-                ephemeral=True,
-            )
-            return
-
-        self.results_handler.start_session(
-            user_id, fixture["id"], interaction.guild_id, fixture["week_number"]
-        )
-
-        await interaction.response.send_message(
-            "Check your DMs! I've sent you instructions for entering results.",
-            ephemeral=True,
-        )
-
-        try:
-            lines = [
-                f"**Week {fixture['week_number']} - Enter Results**",
-                "",
-                "Reply with the actual results in this format:",
-                "```",
-            ]
-            for game in fixture["games"]:
-                lines.append(f"{game} 2:0")
-            lines.extend(
-                [
-                    "```",
-                    "",
-                    "Add the actual score (e.g., 2:0 or 2-1) at the end of each line.",
-                    "Type 'x' for cancelled or postponed games.",
-                ]
-            )
-            await interaction.user.send("\n".join(lines))
-        except Exception as exc:
-            reason = "dm_forbidden" if isinstance(exc, discord.Forbidden) else "dm_error"
-            self.results_handler.cancel_session(user_id, reason=reason)
-            await interaction.followup.send(
-                "I can't send you DMs. Please enable DMs from server members and try again.",
-                ephemeral=True,
-            )
+        modal = EnterResultsModal(fixture, self.db)
+        await interaction.response.send_modal(modal)
 
     @results.command(name="calculate", description="Calculate scores and post results")
     @admin_only()

@@ -10,7 +10,7 @@ from typer_bot.commands.admin_commands import (
     AdminCommands,
     PostResultsConfirmView,
 )
-from typer_bot.commands.admin_panel import OpenFixtureWarningView
+from typer_bot.commands.admin_panel import EnterResultsModal, OpenFixtureWarningView
 from typer_bot.services.admin_service import FixtureScoreResult
 from typer_bot.utils import now
 from typer_bot.utils.permissions import is_admin
@@ -144,21 +144,14 @@ class TestResultsEnterLogic:
         return AdminCommands(mock_bot)
 
     @pytest.mark.asyncio
-    async def test_results_enter_starts_session(self, admin_cog, mock_interaction_admin):
-        """DM session keeps results private before public announcement."""
-        user_id = str(mock_interaction_admin.user.id)
-        admin_cog.results_handler.start_session(user_id, 1, 111111, week_number=1)
-        assert admin_cog.results_handler.has_session(user_id)
+    async def test_results_enter_opens_modal(self, admin_cog, mock_interaction_admin, sample_games):
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        await admin_cog.db.create_fixture(1, sample_games, deadline)
 
-    @pytest.mark.asyncio
-    async def test_results_enter_session_has_correct_data(self, admin_cog, mock_interaction_admin):
-        """Session tracks fixture ID for result-to-match mapping."""
-        user_id = str(mock_interaction_admin.user.id)
-        admin_cog.results_handler.start_session(user_id, 42, 111111, week_number=5)
+        await admin_cog.results_enter.callback(admin_cog, mock_interaction_admin, 1)
 
-        session = admin_cog.results_handler.get_session(user_id)
-        assert session.fixture_id == 42
-        assert session.guild_id == 111111
+        assert isinstance(mock_interaction_admin.modal_sent["modal"], EnterResultsModal)
+        assert mock_interaction_admin.modal_sent["modal"].title == "Enter Week 1 Results"
 
     @pytest.mark.asyncio
     async def test_results_enter_rejects_fixture_that_already_has_results(
@@ -172,8 +165,6 @@ class TestResultsEnterLogic:
 
         await admin_cog.results_enter.callback(admin_cog, mock_interaction_admin, 1)
 
-        user_id = str(mock_interaction_admin.user.id)
-        assert not admin_cog.results_handler.has_session(user_id)
         assert "Results already entered" in mock_interaction_admin.response_sent[0]["content"]
         assert mock_interaction_admin.user.dm_sent == []
 
@@ -561,7 +552,7 @@ class TestCooldownLogic:
 
 
 class TestAdminSessionExclusivity:
-    """Admin DM workflows are mutually exclusive — only one active session per user."""
+    """Fixture creation DM state still blocks overlapping DM-style admin workflows."""
 
     @pytest.fixture
     def admin_cog(self, mock_bot, database):
@@ -610,9 +601,7 @@ class TestAdminSessionExclusivity:
     async def test_results_enter_blocked_when_fixture_session_active(
         self, admin_cog, mock_interaction_admin, sample_games
     ):
-        """Starting results entry while fixture creation is in progress is rejected."""
-        from datetime import UTC, datetime, timedelta
-
+        """Results modal can open even while fixture creation DM state exists."""
         deadline = datetime.now(UTC) + timedelta(days=1)
         await admin_cog.db.create_fixture(1, sample_games, deadline)
 
@@ -622,9 +611,7 @@ class TestAdminSessionExclusivity:
 
         await admin_cog.results_enter.callback(admin_cog, mock_interaction_admin, 1)
 
-        assert not admin_cog.results_handler.has_session(user_id)
-        response = mock_interaction_admin.response_sent[-1]
-        assert "fixture creation" in response["content"].lower()
+        assert isinstance(mock_interaction_admin.modal_sent["modal"], EnterResultsModal)
 
     @pytest.mark.asyncio
     async def test_fixture_create_allowed_when_no_conflicting_session(
@@ -647,18 +634,13 @@ class TestAdminSessionExclusivity:
     async def test_results_enter_allowed_when_no_conflicting_session(
         self, admin_cog, mock_interaction_admin, sample_games
     ):
-        """Results entry proceeds normally when no admin session is active."""
-        from datetime import UTC, datetime, timedelta
-
+        """Results entry opens the modal when no conflicting session exists."""
         deadline = datetime.now(UTC) + timedelta(days=1)
         await admin_cog.db.create_fixture(1, sample_games, deadline)
 
-        mock_interaction_admin.guild_id = mock_interaction_admin.guild.id
-
         await admin_cog.results_enter.callback(admin_cog, mock_interaction_admin, 1)
 
-        user_id = str(mock_interaction_admin.user.id)
-        assert admin_cog.results_handler.has_session(user_id)
+        assert isinstance(mock_interaction_admin.modal_sent["modal"], EnterResultsModal)
 
 
 class TestMultiOpenFixtureTargeting:
@@ -695,18 +677,14 @@ class TestMultiOpenFixtureTargeting:
         mock_interaction_admin,
         sample_games,
     ):
-        """Results entry session starts for the requested open fixture week."""
+        """Results modal targets the requested open fixture week."""
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_week_1 = await admin_cog.db.create_fixture(1, sample_games, deadline)
+        await admin_cog.db.create_fixture(1, sample_games, deadline)
         await admin_cog.db.create_fixture(2, sample_games, deadline)
-
-        mock_interaction_admin.guild_id = mock_interaction_admin.guild.id
 
         await admin_cog.results_enter.callback(admin_cog, mock_interaction_admin, 1)
 
-        user_id = str(mock_interaction_admin.user.id)
-        assert admin_cog.results_handler.get_session(user_id).fixture_id == fixture_week_1
-        assert "Check your DMs" in mock_interaction_admin.response_sent[0]["content"]
+        assert mock_interaction_admin.modal_sent["modal"].title == "Enter Week 1 Results"
 
     @pytest.mark.asyncio
     async def test_results_calculate_requires_week_when_multiple_open(
