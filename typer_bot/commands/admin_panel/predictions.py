@@ -13,7 +13,9 @@ from .base import (
     FixtureSelect,
     OwnerRestrictedView,
     PanelSelectionState,
+    _build_detail_lines,
     _prediction_status_text,
+    _render_panel_content,
 )
 from .modals import ReplacePredictionModal
 
@@ -24,6 +26,7 @@ class PredictionsPanelView(OwnerRestrictedView):
     def __init__(self, db: Database, service: AdminService, owner_user_id: str):
         super().__init__(db, service, owner_user_id)
         self.selection = PanelSelectionState()
+        self.has_user_overflow = False
         self.fixture_select = FixtureSelect(self)
         self.user_select = PredictionUserSelect(self)
         self.user_select.update_options([])
@@ -33,7 +36,8 @@ class PredictionsPanelView(OwnerRestrictedView):
         self.clear_items()
         self.add_item(self.fixture_select)
         self.add_item(self.user_select)
-        self.add_item(ViewPredictionsButton(self, disabled=self.selection.fixture_id is None))
+        if self.has_user_overflow:
+            self.add_item(ViewPredictionsButton(self, disabled=self.selection.fixture_id is None))
         self.add_item(
             ReplacePredictionButton(
                 self,
@@ -54,17 +58,44 @@ class PredictionsPanelView(OwnerRestrictedView):
 
     async def load_user_options(self) -> None:
         if self.selection.fixture_id is None:
+            self.has_user_overflow = False
             self.user_select.update_options([])
             return
 
         predictions = await self.db.get_all_predictions(self.selection.fixture_id)
+        self.has_user_overflow = len(predictions) > MAX_SELECT_OPTIONS
         self.user_select.update_options(predictions)
 
     def render_content(self) -> str:
-        status = self.selection.status_message or (
-            "Select a fixture, then pick a user to view or override a stored prediction."
-        )
-        return "**Admin Panel - Predictions**\n" + status
+        lines = ["**Admin Panel - Predictions**"]
+        if self.selection.fixture_label:
+            header = f"Fixture: {self.selection.fixture_label}"
+            if self.selection.user_label:
+                header += f"  •  User: {self.selection.user_label}"
+            lines.append(header)
+            if self.selection.status_message:
+                lines.extend(["", self.selection.status_message])
+            if self.selection.detail_lines:
+                lines.extend(["", *self.selection.detail_lines])
+            elif self.user_select.disabled:
+                lines.extend(["", "No predictions saved for this fixture yet."])
+            elif self.selection.user_id is None:
+                lines.extend(["", "Pick a user to inspect or override a stored prediction."])
+
+            if self.has_user_overflow:
+                lines.extend(
+                    [
+                        "",
+                        "More than 25 users predicted this fixture. Use View Predictions for the full list.",
+                    ]
+                )
+        else:
+            lines.append(
+                "Select a fixture, then pick a user to inspect or override a stored prediction."
+            )
+            if self.selection.status_message:
+                lines.extend(["", self.selection.status_message])
+        return _render_panel_content(lines)
 
 
 class PredictionUserSelect(discord.ui.Select):
@@ -107,15 +138,39 @@ class PredictionUserSelect(discord.ui.Select):
             await interaction.response.send_message("Select a fixture first.", ephemeral=True)
             return
 
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
+        if fixture is None:
+            self.parent_view.selection.fixture_id = None
+            self.parent_view.selection.fixture_label = ""
+            self.parent_view.selection.user_id = None
+            self.parent_view.selection.user_label = ""
+            self.parent_view.selection.detail_lines = []
+            self.parent_view.selection.status_message = "Fixture no longer exists."
+            await self.parent_view.load_fixture_options()
+            await self.parent_view.load_user_options()
+            self.parent_view._refresh_items()
+            await interaction.response.edit_message(
+                content=self.parent_view.render_content(),
+                view=self.parent_view,
+            )
+            return
+
         prediction = await self.parent_view.db.get_prediction(fixture_id, selected_user_id)
         if prediction is None:
             self.parent_view.selection.user_id = None
+            self.parent_view.selection.user_label = ""
+            self.parent_view.selection.detail_lines = []
             self.parent_view.selection.status_message = "Prediction no longer exists."
+            await self.parent_view.load_user_options()
         else:
             self.parent_view.selection.user_id = selected_user_id
-            self.parent_view.selection.status_message = (
-                f"Selected {prediction['user_name']} ({_prediction_status_text(prediction)})."
+            self.parent_view.selection.user_label = (
+                f"{prediction['user_name']} ({_prediction_status_text(prediction)})"
             )
+            self.parent_view.selection.detail_lines = _build_detail_lines(
+                fixture["games"], prediction["predictions"]
+            )
+            self.parent_view.selection.status_message = ""
 
         self.parent_view._refresh_items()
 
@@ -123,39 +178,6 @@ class PredictionUserSelect(discord.ui.Select):
             content=self.parent_view.render_content(),
             view=self.parent_view,
         )
-
-
-class ViewPredictionsButton(discord.ui.Button):
-    def __init__(self, parent_view: PredictionsPanelView, disabled: bool = False):
-        self.parent_view = parent_view
-        super().__init__(
-            label="View Predictions",
-            style=discord.ButtonStyle.secondary,
-            disabled=disabled,
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        fixture_id = self.parent_view.selection.fixture_id
-        if fixture_id is None:
-            await interaction.response.send_message("Select a fixture first.", ephemeral=True)
-            return
-
-        try:
-            (
-                fixture,
-                predictions,
-            ) = await self.parent_view.service.get_fixture_prediction_summary(fixture_id)
-        except ValueError as exc:
-            await interaction.response.send_message(str(exc), ephemeral=True)
-            return
-
-        lines = [f"**Week {fixture['week_number']} Predictions**"]
-        for prediction in predictions:
-            status = _prediction_status_text(prediction)
-            scores = ", ".join(prediction["predictions"])
-            lines.append(f"- {prediction['user_name']}: {scores} ({status})")
-
-        await interaction.response.send_message("\n".join(lines), ephemeral=True)
 
 
 class ReplacePredictionButton(discord.ui.Button):
@@ -178,14 +200,96 @@ class ReplacePredictionButton(discord.ui.Button):
 
         fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
         prediction = await self.parent_view.db.get_prediction(fixture_id, user_id)
-        if fixture is None or prediction is None:
-            await interaction.response.send_message(
-                "That prediction is no longer available.", ephemeral=True
+        if fixture is None:
+            self.parent_view.selection.fixture_id = None
+            self.parent_view.selection.fixture_label = ""
+            self.parent_view.selection.user_id = None
+            self.parent_view.selection.user_label = ""
+            self.parent_view.selection.detail_lines = []
+            self.parent_view.selection.status_message = "Fixture no longer exists."
+            await self.parent_view.load_fixture_options()
+            await self.parent_view.load_user_options()
+            self.parent_view._refresh_items()
+            await interaction.response.edit_message(
+                content=self.parent_view.render_content(),
+                view=self.parent_view,
+            )
+            return
+        if prediction is None:
+            self.parent_view.selection.user_id = None
+            self.parent_view.selection.user_label = ""
+            self.parent_view.selection.detail_lines = []
+            self.parent_view.selection.status_message = "That prediction is no longer available."
+            await self.parent_view.load_user_options()
+            self.parent_view._refresh_items()
+            await interaction.response.edit_message(
+                content=self.parent_view.render_content(),
+                view=self.parent_view,
             )
             return
 
         modal = ReplacePredictionModal(self.parent_view, fixture, prediction)
         await interaction.response.send_modal(modal)
+
+
+class ViewPredictionsButton(discord.ui.Button):
+    def __init__(self, parent_view: PredictionsPanelView, disabled: bool = False):
+        self.parent_view = parent_view
+        super().__init__(
+            label="View Predictions",
+            style=discord.ButtonStyle.secondary,
+            disabled=disabled,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        fixture_id = self.parent_view.selection.fixture_id
+        if fixture_id is None:
+            await interaction.response.send_message("Select a fixture first.", ephemeral=True)
+            return
+
+        try:
+            fixture, predictions = await self.parent_view.service.get_fixture_prediction_summary(
+                fixture_id
+            )
+        except ValueError as exc:
+            if str(exc) == "Fixture not found":
+                self.parent_view.selection.fixture_id = None
+                self.parent_view.selection.fixture_label = ""
+                self.parent_view.selection.user_id = None
+                self.parent_view.selection.user_label = ""
+                self.parent_view.selection.detail_lines = []
+                self.parent_view.selection.status_message = str(exc)
+                await self.parent_view.load_fixture_options()
+                await self.parent_view.load_user_options()
+                self.parent_view._refresh_items()
+                await interaction.response.edit_message(
+                    content=self.parent_view.render_content(),
+                    view=self.parent_view,
+                )
+                return
+            if str(exc) == "No predictions saved for this fixture":
+                self.parent_view.selection.user_id = None
+                self.parent_view.selection.user_label = ""
+                self.parent_view.selection.detail_lines = []
+                self.parent_view.selection.status_message = str(exc)
+                await self.parent_view.load_user_options()
+                self.parent_view._refresh_items()
+                await interaction.response.edit_message(
+                    content=self.parent_view.render_content(),
+                    view=self.parent_view,
+                )
+                return
+
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+
+        lines = [f"**Week {fixture['week_number']} Predictions**"]
+        for prediction in predictions:
+            status = _prediction_status_text(prediction)
+            scores = ", ".join(prediction["predictions"])
+            lines.append(f"- {prediction['user_name']}: {scores} ({status})")
+
+        await interaction.response.send_message(_render_panel_content(lines), ephemeral=True)
 
 
 class ToggleWaiverButton(discord.ui.Button):
@@ -206,6 +310,37 @@ class ToggleWaiverButton(discord.ui.Button):
             )
             return
 
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
+        if fixture is None:
+            self.parent_view.selection.fixture_id = None
+            self.parent_view.selection.fixture_label = ""
+            self.parent_view.selection.user_id = None
+            self.parent_view.selection.user_label = ""
+            self.parent_view.selection.detail_lines = []
+            self.parent_view.selection.status_message = "Fixture no longer exists."
+            await self.parent_view.load_fixture_options()
+            await self.parent_view.load_user_options()
+            self.parent_view._refresh_items()
+            await interaction.response.edit_message(
+                content=self.parent_view.render_content(),
+                view=self.parent_view,
+            )
+            return
+
+        prediction = await self.parent_view.db.get_prediction(fixture_id, user_id)
+        if prediction is None:
+            self.parent_view.selection.user_id = None
+            self.parent_view.selection.user_label = ""
+            self.parent_view.selection.detail_lines = []
+            self.parent_view.selection.status_message = "That prediction is no longer available."
+            await self.parent_view.load_user_options()
+            self.parent_view._refresh_items()
+            await interaction.response.edit_message(
+                content=self.parent_view.render_content(),
+                view=self.parent_view,
+            )
+            return
+
         try:
             (
                 fixture,
@@ -216,6 +351,37 @@ class ToggleWaiverButton(discord.ui.Button):
                 user_id,
             )
         except ValueError as exc:
+            if str(exc) == "Fixture not found":
+                self.parent_view.selection.fixture_id = None
+                self.parent_view.selection.fixture_label = ""
+                self.parent_view.selection.user_id = None
+                self.parent_view.selection.user_label = ""
+                self.parent_view.selection.detail_lines = []
+                self.parent_view.selection.status_message = str(exc)
+                await self.parent_view.load_fixture_options()
+                await self.parent_view.load_user_options()
+                self.parent_view._refresh_items()
+                await interaction.response.edit_message(
+                    content=self.parent_view.render_content(),
+                    view=self.parent_view,
+                )
+                return
+            if str(exc) in {
+                "Prediction not found for that user",
+                "Prediction disappeared after waiver update",
+            }:
+                self.parent_view.selection.user_id = None
+                self.parent_view.selection.user_label = ""
+                self.parent_view.selection.detail_lines = []
+                self.parent_view.selection.status_message = str(exc)
+                await self.parent_view.load_user_options()
+                self.parent_view._refresh_items()
+                await interaction.response.edit_message(
+                    content=self.parent_view.render_content(),
+                    view=self.parent_view,
+                )
+                return
+
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
 
@@ -226,7 +392,15 @@ class ToggleWaiverButton(discord.ui.Button):
         if recalculation is not None:
             self.parent_view.selection.status_message += " Scores were recalculated."
 
+        self.parent_view.selection.user_label = (
+            f"{prediction['user_name']} ({_prediction_status_text(prediction)})"
+        )
+        self.parent_view.selection.detail_lines = _build_detail_lines(
+            fixture["games"], prediction["predictions"]
+        )
+
         await self.parent_view.load_user_options()
+        self.parent_view._refresh_items()
         await interaction.response.edit_message(
             content=self.parent_view.render_content(),
             view=self.parent_view,

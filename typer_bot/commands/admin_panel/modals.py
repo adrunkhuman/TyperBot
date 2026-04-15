@@ -8,7 +8,7 @@ import discord
 
 from typer_bot.utils import is_admin
 
-from .base import _format_prediction_line
+from .base import _build_detail_lines, _format_prediction_line, _prediction_status_text
 
 if TYPE_CHECKING:
     from .predictions import PredictionsPanelView
@@ -58,6 +58,27 @@ class ReplacePredictionModal(discord.ui.Modal):
                 str(interaction.user.id),
             )
         except ValueError as exc:
+            if str(exc) in {
+                "Fixture not found",
+                "Prediction not found for that user",
+                "Prediction disappeared after update",
+            }:
+                self.parent_view.selection.user_id = None
+                self.parent_view.selection.user_label = ""
+                self.parent_view.selection.detail_lines = []
+                self.parent_view.selection.status_message = str(exc)
+                if str(exc) == "Fixture not found":
+                    self.parent_view.selection.fixture_id = None
+                    self.parent_view.selection.fixture_label = ""
+                    await self.parent_view.load_fixture_options()
+                await self.parent_view.load_user_options()
+                self.parent_view._refresh_items()
+                await interaction.response.edit_message(
+                    content=self.parent_view.render_content(),
+                    view=self.parent_view,
+                )
+                return
+
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
 
@@ -65,7 +86,15 @@ class ReplacePredictionModal(discord.ui.Modal):
         if recalculation is not None:
             self.parent_view.selection.status_message += " Scores were recalculated."
 
+        self.parent_view.selection.user_label = (
+            f"{updated_prediction['user_name']} ({_prediction_status_text(updated_prediction)})"
+        )
+        self.parent_view.selection.detail_lines = _build_detail_lines(
+            fixture["games"], updated_prediction["predictions"]
+        )
+
         await self.parent_view.load_user_options()
+        self.parent_view._refresh_items()
         await interaction.response.edit_message(
             content=self.parent_view.render_content(),
             view=self.parent_view,
@@ -116,6 +145,19 @@ class CorrectResultsModal(discord.ui.Modal):
                 self.results_input.value,
             )
         except ValueError as exc:
+            if str(exc) == "Fixture not found":
+                self.parent_view.selection.fixture_id = None
+                self.parent_view.selection.fixture_label = ""
+                self.parent_view.selection.detail_lines = []
+                self.parent_view.selection.status_message = str(exc)
+                await self.parent_view.load_fixture_options()
+                self.parent_view._refresh_items()
+                await interaction.response.edit_message(
+                    content=self.parent_view.render_content(),
+                    view=self.parent_view,
+                )
+                return
+
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
 
@@ -124,6 +166,10 @@ class CorrectResultsModal(discord.ui.Modal):
         )
         if recalculation is not None:
             self.parent_view.selection.status_message += " Scores were recalculated."
+
+        self.parent_view.selection.detail_lines = _build_detail_lines(fixture["games"], _results)
+
+        self.parent_view._refresh_items()
 
         await interaction.response.edit_message(
             content=self.parent_view.render_content(),

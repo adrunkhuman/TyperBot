@@ -13,7 +13,8 @@ from .base import (
     FixtureSelect,
     OwnerRestrictedView,
     PanelSelectionState,
-    _format_prediction_line,
+    _build_detail_lines,
+    _render_panel_content,
 )
 from .modals import CorrectResultsModal
 
@@ -30,7 +31,6 @@ class ResultsPanelView(OwnerRestrictedView):
     def _refresh_items(self) -> None:
         self.clear_items()
         self.add_item(self.fixture_select)
-        self.add_item(ViewResultsButton(self, disabled=self.selection.fixture_id is None))
         self.add_item(CorrectResultsButton(self, disabled=self.selection.fixture_id is None))
         self.add_item(BackButton(self))
 
@@ -38,43 +38,35 @@ class ResultsPanelView(OwnerRestrictedView):
         fixtures = await self.db.get_recent_fixtures(MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
 
-    def render_content(self) -> str:
-        status = (
-            self.selection.status_message or "Select a fixture to inspect or correct saved results."
-        )
-        return "**Admin Panel - Results**\n" + status
+    async def populate_fixture_details(self, fixture: dict | None) -> None:
+        """Update inline result lines and empty-state message for the selection."""
 
-
-class ViewResultsButton(discord.ui.Button):
-    def __init__(self, parent_view: ResultsPanelView, disabled: bool = False):
-        self.parent_view = parent_view
-        super().__init__(
-            label="View Results",
-            style=discord.ButtonStyle.secondary,
-            disabled=disabled,
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        fixture_id = self.parent_view.selection.fixture_id
-        if fixture_id is None:
-            await interaction.response.send_message("Select a fixture first.", ephemeral=True)
-            return
-
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
+        self.selection.detail_lines = []
         if fixture is None:
-            await interaction.response.send_message("Fixture not found.", ephemeral=True)
-            return
-        results = await self.parent_view.db.get_results(fixture_id)
-        if not results:
-            await interaction.response.send_message(
-                "No results saved for that fixture yet.", ephemeral=True
-            )
             return
 
-        lines = [f"**Week {fixture['week_number']} Results**"]
-        for index, (game, result) in enumerate(zip(fixture["games"], results, strict=False), 1):
-            lines.append(_format_prediction_line(index, game, result))
-        await interaction.response.send_message("\n".join(lines), ephemeral=True)
+        results = await self.db.get_results(fixture["id"])
+        if not results:
+            self.selection.status_message = "No results saved for that fixture yet."
+            return
+
+        self.selection.detail_lines = _build_detail_lines(fixture["games"], results)
+
+    def render_content(self) -> str:
+        lines = ["**Admin Panel - Results**"]
+        if self.selection.fixture_label:
+            lines.append(f"Fixture: {self.selection.fixture_label}")
+            if self.selection.status_message:
+                lines.extend(["", self.selection.status_message])
+            if self.selection.detail_lines:
+                lines.extend(["", *self.selection.detail_lines])
+            elif not self.selection.status_message:
+                lines.extend(["", "No results saved for that fixture yet."])
+        else:
+            lines.append("Select a fixture to inspect or correct saved results.")
+            if self.selection.status_message:
+                lines.extend(["", self.selection.status_message])
+        return _render_panel_content(lines)
 
 
 class CorrectResultsButton(discord.ui.Button):
@@ -94,7 +86,16 @@ class CorrectResultsButton(discord.ui.Button):
 
         fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
         if fixture is None:
-            await interaction.response.send_message("Fixture not found.", ephemeral=True)
+            self.parent_view.selection.fixture_id = None
+            self.parent_view.selection.fixture_label = ""
+            self.parent_view.selection.detail_lines = []
+            self.parent_view.selection.status_message = "Fixture no longer exists."
+            await self.parent_view.load_fixture_options()
+            self.parent_view._refresh_items()
+            await interaction.response.edit_message(
+                content=self.parent_view.render_content(),
+                view=self.parent_view,
+            )
             return
         results = await self.parent_view.db.get_results(fixture_id)
         if not results:
