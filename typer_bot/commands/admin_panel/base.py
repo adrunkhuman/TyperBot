@@ -170,13 +170,14 @@ class FixtureSelect(discord.ui.Select):
             return
 
         fixture_id = int(self.values[0])
-        self.parent_view.selection.fixture_id = fixture_id
         self.parent_view.selection.user_id = None
 
         fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
         if fixture is None:
+            self.parent_view.selection.fixture_id = None
             self.parent_view.selection.status_message = "Fixture no longer exists."
         else:
+            self.parent_view.selection.fixture_id = fixture_id
             self.parent_view.selection.status_message = (
                 f"Selected week {fixture['week_number']} ({fixture['status']})."
             )
@@ -184,6 +185,10 @@ class FixtureSelect(discord.ui.Select):
         load_user_options = getattr(self.parent_view, "load_user_options", None)
         if callable(load_user_options):
             await load_user_options()
+
+        refresh_items = getattr(self.parent_view, "_refresh_items", None)
+        if callable(refresh_items):
+            refresh_items()
 
         await interaction.response.edit_message(
             content=self.parent_view.render_content(),

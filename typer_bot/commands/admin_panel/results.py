@@ -30,8 +30,8 @@ class ResultsPanelView(OwnerRestrictedView):
     def _refresh_items(self) -> None:
         self.clear_items()
         self.add_item(self.fixture_select)
-        self.add_item(ViewResultsButton(self))
-        self.add_item(CorrectResultsButton(self))
+        self.add_item(ViewResultsButton(self, disabled=self.selection.fixture_id is None))
+        self.add_item(CorrectResultsButton(self, disabled=self.selection.fixture_id is None))
         self.add_item(BackButton(self))
 
     async def load_fixture_options(self) -> None:
@@ -46,9 +46,13 @@ class ResultsPanelView(OwnerRestrictedView):
 
 
 class ViewResultsButton(discord.ui.Button):
-    def __init__(self, parent_view: ResultsPanelView):
+    def __init__(self, parent_view: ResultsPanelView, disabled: bool = False):
         self.parent_view = parent_view
-        super().__init__(label="View Results", style=discord.ButtonStyle.secondary)
+        super().__init__(
+            label="View Results",
+            style=discord.ButtonStyle.secondary,
+            disabled=disabled,
+        )
 
     async def callback(self, interaction: discord.Interaction):
         fixture_id = self.parent_view.selection.fixture_id
@@ -74,9 +78,13 @@ class ViewResultsButton(discord.ui.Button):
 
 
 class CorrectResultsButton(discord.ui.Button):
-    def __init__(self, parent_view: ResultsPanelView):
+    def __init__(self, parent_view: ResultsPanelView, disabled: bool = False):
         self.parent_view = parent_view
-        super().__init__(label="Correct Results", style=discord.ButtonStyle.primary)
+        super().__init__(
+            label="Correct Results",
+            style=discord.ButtonStyle.primary,
+            disabled=disabled,
+        )
 
     async def callback(self, interaction: discord.Interaction):
         fixture_id = self.parent_view.selection.fixture_id
