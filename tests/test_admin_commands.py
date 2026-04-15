@@ -3,6 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
+import discord
 import pytest
 
 from typer_bot.commands.admin_commands import (
@@ -10,7 +11,7 @@ from typer_bot.commands.admin_commands import (
     AdminCommands,
     PostResultsConfirmView,
 )
-from typer_bot.commands.admin_panel import EnterResultsModal, OpenFixtureWarningView
+from typer_bot.commands.admin_panel import CreateFixtureModal, EnterResultsModal
 from typer_bot.services.admin_service import FixtureScoreResult
 from typer_bot.utils import now
 from typer_bot.utils.permissions import is_admin
@@ -58,52 +59,52 @@ class TestFixtureCreateLogic:
         return AdminCommands(mock_bot)
 
     @pytest.mark.asyncio
-    async def test_fixture_create_starts_session(self, admin_cog, mock_interaction_admin):
-        """DM session prevents spamming public channels during fixture creation."""
-        user_id = str(mock_interaction_admin.user.id)
-        admin_cog.fixture_handler.start_session(user_id, 123456, 111111)
-        assert admin_cog.fixture_handler.has_session(user_id)
+    async def test_fixture_create_opens_modal(self, admin_cog, mock_interaction_admin):
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = mock_interaction_admin.channel.id
+        mock_interaction_admin.channel = channel
+
+        await admin_cog.fixture_create.callback(admin_cog, mock_interaction_admin)
+
+        assert isinstance(mock_interaction_admin.modal_sent["modal"], CreateFixtureModal)
 
     @pytest.mark.asyncio
-    async def test_fixture_create_session_has_correct_data(self, admin_cog, mock_interaction_admin):
-        """Session metadata includes guild and channel context for permissions and announcements."""
-        user_id = str(mock_interaction_admin.user.id)
-        admin_cog.fixture_handler.start_session(user_id, 123456, 111111)
+    async def test_fixture_create_from_thread_uses_parent_channel(
+        self, admin_cog, mock_interaction_admin
+    ):
+        parent_channel = MagicMock(spec=discord.TextChannel)
+        parent_channel.id = 123456
+        thread = MagicMock(spec=discord.Thread)
+        thread.parent = parent_channel
+        mock_interaction_admin.channel = thread
 
-        session = admin_cog.fixture_handler.get_session(user_id)
-        assert session.channel_id == 123456
-        assert session.guild_id == 111111
-        assert session.step == "games"
+        await admin_cog.fixture_create.callback(admin_cog, mock_interaction_admin)
+
+        assert mock_interaction_admin.modal_sent["modal"].channel is parent_channel
 
     @pytest.mark.asyncio
-    async def test_fixture_create_shows_warning_when_open_fixture_exists(
+    async def test_fixture_create_still_opens_modal_when_open_fixture_exists(
         self, admin_cog, mock_interaction_admin, sample_games
     ):
-        """Accidental duplicate fixtures are blocked by a confirmation step."""
-        mock_interaction_admin.channel_id = int(mock_interaction_admin.channel.id)
-        mock_interaction_admin.guild_id = mock_interaction_admin.guild.id
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = mock_interaction_admin.channel.id
+        mock_interaction_admin.channel = channel
         await admin_cog.db.create_fixture(5, sample_games, datetime.now(UTC) + timedelta(days=1))
 
         await admin_cog.fixture_create.callback(admin_cog, mock_interaction_admin)
 
-        response = mock_interaction_admin.response_sent[-1]
-        assert "already open" in response["content"]
-        assert isinstance(response["view"], OpenFixtureWarningView)
+        assert isinstance(mock_interaction_admin.modal_sent["modal"], CreateFixtureModal)
 
     @pytest.mark.asyncio
-    async def test_fixture_create_proceeds_directly_when_no_open_fixtures(
+    async def test_fixture_create_opens_modal_when_no_open_fixtures(
         self, admin_cog, mock_interaction_admin
     ):
-        """When no fixtures are open the DM session starts without any confirmation gate."""
-        mock_interaction_admin.channel_id = int(mock_interaction_admin.channel.id)
-        mock_interaction_admin.guild_id = mock_interaction_admin.guild.id
-        mock_interaction_admin.user.send = AsyncMock()
-
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = mock_interaction_admin.channel.id
+        mock_interaction_admin.channel = channel
         await admin_cog.fixture_create.callback(admin_cog, mock_interaction_admin)
 
-        response = mock_interaction_admin.response_sent[-1]
-        assert "Check your DMs" in response["content"]
-        assert admin_cog.fixture_handler.has_session(str(mock_interaction_admin.user.id))
+        assert isinstance(mock_interaction_admin.modal_sent["modal"], CreateFixtureModal)
 
 
 class TestFixtureDeleteLogic:
@@ -552,7 +553,7 @@ class TestCooldownLogic:
 
 
 class TestAdminSessionExclusivity:
-    """Fixture creation DM state still blocks overlapping DM-style admin workflows."""
+    """Mixed admin workflows respect the remaining DM-session exclusivity rules."""
 
     @pytest.fixture
     def admin_cog(self, mock_bot, database):
@@ -563,39 +564,16 @@ class TestAdminSessionExclusivity:
     async def test_fixture_create_command_blocked_when_results_session_active(
         self, admin_cog, mock_interaction_admin
     ):
-        """fixture_create gives a single clear error — not 'Check your DMs' + error."""
+        """fixture_create now opens a modal even if results DM state exists."""
         user_id = str(mock_interaction_admin.user.id)
-        mock_interaction_admin.channel_id = int(mock_interaction_admin.channel.id)
-        mock_interaction_admin.guild_id = mock_interaction_admin.guild.id
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = mock_interaction_admin.channel.id
+        mock_interaction_admin.channel = channel
         admin_cog.results_handler.start_session(user_id, 1, 111111, week_number=1)
 
         await admin_cog.fixture_create.callback(admin_cog, mock_interaction_admin)
 
-        assert len(mock_interaction_admin.response_sent) == 1
-        response = mock_interaction_admin.response_sent[0]["content"]
-        assert "results entry" in response.lower()
-        assert "Check your DMs" not in response
-        assert not admin_cog.fixture_handler.has_session(user_id)
-
-    @pytest.mark.asyncio
-    async def test_start_fixture_dm_blocked_when_results_session_active(
-        self, admin_cog, mock_interaction_admin
-    ):
-        """_start_fixture_dm fallback guard covers the view-triggered path."""
-        user_id = str(mock_interaction_admin.user.id)
-        admin_cog.results_handler.start_session(user_id, 1, 111111, week_number=1)
-
-        result = await admin_cog._start_fixture_dm(
-            mock_interaction_admin.user,
-            user_id,
-            channel_id=123456,
-            guild_id=111111,
-        )
-
-        assert result is False
-        assert not admin_cog.fixture_handler.has_session(user_id)
-        assert len(mock_interaction_admin.user.dm_sent) == 1
-        assert "results entry" in mock_interaction_admin.user.dm_sent[0].lower()
+        assert isinstance(mock_interaction_admin.modal_sent["modal"], CreateFixtureModal)
 
     @pytest.mark.asyncio
     async def test_results_enter_blocked_when_fixture_session_active(
@@ -617,18 +595,14 @@ class TestAdminSessionExclusivity:
     async def test_fixture_create_allowed_when_no_conflicting_session(
         self, admin_cog, mock_interaction_admin
     ):
-        """Fixture creation proceeds normally when no admin session is active."""
-        user_id = str(mock_interaction_admin.user.id)
+        """Fixture creation opens the modal when no admin session is active."""
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = mock_interaction_admin.channel.id
+        mock_interaction_admin.channel = channel
 
-        result = await admin_cog._start_fixture_dm(
-            mock_interaction_admin.user,
-            user_id,
-            channel_id=123456,
-            guild_id=111111,
-        )
+        await admin_cog.fixture_create.callback(admin_cog, mock_interaction_admin)
 
-        assert result is True
-        assert admin_cog.fixture_handler.has_session(user_id)
+        assert isinstance(mock_interaction_admin.modal_sent["modal"], CreateFixtureModal)
 
     @pytest.mark.asyncio
     async def test_results_enter_allowed_when_no_conflicting_session(
