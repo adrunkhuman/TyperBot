@@ -12,7 +12,13 @@ from typer_bot.database import Database
 from typer_bot.services import AdminService
 from typer_bot.utils import is_admin
 
-from .base import BackButton, FixtureSelect, OwnerRestrictedView, PanelSelectionState
+from .base import (
+    BackButton,
+    FixtureSelect,
+    OwnerRestrictedView,
+    PanelSelectionState,
+    _render_panel_content,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,11 +83,23 @@ class FixturesPanelView(OwnerRestrictedView):
         self.fixture_select.update_options(fixtures)
 
     def render_content(self) -> str:
-        status = (
-            self.selection.status_message
-            or "Select an open fixture to delete, or use `/admin fixture create` for new fixtures."
-        )
-        return "**Admin Panel - Fixtures**\n" + status
+        lines = ["**Admin Panel - Fixtures**"]
+        if self.selection.fixture_label:
+            lines.append(f"Fixture: {self.selection.fixture_label}")
+            lines.extend(
+                [
+                    "",
+                    "Delete the selected open fixture, or use `/admin fixture create` for new fixtures.",
+                ]
+            )
+        else:
+            lines.append(
+                "Select an open fixture to delete, or use `/admin fixture create` for new fixtures."
+            )
+
+        if self.selection.status_message:
+            lines.extend(["", self.selection.status_message])
+        return _render_panel_content(lines)
 
 
 class FixturesDeleteButton(discord.ui.Button):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import discord
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from .results import ResultsPanelView
 
 MAX_SELECT_OPTIONS = 25
+MAX_PANEL_CONTENT_LENGTH = 1900
 
 
 def _fixture_select_label(fixture: dict) -> str:
@@ -30,7 +31,50 @@ def _fixture_select_description(fixture: dict) -> str:
 
 
 def _format_prediction_line(index: int, game: str, prediction: str) -> str:
+    """Format a per-match score line for prediction or result displays."""
+
     return f"{index}. {game} {prediction}"
+
+
+def _build_detail_lines(games: list[str], values: list[str]) -> list[str]:
+    """Format per-match detail lines, truncating to the shorter input list.
+
+    This intentionally drops unmatched trailing items if the inputs differ.
+    """
+
+    return [
+        _format_prediction_line(index, game, value)
+        for index, (game, value) in enumerate(zip(games, values, strict=False), 1)
+    ]
+
+
+def _render_panel_content(lines: list[str]) -> str:
+    """Join panel lines under Discord's message limit.
+
+    Uses a 1900-char safety cap so panel edits stay below Discord's 2000-char
+    hard limit after adding a truncation marker when needed.
+    """
+
+    content = ""
+    suffix = "\n\n... content truncated."
+    for line in lines:
+        candidate = f"{content}\n{line}" if content else line
+        if len(candidate) <= MAX_PANEL_CONTENT_LENGTH:
+            content = candidate
+            continue
+
+        if not content:
+            return line[: MAX_PANEL_CONTENT_LENGTH - 3] + "..."
+
+        if len(suffix) >= MAX_PANEL_CONTENT_LENGTH:
+            return content[:MAX_PANEL_CONTENT_LENGTH]
+
+        if len(content) + len(suffix) <= MAX_PANEL_CONTENT_LENGTH:
+            return content + suffix
+
+        return content[: MAX_PANEL_CONTENT_LENGTH - len(suffix)] + suffix
+
+    return content
 
 
 def _prediction_status_text(prediction: dict) -> str:
@@ -43,10 +87,17 @@ def _prediction_status_text(prediction: dict) -> str:
 
 @dataclass(slots=True)
 class PanelSelectionState:
-    """Shared selection state for admin panel flows."""
+    """Shared render state for admin panel subviews.
+
+    `fixture_label`, `user_label`, and `detail_lines` drive the inline panel body.
+    `status_message` carries transient feedback after selections or admin actions.
+    """
 
     fixture_id: int | None = None
     user_id: str | None = None
+    fixture_label: str = ""
+    user_label: str = ""
+    detail_lines: list[str] = field(default_factory=list)
     status_message: str = ""
 
 
@@ -134,7 +185,13 @@ class BackButton(discord.ui.Button):
 
 
 class FixtureSelect(discord.ui.Select):
-    """Shared fixture selector that updates panel selection state in place."""
+    """Shared fixture selector that updates panel selection state in place.
+
+    Before hooks run, the selector clears user/detail state and refreshes the
+    selected fixture label + status. Subviews can optionally react to fixture
+    changes by exposing `populate_fixture_details()` and/or `load_user_options()`.
+    The selector calls those hooks before re-rendering the panel.
+    """
 
     def __init__(
         self,
@@ -171,16 +228,25 @@ class FixtureSelect(discord.ui.Select):
 
         fixture_id = int(self.values[0])
         self.parent_view.selection.user_id = None
+        self.parent_view.selection.user_label = ""
+        self.parent_view.selection.detail_lines = []
 
         fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
         if fixture is None:
             self.parent_view.selection.fixture_id = None
+            self.parent_view.selection.fixture_label = ""
             self.parent_view.selection.status_message = "Fixture no longer exists."
+            load_fixture_options = getattr(self.parent_view, "load_fixture_options", None)
+            if callable(load_fixture_options):
+                await load_fixture_options()
         else:
             self.parent_view.selection.fixture_id = fixture_id
-            self.parent_view.selection.status_message = (
-                f"Selected week {fixture['week_number']} ({fixture['status']})."
-            )
+            self.parent_view.selection.fixture_label = _fixture_select_label(fixture)
+            self.parent_view.selection.status_message = ""
+
+        populate_fixture_details = getattr(self.parent_view, "populate_fixture_details", None)
+        if callable(populate_fixture_details):
+            await populate_fixture_details(fixture)
 
         load_user_options = getattr(self.parent_view, "load_user_options", None)
         if callable(load_user_options):
