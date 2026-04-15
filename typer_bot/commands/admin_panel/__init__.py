@@ -7,7 +7,7 @@ from .fixtures import (
     OpenFixtureWarningView,
     _build_delete_confirmation_content,
 )
-from .modals import CorrectResultsModal, ReplacePredictionModal
+from .modals import CorrectResultsModal, EnterResultsModal, ReplacePredictionModal
 from .predictions import PredictionsPanelView
 from .results import ResultsPanelView
 
@@ -15,6 +15,7 @@ __all__ = [
     "AdminPanelHomeView",
     "CorrectResultsModal",
     "DeleteConfirmView",
+    "EnterResultsModal",
     "FixturesPanelView",
     "OpenFixtureWarningView",
     "PredictionsPanelView",

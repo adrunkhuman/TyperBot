@@ -12,6 +12,7 @@ from typer_bot.commands.admin_panel import (
     AdminPanelHomeView,
     CorrectResultsModal,
     DeleteConfirmView,
+    EnterResultsModal,
     FixturesPanelView,
     PredictionsPanelView,
     ReplacePredictionModal,
@@ -872,6 +873,222 @@ class TestAdminPanelModals:
     def admin_cog(self, mock_bot, database):
         mock_bot.db = database
         return AdminCommands(mock_bot)
+
+    @pytest.mark.asyncio
+    async def test_enter_results_modal_prefills_fixture_template(
+        self,
+        admin_cog,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            24, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+
+        modal = EnterResultsModal(fixture, admin_cog.db)
+
+        assert modal.results_input.default == (
+            "Team A - Team B 2:0\nTeam C - Team D 2:0\nTeam E - Team F 2:0"
+        )
+
+    @pytest.mark.asyncio
+    async def test_enter_results_modal_shows_parse_errors(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            25, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+
+        modal = EnterResultsModal(fixture, admin_cog.db)
+        modal.results_input._value = "Team A - Team B\nTeam C - Team D\nTeam E - Team F"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert "Could not find score" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_enter_results_modal_rechecks_admin_permission(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            28, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+
+        modal = EnterResultsModal(fixture, admin_cog.db)
+        modal.results_input._value = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.roles = []
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert "no longer have permission" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_enter_results_modal_save_results_persists_fixture_results(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            26, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+
+        modal = EnterResultsModal(fixture, admin_cog.db)
+        modal.results_input._value = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        confirm_view = mock_interaction_admin.response_sent[-1]["view"]
+        confirm_button = next(
+            child
+            for child in confirm_view.children
+            if getattr(child, "label", None) == "Save Results"
+        )
+        await confirm_button.callback(mock_interaction_admin)
+
+        assert "Results Saved!" in mock_interaction_admin.response_sent[-1]["content"]
+        assert await admin_cog.db.get_results(fixture_id) == ["2-1", "1-1", "0-2"]
+
+    @pytest.mark.asyncio
+    async def test_enter_results_modal_save_results_supports_cancelled_games(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            30, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+
+        modal = EnterResultsModal(fixture, admin_cog.db)
+        modal.results_input._value = "Team A - Team B x\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        confirm_view = mock_interaction_admin.response_sent[-1]["view"]
+        confirm_button = next(
+            child
+            for child in confirm_view.children
+            if getattr(child, "label", None) == "Save Results"
+        )
+        await confirm_button.callback(mock_interaction_admin)
+
+        assert await admin_cog.db.get_results(fixture_id) == ["x", "1-1", "0-2"]
+
+    @pytest.mark.asyncio
+    async def test_enter_results_confirm_shows_save_error_when_fixture_becomes_unavailable(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            31, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+
+        modal = EnterResultsModal(fixture, admin_cog.db)
+        modal.results_input._value = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        await modal.on_submit(mock_interaction_admin)
+        await admin_cog.db.save_scores(
+            fixture_id,
+            [
+                {
+                    "user_id": "user-1",
+                    "user_name": "User One",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 1,
+                }
+            ],
+        )
+
+        confirm_view = mock_interaction_admin.response_sent[-1]["view"]
+        confirm_button = next(
+            child
+            for child in confirm_view.children
+            if getattr(child, "label", None) == "Save Results"
+        )
+        await confirm_button.callback(mock_interaction_admin)
+
+        assert "Cannot save results" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_enter_results_modal_cancel_leaves_results_unsaved(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            27, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+
+        modal = EnterResultsModal(fixture, admin_cog.db)
+        modal.results_input._value = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        confirm_view = mock_interaction_admin.response_sent[-1]["view"]
+        cancel_button = next(
+            child for child in confirm_view.children if getattr(child, "label", None) == "Cancel"
+        )
+        await cancel_button.callback(mock_interaction_admin)
+
+        assert "Results entry cancelled" in mock_interaction_admin.response_sent[-1]["content"]
+        assert await admin_cog.db.get_results(fixture_id) is None
+
+    @pytest.mark.asyncio
+    async def test_enter_results_confirm_rechecks_admin_permission(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            29, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+
+        modal = EnterResultsModal(fixture, admin_cog.db)
+        modal.results_input._value = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        confirm_view = mock_interaction_admin.response_sent[-1]["view"]
+        confirm_button = next(
+            child
+            for child in confirm_view.children
+            if getattr(child, "label", None) == "Save Results"
+        )
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.roles = []
+
+        await confirm_button.callback(mock_interaction_admin)
+
+        assert "no longer have permission" in mock_interaction_admin.response_sent[-1]["content"]
+        assert await admin_cog.db.get_results(fixture_id) is None
 
     @pytest.mark.asyncio
     async def test_replace_prediction_modal_rechecks_admin_permission(

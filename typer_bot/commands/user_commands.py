@@ -139,7 +139,7 @@ class UserCommands(commands.Cog):
 • `/admin fixture delete [week]` - Delete an open fixture
 
 **Results Management:**
-• `/admin results enter [week]` - Enter actual scores (DM workflow)
+• `/admin results enter [week]` - Enter actual scores (modal + confirm)
 • `/admin results calculate [week]` - Calculate and post scores
 • `/admin results post` - Re-post results with optional mentions
 
@@ -154,14 +154,14 @@ class UserCommands(commands.Cog):
 
 2. **Enter Results:**
    - `/admin results enter` (add `week:` if multiple fixtures are open)
-   - Bot DMs you
-   - Send actual scores:
-     ```
-     Team A - Team B 1:0
-     Team C - Team D 2:2
-     ...
-     ```
-   - Confirm
+   - Modal opens in Discord
+   - Enter actual scores:
+      ```
+      Team A - Team B 1:0
+      Team C - Team D 2:2
+      ...
+      ```
+   - Review preview and confirm
 
 3. **Calculate Scores:**
    - `/admin results calculate` (add `week:` if multiple fixtures are open)
@@ -183,7 +183,7 @@ class UserCommands(commands.Cog):
 • `15.02.2024 18:00`
 • `15/02/2024 18:00`
 
-⚠️ Make sure your Discord allows DMs from server members!"""
+⚠️ DMs are still required for `/admin fixture create`."""
 
         await interaction.response.send_message(user_help, ephemeral=True)
 

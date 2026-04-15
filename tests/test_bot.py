@@ -83,7 +83,7 @@ class TestSetupHook:
 
     @pytest.mark.asyncio
     async def test_setup_hook_loads_admin_commands(self, bot_instance):
-        """Admin commands cog provides league management via DM workflows."""
+        """Admin commands cog provides league management commands."""
         await bot_instance.setup_hook()
         bot_instance.load_extension.assert_any_call("typer_bot.commands.admin_commands")
 
