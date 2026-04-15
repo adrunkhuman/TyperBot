@@ -32,15 +32,8 @@ def results_handler():
 
 
 @pytest.fixture
-def prediction_handler():
-    h = MagicMock()
-    h.handle_dm = AsyncMock(return_value=True)
-    return h
-
-
-@pytest.fixture
-def router(fixture_handler, results_handler, prediction_handler):
-    return DMRouter(fixture_handler, results_handler, prediction_handler)
+def router(fixture_handler, results_handler):
+    return DMRouter(fixture_handler, results_handler)
 
 
 class TestRouterIgnoresNonDMs:
@@ -58,7 +51,7 @@ class TestRouterIgnoresNonDMs:
 class TestRoutingPrecedence:
     @pytest.mark.asyncio
     async def test_fixture_session_routes_to_fixture_handler(
-        self, router, fixture_handler, results_handler, prediction_handler
+        self, router, fixture_handler, results_handler
     ):
         fixture_handler.has_session.return_value = True
         message = _make_dm_message()
@@ -68,11 +61,10 @@ class TestRoutingPrecedence:
         assert result is True
         fixture_handler.handle_dm.assert_awaited_once()
         results_handler.handle_dm.assert_not_awaited()
-        prediction_handler.handle_dm.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_results_session_routes_to_results_handler(
-        self, router, fixture_handler, results_handler, prediction_handler
+        self, router, fixture_handler, results_handler
     ):
         results_handler.has_session.return_value = True
         message = _make_dm_message()
@@ -82,18 +74,14 @@ class TestRoutingPrecedence:
         assert result is True
         results_handler.handle_dm.assert_awaited_once()
         fixture_handler.handle_dm.assert_not_awaited()
-        prediction_handler.handle_dm.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_no_admin_session_falls_through_to_prediction(
-        self, router, fixture_handler, results_handler, prediction_handler
-    ):
+    async def test_no_admin_session_returns_false(self, router, fixture_handler, results_handler):
         message = _make_dm_message()
 
         result = await router.route(message)
 
-        assert result is True
-        prediction_handler.handle_dm.assert_awaited_once_with(message)
+        assert result is False
         fixture_handler.handle_dm.assert_not_awaited()
         results_handler.handle_dm.assert_not_awaited()
 
@@ -112,14 +100,13 @@ class TestRoutingPrecedence:
         results_handler.handle_dm.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_admin_session_takes_precedence_over_prediction(
-        self, router, results_handler, prediction_handler
+    async def test_results_session_routes_even_without_other_handlers(
+        self, router, results_handler
     ):
-        """Any active admin session blocks the prediction handler."""
+        """Any active admin session should still be consumed."""
         results_handler.has_session.return_value = True
         message = _make_dm_message()
 
         await router.route(message)
 
         results_handler.handle_dm.assert_awaited_once()
-        prediction_handler.handle_dm.assert_not_awaited()

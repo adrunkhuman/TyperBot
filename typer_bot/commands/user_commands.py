@@ -1,17 +1,256 @@
 """User-facing Discord commands."""
 
+from __future__ import annotations
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from typer_bot.database import Database
-from typer_bot.handlers import DMPredictionHandler
+from typer_bot.database import Database, SaveResult
 from typer_bot.services import WorkflowStateStore
 from typer_bot.utils import (
     format_for_discord,
+    format_predictions_preview,
     format_standings,
     is_admin,
+    now,
+    parse_line_predictions,
 )
+
+
+def _prediction_template(games: list[str]) -> str:
+    return "\n".join(f"{game} 2:0" for game in games)
+
+
+def _remaining_open_fixtures(
+    open_fixtures: list[dict], completed_fixture_ids: set[int]
+) -> list[dict]:
+    return [fixture for fixture in open_fixtures if fixture["id"] not in completed_fixture_ids]
+
+
+class ContinuePredictButton(discord.ui.Button):
+    def __init__(self, fixture: dict):
+        super().__init__(
+            label=f"Predict Week {fixture['week_number']}",
+            style=discord.ButtonStyle.primary,
+        )
+        self.fixture = fixture
+
+    async def callback(self, interaction: discord.Interaction):
+        view = self.view
+        if not isinstance(view, ContinuePredictView):
+            await interaction.response.send_message(
+                "Prediction flow is no longer available.", ephemeral=True
+            )
+            return
+        if str(interaction.user.id) != view.owner_user_id:
+            await interaction.response.send_message(
+                "You don't have permission to do this!", ephemeral=True
+            )
+            return
+
+        latest_fixture = await view.db.get_fixture_by_id(self.fixture["id"])
+        if latest_fixture is None or latest_fixture["status"] != "open":
+            await interaction.response.edit_message(
+                content="That fixture is no longer open. Use `/predict` to refresh the list.",
+                view=None,
+            )
+            return
+
+        existing_prediction = await view.db.get_prediction(self.fixture["id"], view.owner_user_id)
+        modal = PredictModal(
+            view.db,
+            latest_fixture,
+            interaction.user.display_name,
+            view.completed_fixture_ids,
+            existing_prediction,
+        )
+        await interaction.response.send_modal(modal)
+
+
+class ContinuePredictView(discord.ui.View):
+    """Offer remaining open fixtures after a successful prediction save."""
+
+    def __init__(
+        self,
+        db: Database,
+        owner_user_id: str,
+        remaining_fixtures: list[dict],
+        completed_fixture_ids: set[int],
+    ):
+        super().__init__(timeout=3600)
+        self.db = db
+        self.owner_user_id = owner_user_id
+        self.completed_fixture_ids = completed_fixture_ids
+        for fixture in remaining_fixtures[:25]:
+            self.add_item(ContinuePredictButton(fixture))
+
+
+class FixtureSelect(discord.ui.Select):
+    def __init__(self, fixtures: list[dict]):
+        options = [
+            discord.SelectOption(label=f"Week {fixture['week_number']}", value=str(fixture["id"]))
+            for fixture in fixtures[:25]
+        ]
+        super().__init__(
+            placeholder="Select a fixture", min_values=1, max_values=1, options=options
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        view = self.view
+        if not isinstance(view, FixtureSelectView):
+            await interaction.response.send_message(
+                "Fixture picker is no longer available.", ephemeral=True
+            )
+            return
+        if str(interaction.user.id) != view.owner_user_id:
+            await interaction.response.send_message(
+                "You don't have permission to do this!", ephemeral=True
+            )
+            return
+
+        fixture_id = int(self.values[0])
+        fixture = await view.db.get_fixture_by_id(fixture_id)
+        if fixture is None or fixture["status"] != "open":
+            await interaction.response.edit_message(
+                content="That fixture is no longer open. Use `/predict` to refresh the list.",
+                view=None,
+            )
+            return
+
+        existing_prediction = await view.db.get_prediction(fixture_id, view.owner_user_id)
+        modal = PredictModal(
+            view.db,
+            fixture,
+            interaction.user.display_name,
+            view.completed_fixture_ids,
+            existing_prediction,
+        )
+        await interaction.response.send_modal(modal)
+
+
+class FixtureSelectView(discord.ui.View):
+    """Let a user choose which open fixture to predict first."""
+
+    def __init__(
+        self,
+        db: Database,
+        owner_user_id: str,
+        fixtures: list[dict],
+        completed_fixture_ids: set[int] | None = None,
+    ):
+        super().__init__(timeout=3600)
+        self.db = db
+        self.owner_user_id = owner_user_id
+        self.completed_fixture_ids = completed_fixture_ids or set()
+        self.add_item(FixtureSelect(fixtures))
+
+
+class PredictModal(discord.ui.Modal):
+    """Collect predictions for one fixture through a modal instead of DMs.
+
+    Submitting can overwrite an existing open prediction, late submissions are
+    accepted but marked late, and successful saves can chain into a follow-up
+    picker for any remaining open fixtures.
+    """
+
+    def __init__(
+        self,
+        db: Database,
+        fixture: dict,
+        user_name: str,
+        completed_fixture_ids: set[int] | None = None,
+        existing_prediction: dict | None = None,
+    ):
+        super().__init__(title=f"Predict Week {fixture['week_number']}")
+        self.db = db
+        self.fixture = fixture
+        self.user_name = user_name
+        self.completed_fixture_ids = completed_fixture_ids or set()
+        default_value = (
+            "\n".join(
+                f"{game} {prediction}"
+                for game, prediction in zip(
+                    fixture["games"], existing_prediction["predictions"], strict=False
+                )
+            )
+            if existing_prediction
+            else _prediction_template(fixture["games"])
+        )
+        self.predictions_input = discord.ui.TextInput(
+            label="Predictions",
+            style=discord.TextStyle.paragraph,
+            placeholder="One line per match, e.g. Team A - Team B 2:1",
+            default=default_value,
+            required=True,
+            max_length=4000,
+        )
+        self.add_item(self.predictions_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        fixture = await self.db.get_fixture_by_id(self.fixture["id"])
+        if fixture is None or fixture["status"] != "open":
+            await interaction.response.send_message(
+                "This fixture is no longer open. Use `/predict` to refresh the list.",
+                ephemeral=True,
+            )
+            return
+
+        predictions, errors = parse_line_predictions(self.predictions_input.value, fixture["games"])
+        if errors:
+            await interaction.response.send_message("\n".join(errors), ephemeral=True)
+            return
+
+        is_late = now() > fixture["deadline"]
+        try:
+            result = await self.db.save_prediction_guarded(
+                fixture["id"],
+                str(interaction.user.id),
+                self.user_name,
+                predictions,
+                is_late,
+            )
+        except Exception:
+            await interaction.response.send_message(
+                "Something went wrong while saving your prediction. Please try again.",
+                ephemeral=True,
+            )
+            return
+        if result == SaveResult.FIXTURE_CLOSED:
+            await interaction.response.send_message(
+                "This fixture closed before your prediction could be saved. Use `/predict` to refresh the list.",
+                ephemeral=True,
+            )
+            return
+
+        content = format_predictions_preview(fixture["games"], predictions)
+        deadline_str = format_for_discord(fixture["deadline"], "F")
+        relative_str = format_for_discord(fixture["deadline"], "R")
+        content += f"\n\n**Deadline:** {deadline_str} ({relative_str})"
+        if is_late:
+            content += "\n\n⚠️ **Late prediction!** You will receive 0 points for this round."
+
+        completed_fixture_ids = set(self.completed_fixture_ids)
+        completed_fixture_ids.add(fixture["id"])
+        open_fixtures = await self.db.get_open_fixtures()
+        remaining_fixtures = _remaining_open_fixtures(open_fixtures, completed_fixture_ids)
+        if remaining_fixtures:
+            view = ContinuePredictView(
+                self.db,
+                str(interaction.user.id),
+                remaining_fixtures,
+                completed_fixture_ids,
+            )
+            await interaction.response.send_message(
+                f"{content}\n\nPredict another open fixture?",
+                ephemeral=True,
+                view=view,
+            )
+            return
+
+        await interaction.response.send_message(
+            f"{content}\n\nYou're done for now.", ephemeral=True
+        )
 
 
 class UserCommands(commands.Cog):
@@ -22,7 +261,6 @@ class UserCommands(commands.Cog):
         # TyperBot injects these attrs; discord.py typing cannot see them.
         self.db: Database = bot.db  # type: ignore
         self.workflow_state: WorkflowStateStore = bot.workflow_state  # type: ignore[attr-defined]
-        self.prediction_handler = DMPredictionHandler(self.db, self.workflow_state)
 
     @staticmethod
     def _chunk_message(content: str, limit: int = 2000) -> list[str]:
@@ -69,7 +307,7 @@ class UserCommands(commands.Cog):
     @app_commands.command(name="predict", description="Submit your predictions for open fixtures")
     @app_commands.checks.cooldown(1, 1.0)
     async def predict(self, interaction: discord.Interaction):
-        """Send fixture list to user via DM."""
+        """Open a modal to submit predictions for open fixtures."""
         open_fixtures = await self.db.get_open_fixtures()
         if not open_fixtures:
             await interaction.response.send_message(
@@ -77,17 +315,27 @@ class UserCommands(commands.Cog):
             )
             return
 
-        await interaction.response.send_message(
-            "📩 Check your DMs! I've sent you the prediction flow.", ephemeral=True
-        )
-
-        try:
-            await self.prediction_handler.start_flow(interaction.user, open_fixtures)
-        except discord.Forbidden:
-            await interaction.followup.send(
-                "❌ I can't send you DMs. Please enable DMs from server members and try again.",
-                ephemeral=True,
+        existing_prediction = None
+        if len(open_fixtures) == 1:
+            fixture = open_fixtures[0]
+            existing_prediction = await self.db.get_prediction(
+                fixture["id"], str(interaction.user.id)
             )
+            modal = PredictModal(
+                self.db,
+                fixture,
+                interaction.user.display_name,
+                existing_prediction=existing_prediction,
+            )
+            await interaction.response.send_modal(modal)
+            return
+
+        view = FixtureSelectView(self.db, str(interaction.user.id), open_fixtures)
+        await interaction.response.send_message(
+            "Multiple fixtures are open. Choose which week you want to predict first.",
+            ephemeral=True,
+            view=view,
+        )
 
     @app_commands.command(name="help", description="Show help information")
     async def help(self, interaction: discord.Interaction):
@@ -97,7 +345,7 @@ class UserCommands(commands.Cog):
         user_help = """## 📖 User Commands
 
 **For Players:**
-• `/predict` - Submit predictions via DM
+• `/predict` - Submit predictions via modal
 • `/fixtures` - View all open fixtures
 • `/standings` - See overall leaderboard
 • `/mypredictions` - Check your submitted predictions for open fixtures
@@ -114,11 +362,11 @@ class UserCommands(commands.Cog):
    ```
 3. Bot will react ✅ when saved
 
-**Method 2: DM Predictions**
-1. Type `/predict` in the channel (or DM the bot directly)
-2. If multiple fixtures are open, bot asks which week you want first
-3. Reply with your predictions - they are saved immediately
-4. Bot can guide you through other open fixtures in the same DM flow
+**Method 2: /predict Modal**
+1. Type `/predict` in the channel
+2. If multiple fixtures are open, choose the week from the picker
+3. Enter your predictions in the modal
+4. Save, then use the buttons to continue to other open fixtures
 
 **Scoring:**
 • Exact score: 3 points
@@ -128,7 +376,7 @@ class UserCommands(commands.Cog):
 
 **Input formats:** Use `2:0`, `2-0`, or `2 : 0`
 
-**To change a prediction:** Use `/predict` or DM the bot again. Thread posts do not edit existing picks."""
+**To change a prediction:** Use `/predict` again. Thread posts do not edit existing picks."""
 
         admin_help = """\n\n## 🔧 Admin Commands
 
@@ -182,7 +430,7 @@ class UserCommands(commands.Cog):
 • `15.02.2024 18:00`
 • `15/02/2024 18:00`
 
-⚠️ DMs are still required for `/admin fixture create`."""
+⚠️ No DMs are required for `/predict`, `/admin fixture create`, or `/admin results enter`."""
 
         await interaction.response.send_message(user_help, ephemeral=True)
 

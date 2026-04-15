@@ -53,7 +53,6 @@ class TestSetupHook:
         mock_admin_cog.fixture_handler = MagicMock()
         mock_admin_cog.results_handler = MagicMock()
         mock_user_cog = MagicMock()
-        mock_user_cog.prediction_handler = MagicMock()
         mock_cogs = {"AdminCommands": mock_admin_cog, "UserCommands": mock_user_cog}
         with (
             patch("typer_bot.bot.commands.Bot.__init__", return_value=None),
@@ -101,14 +100,13 @@ class TestSetupHook:
 
     @pytest.mark.asyncio
     async def test_setup_hook_initializes_dm_router_with_loaded_handlers(self, bot_instance):
-        """DM routing is wired from the loaded admin and user cogs."""
+        """DM routing is wired from the loaded admin cogs that still own DM handlers."""
         with patch("typer_bot.bot.DMRouter") as mock_router:
             await bot_instance.setup_hook()
 
         mock_router.assert_called_once_with(
             bot_instance.cogs["AdminCommands"].fixture_handler,
             bot_instance.cogs["AdminCommands"].results_handler,
-            bot_instance.cogs["UserCommands"].prediction_handler,
         )
         assert bot_instance.dm_router is mock_router.return_value
 
@@ -123,7 +121,7 @@ class TestSetupHook:
     @pytest.mark.asyncio
     async def test_setup_hook_raises_when_required_cog_missing(self, bot_instance):
         """Startup aborts if DM router dependencies were not loaded."""
-        bot_instance.cogs = {"AdminCommands": bot_instance.cogs["AdminCommands"]}
+        bot_instance.cogs = {"UserCommands": bot_instance.cogs["UserCommands"]}
 
         with pytest.raises(RuntimeError, match="Required cogs not loaded"):
             await bot_instance.setup_hook()
@@ -513,6 +511,20 @@ class TestOnMessageDMRouting:
         mock_message.author.bot = False
         mock_message.guild = None
         mock_message.id = 1
+
+        await bot_instance.on_message(mock_message)
+
+        bot_instance.dm_router.route.assert_awaited_once_with(mock_message)
+
+    @pytest.mark.asyncio
+    async def test_plain_user_dm_is_ignored_when_router_returns_false(self, bot_instance):
+        """User DMs without an active admin session are ignored after /predict moved to modals."""
+        bot_instance.dm_router.route = AsyncMock(return_value=False)
+        mock_message = MagicMock()
+        mock_message.author.bot = False
+        mock_message.guild = None
+        mock_message.content = "Team A - Team B 2-1"
+        mock_message.id = 5
 
         await bot_instance.on_message(mock_message)
 

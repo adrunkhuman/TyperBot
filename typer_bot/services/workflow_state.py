@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Literal
 
 from typer_bot.utils import now
 
 SESSION_TIMEOUT = timedelta(hours=1)
 COOLDOWN_ENTRY_EXPIRY = timedelta(hours=1)
-PredictionStep = Literal["select", "predict", "continue"]
 
 
 @dataclass(slots=True)
@@ -37,29 +35,17 @@ class ResultsSession:
     created_at: datetime = field(default_factory=now)
 
 
-@dataclass(slots=True)
-class PredictionSession:
-    """In-memory state for one user's DM prediction flow."""
-
-    step: PredictionStep
-    fixture_ids: list[int] = field(default_factory=list)
-    fixture_id: int | None = None
-    completed_fixture_ids: list[int] = field(default_factory=list)
-    created_at: datetime = field(default_factory=now)
-
-
 class WorkflowStateStore:
     """Own all process-local workflow sessions and short-lived cooldowns.
 
     This is the source of truth for fixture-creation DMs, results-entry DMs,
-    multi-step prediction DMs, thread prediction rate limiting, and the admin
+    thread prediction rate limiting, and the admin
     score-calculation cooldown. None of this state is persisted across restarts.
     """
 
     def __init__(self):
         self._fixture_sessions: dict[str, FixtureSession] = {}
         self._results_sessions: dict[str, ResultsSession] = {}
-        self._prediction_sessions: dict[str, PredictionSession] = {}
         self._thread_prediction_cooldowns: dict[str, datetime] = {}
         self._calculate_cooldowns: dict[str, float] = {}
 
@@ -119,41 +105,6 @@ class WorkflowStateStore:
 
     def clear_results_session(self, user_id: str) -> None:
         self._results_sessions.pop(user_id, None)
-
-    def _cleanup_prediction_sessions(self) -> None:
-        current_time = now()
-        expired_users = [
-            user_id
-            for user_id, session in self._prediction_sessions.items()
-            if self._is_expired(session.created_at, current_time=current_time)
-        ]
-        for user_id in expired_users:
-            self._prediction_sessions.pop(user_id, None)
-
-    def set_prediction_session(
-        self,
-        user_id: str,
-        *,
-        step: PredictionStep,
-        fixture_ids: list[int] | None = None,
-        fixture_id: int | None = None,
-        completed_fixture_ids: list[int] | None = None,
-    ) -> PredictionSession:
-        session = PredictionSession(
-            step=step,
-            fixture_ids=fixture_ids or [],
-            fixture_id=fixture_id,
-            completed_fixture_ids=completed_fixture_ids or [],
-        )
-        self._prediction_sessions[user_id] = session
-        return session
-
-    def get_prediction_session(self, user_id: str) -> PredictionSession | None:
-        self._cleanup_prediction_sessions()
-        return self._prediction_sessions.get(user_id)
-
-    def clear_prediction_session(self, user_id: str) -> None:
-        self._prediction_sessions.pop(user_id, None)
 
     def record_thread_prediction_attempt(
         self, user_id: str, current_time: datetime
@@ -223,19 +174,10 @@ class WorkflowStateStore:
 
     def cleanup_all_expired(self) -> int:
         """Run all per-type session and cooldown cleanups. Returns count of DM sessions removed (cooldown entries not counted)."""
-        before = (
-            len(self._fixture_sessions)
-            + len(self._results_sessions)
-            + len(self._prediction_sessions)
-        )
+        before = len(self._fixture_sessions) + len(self._results_sessions)
         self._cleanup_fixture_sessions()
         self._cleanup_results_sessions()
-        self._cleanup_prediction_sessions()
         self._cleanup_thread_cooldowns()
         self._cleanup_calculate_cooldowns()
-        after = (
-            len(self._fixture_sessions)
-            + len(self._results_sessions)
-            + len(self._prediction_sessions)
-        )
+        after = len(self._fixture_sessions) + len(self._results_sessions)
         return before - after

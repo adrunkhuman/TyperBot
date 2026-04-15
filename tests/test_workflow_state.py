@@ -18,32 +18,23 @@ class TestSessionCleanup:
 
         assert workflow_state.get_results_session("user-1") is None
 
-    def test_prediction_sessions_expire_when_accessed(self, workflow_state):
-        session = workflow_state.set_prediction_session("user-1", step="select")
-        session.created_at = now() - timedelta(hours=2)
-
-        assert workflow_state.get_prediction_session("user-1") is None
-
 
 class TestCleanupAllExpired:
     def test_returns_zero_when_nothing_expired(self, workflow_state):
         workflow_state.start_fixture_session("user-1", 123, 456)
         workflow_state.start_results_session("user-2", 99, 456)
-        workflow_state.set_prediction_session("user-3", step="select")
 
         assert workflow_state.cleanup_all_expired() == 0
 
     def test_counts_expired_sessions_across_all_types(self, workflow_state):
         s1 = workflow_state.start_fixture_session("user-1", 123, 456)
         s2 = workflow_state.start_results_session("user-2", 99, 456)
-        s3 = workflow_state.set_prediction_session("user-3", step="select")
 
         stale = datetime.now(UTC) - timedelta(hours=2)
         s1.created_at = stale
         s2.created_at = stale
-        s3.created_at = stale
 
-        assert workflow_state.cleanup_all_expired() == 3
+        assert workflow_state.cleanup_all_expired() == 2
 
     def test_only_removes_expired_leaves_fresh(self, workflow_state):
         # Backdate after both inserts; starting a fixture session triggers lazy cleanup.
