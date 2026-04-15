@@ -57,7 +57,9 @@ class TyperBot(commands.Bot):
         Thread predictions run first so public fixture threads behave like a
         dedicated submission surface. Non-thread guild messages fall back to the
         normal command/cog pipeline. DMs bypass listener ordering entirely and go
-        through ``DMRouter`` once ``setup_hook`` has wired the handlers together.
+        through ``DMRouter`` once ``setup_hook`` has wired the handlers together;
+        plain user prediction DMs are no longer consumed after the /predict modal
+        migration.
         """
         if message.author.bot:
             return
@@ -125,13 +127,11 @@ class TyperBot(commands.Bot):
             raise
 
         admin_cog = self.cogs.get("AdminCommands")
-        user_cog = self.cogs.get("UserCommands")
-        if admin_cog is None or user_cog is None:
+        if admin_cog is None:
             raise RuntimeError("Required cogs not loaded before DM router initialisation")
         self.dm_router = DMRouter(
             admin_cog.fixture_handler,  # type: ignore[attr-defined]
             admin_cog.results_handler,  # type: ignore[attr-defined]
-            user_cog.prediction_handler,  # type: ignore[attr-defined]
         )
         logger.info("DM router initialised")
 
@@ -294,7 +294,7 @@ class TyperBot(commands.Bot):
                                 )
                             else:
                                 logger.info(
-                                    f"Fixture {fixture['id']} has no thread (users can use /predict)"
+                                    f"Fixture {fixture['id']} has no thread (/predict cannot post publicly)"
                                 )
                             found = True
                             break

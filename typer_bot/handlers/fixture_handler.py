@@ -344,7 +344,7 @@ class FixtureConfirmView(ui.View):
                 f"{final_preview}\n\n"
                 f"💬 **How to predict:**\n"
                 f"• Reply in this thread with your scores (one per line)\n"
-                f"• Or use `/predict` for DM mode"
+                f"• Or use `/predict` to fill a modal and post publicly here"
             )
 
             await self.handler.db.update_fixture_announcement(
@@ -366,7 +366,7 @@ class FixtureConfirmView(ui.View):
             except Exception as e:
                 logger.warning(f"Could not create thread for fixture: {e}")
                 await interaction.followup.send(
-                    "⚠️ Fixture created but I couldn't create a prediction thread. Users can still use `/predict`.",
+                    "⚠️ Fixture created but I couldn't create a prediction thread. Restore the thread before users can predict.",
                     ephemeral=True,
                 )
         except Exception:

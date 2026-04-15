@@ -4,6 +4,7 @@ from .permissions import is_admin, is_admin_member
 from .prediction_parser import (
     ascii_username,
     format_fixture_results,
+    format_predictions_preview,
     format_standings,
     parse_line_predictions,
     parse_predictions,
@@ -18,6 +19,7 @@ __all__ = [
     "parse_predictions",
     "parse_line_predictions",
     "format_fixture_results",
+    "format_predictions_preview",
     "format_standings",
     "calculate_points",
     "now",
