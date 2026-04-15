@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -19,6 +20,8 @@ if TYPE_CHECKING:
 
 MAX_SELECT_OPTIONS = 25
 MAX_PANEL_CONTENT_LENGTH = 1900
+
+logger = logging.getLogger(__name__)
 
 
 def _fixture_select_label(fixture: dict) -> str:
@@ -137,6 +140,45 @@ class OwnerRestrictedView(discord.ui.View):
         return True
 
 
+async def _notify_user_dm(
+    bot: discord.Client | None,
+    user_id: str,
+    message: str,
+    *,
+    context: str,
+) -> None:
+    """Send a best-effort DM notification for admin correction actions.
+
+    This helper expects a numeric Discord user ID string, falls back to
+    `fetch_user()` when the user is uncached, and logs/swallow failures instead
+    of raising so admin actions never depend on DM delivery.
+    """
+    if bot is None:
+        return
+
+    try:
+        discord_user_id = int(user_id)
+    except ValueError:
+        logger.warning("Could not parse user id %s for %s notification", user_id, context)
+        return
+
+    user = bot.get_user(discord_user_id)
+    if user is None:
+        fetch_user = getattr(bot, "fetch_user", None)
+        if fetch_user is None:
+            return
+        try:
+            user = await fetch_user(discord_user_id)
+        except discord.HTTPException:
+            logger.warning("Could not fetch user %s for %s notification", user_id, context)
+            return
+
+    try:
+        await user.send(message)
+    except discord.HTTPException:
+        logger.warning("Could not DM user %s for %s notification", user_id, context)
+
+
 class FixtureSelect(discord.ui.Select):
     """Shared fixture selector that updates panel selection state in place.
 
@@ -144,6 +186,9 @@ class FixtureSelect(discord.ui.Select):
     selected fixture label + status. Subviews can optionally react to fixture
     changes by exposing `populate_fixture_details()` and/or `load_user_options()`.
     The selector calls those hooks before re-rendering the panel.
+
+    Re-rendered Discord selects lose their visible selection unless the active
+    option is re-marked as `default`, so this component re-applies that state.
     """
 
     def __init__(
@@ -172,10 +217,20 @@ class FixtureSelect(discord.ui.Select):
                 label=_fixture_select_label(fixture),
                 value=str(fixture["id"]),
                 description=_fixture_select_description(fixture),
+                default=self.parent_view.selection.fixture_id == fixture["id"],
             )
             for fixture in fixtures[:MAX_SELECT_OPTIONS]
         ]
         self.disabled = False
+
+    def sync_selected_option(self) -> None:
+        selected_value = (
+            str(self.parent_view.selection.fixture_id)
+            if self.parent_view.selection.fixture_id is not None
+            else None
+        )
+        for option in self.options:
+            option.default = option.value == selected_value
 
     async def callback(self, interaction: discord.Interaction):
         if self.values[0] == "none":
@@ -207,6 +262,8 @@ class FixtureSelect(discord.ui.Select):
         load_user_options = getattr(self.parent_view, "load_user_options", None)
         if callable(load_user_options):
             await load_user_options()
+
+        self.sync_selected_option()
 
         refresh_items = getattr(self.parent_view, "_refresh_items", None)
         if callable(refresh_items):
