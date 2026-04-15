@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
 import discord
 from discord import app_commands
@@ -16,15 +17,87 @@ from typer_bot.commands.admin_panel import (
     _build_delete_confirmation_content,
 )
 from typer_bot.database import Database
-from typer_bot.services import AdminService, WorkflowStateStore
+from typer_bot.services import AdminService
 from typer_bot.services.admin_service import FixtureScoreResult
 from typer_bot.utils import format_fixture_results, format_standings, is_admin, now
 from typer_bot.utils.config import BACKUP_DIR
 from typer_bot.utils.db_backup import cleanup_old_backups, create_backup
 
 CALCULATE_COOLDOWN = 30.0
+COOLDOWN_ENTRY_EXPIRY = timedelta(hours=1)
 
 logger = logging.getLogger(__name__)
+
+
+class FixtureDeleteSelect(discord.ui.Select):
+    """Owner-only fixture picker for ambiguous delete flows.
+
+    This is only shown when multiple open fixtures exist and the admin omitted
+    the `week` argument. Options are capped at Discord's 25-item select limit.
+    """
+
+    def __init__(self, fixtures: list[dict]):
+        options = [
+            discord.SelectOption(
+                label=f"Week {fixture['week_number']}",
+                value=str(fixture["id"]),
+                description=f"{fixture['status']} fixture",
+            )
+            for fixture in fixtures[:25]
+        ]
+        super().__init__(placeholder="Select a fixture to delete", options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        view = self.view
+        if not isinstance(view, FixtureSelectForDeleteView):
+            await interaction.response.send_message(
+                "Fixture picker is no longer available.", ephemeral=True
+            )
+            return
+        if str(interaction.user.id) != view.owner_user_id:
+            await interaction.response.send_message(
+                "You don't have permission to do this!", ephemeral=True
+            )
+            return
+        if not is_admin(interaction):
+            await interaction.response.send_message(
+                "You no longer have permission to use admin commands.", ephemeral=True
+            )
+            return
+
+        fixture_id = int(self.values[0])
+        fixture = await view.db.get_fixture_by_id(fixture_id)
+        if fixture is None or fixture["status"] != "open":
+            await interaction.response.edit_message(
+                content="That fixture is no longer open. Use `/admin fixture delete` again to refresh the list.",
+                view=None,
+            )
+            return
+
+        delete_view = DeleteConfirmView(
+            view.db,
+            view.owner_user_id,
+            fixture["id"],
+            fixture["week_number"],
+            bot=view.bot,
+            message_id=fixture.get("message_id"),
+            channel_id=fixture.get("channel_id"),
+        )
+        await interaction.response.edit_message(
+            content=_build_delete_confirmation_content(fixture),
+            view=delete_view,
+        )
+
+
+class FixtureSelectForDeleteView(discord.ui.View):
+    """Ephemeral wrapper around the delete fixture picker."""
+
+    def __init__(self, db: Database, owner_user_id: str, fixtures: list[dict], bot: commands.Bot):
+        super().__init__(timeout=3600)
+        self.db = db
+        self.owner_user_id = owner_user_id
+        self.bot = bot
+        self.add_item(FixtureDeleteSelect(fixtures))
 
 
 def admin_only():
@@ -52,8 +125,48 @@ class AdminCommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.db: Database = bot.db  # type: ignore
-        self.workflow_state: WorkflowStateStore = bot.workflow_state  # type: ignore[attr-defined]
         self.service = AdminService(self.db)
+        self._calculate_cooldowns: dict[str, float] = {}
+
+    def get_calculate_cooldown_remaining(
+        self,
+        user_id: str,
+        *,
+        current_time: float,
+        cooldown_seconds: float,
+    ) -> float:
+        """Return remaining calculate cooldown seconds for a user.
+
+        `current_time` is expected to be a Unix timestamp float. Expired
+        entries are pruned before the remaining duration is calculated.
+        """
+        cutoff = current_time - COOLDOWN_ENTRY_EXPIRY.total_seconds()
+        expired_users = [
+            stored_user_id
+            for stored_user_id, timestamp in self._calculate_cooldowns.items()
+            if timestamp < cutoff
+        ]
+        for stored_user_id in expired_users:
+            self._calculate_cooldowns.pop(stored_user_id, None)
+
+        last_used = self._calculate_cooldowns.get(user_id)
+        if last_used is None:
+            return 0.0
+
+        return max(0.0, cooldown_seconds - (current_time - last_used))
+
+    def record_calculate_cooldown(self, user_id: str, *, current_time: float) -> None:
+        self._calculate_cooldowns[user_id] = current_time
+
+    def get_calculate_cooldown(self, user_id: str) -> float | None:
+        return self._calculate_cooldowns.get(user_id)
+
+    def cleanup_expired_state(self) -> int:
+        cutoff = now().timestamp() - COOLDOWN_ENTRY_EXPIRY.total_seconds()
+        expired = [uid for uid, ts in self._calculate_cooldowns.items() if ts < cutoff]
+        for uid in expired:
+            self._calculate_cooldowns.pop(uid, None)
+        return len(expired)
 
     @staticmethod
     def _format_open_weeks(open_fixtures: list[dict]) -> str:
@@ -195,6 +308,25 @@ class AdminCommands(commands.Cog):
     @fixture.command(name="delete", description="Delete an open fixture")
     @admin_only()
     async def fixture_delete(self, interaction: discord.Interaction, week: int | None = None):
+        if week is None:
+            open_fixtures = await self.db.get_open_fixtures()
+            if not open_fixtures:
+                await interaction.response.send_message("No open fixtures found!", ephemeral=True)
+                return
+            if len(open_fixtures) > 1:
+                view = FixtureSelectForDeleteView(
+                    self.db,
+                    str(interaction.user.id),
+                    open_fixtures,
+                    self.bot,
+                )
+                await interaction.response.send_message(
+                    "Multiple fixtures are open. Choose which one to delete.",
+                    view=view,
+                    ephemeral=True,
+                )
+                return
+
         fixture = await self._resolve_open_fixture(
             interaction,
             week,
@@ -247,7 +379,7 @@ class AdminCommands(commands.Cog):
     async def results_calculate(self, interaction: discord.Interaction, week: int | None = None):
         user_id = str(interaction.user.id)
         current_time = now().timestamp()
-        remaining = self.workflow_state.get_calculate_cooldown_remaining(
+        remaining = self.get_calculate_cooldown_remaining(
             user_id,
             current_time=current_time,
             cooldown_seconds=CALCULATE_COOLDOWN,
@@ -273,7 +405,7 @@ class AdminCommands(commands.Cog):
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
 
-        self.workflow_state.record_calculate_cooldown(user_id, current_time=current_time)
+        self.record_calculate_cooldown(user_id, current_time=current_time)
 
         await self._create_backup()
         await self._post_calculation_to_channel(interaction, score_result)

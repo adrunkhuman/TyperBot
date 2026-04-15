@@ -67,8 +67,8 @@ scores (
 - `typer_bot/commands/user_commands.py`: Public slash commands, including modal-driven `/predict` flow.
 - `typer_bot/commands/admin_commands.py`: `/admin` command surface and orchestration for admin workflows.
 - `typer_bot/commands/admin_panel/`: Admin panel UI views, selects, and modals split out of `admin_commands.py`.
-- `typer_bot/handlers/thread_prediction_handler.py`: Thread-based prediction processing (on_message).
-- `typer_bot/services/workflow_state.py`: Central owner for process-local cooldown state.
+- `typer_bot/handlers/thread_prediction_handler.py`: Thread-based prediction processing (on_message) plus thread prediction cooldown state.
+- `typer_bot/commands/admin_commands.py`: `/admin` command surface and orchestration for admin workflows, including admin calculation cooldown state.
 - `typer_bot/utils/config.py`: Centralized configuration (data paths via env vars).
 - `typer_bot/utils/prediction_parser.py`: Central logic for parsing "2-1" or "2:1" strings.
 - `typer_bot/utils/scoring.py`: Point calculation rules.
@@ -79,7 +79,7 @@ scores (
 ## 5. Common Tasks
 - **Fixing Parsing:** Edit `prediction_parser.py`.
 - **Admin Panel UI:** Edit `commands/admin_panel/`.
-- **Workflow/Cooldown State:** Edit `services/workflow_state.py`. Keep process-local cooldowns there instead of introducing new module-level dicts.
+- **Workflow/Cooldown State:** Thread prediction cooldowns live in `handlers/thread_prediction_handler.py`; admin calculate cooldowns live in `commands/admin_commands.py`. Keep them process-local instead of introducing module-level globals.
 - **New Commands:** Add Cog to `commands/` folder, load in `bot.py`.
 - **Database Changes:** Edit `typer_bot/database/connection.py` `initialize()` and the focused repositories in `typer_bot/database/` (handle migrations manually if needed).
 - **Debugging:** Check `utils/logger.py` for config. Set `LOG_LEVEL=DEBUG` in env.
@@ -118,7 +118,7 @@ uv run pytest --tb=short         # Shorter traceback output
 - **Double Digits:** Scores like `10-0` are allowed.
 - **Format:** Users provide flexible separators (`-`, `:`, `–`).
 - **Rate Limiting:** Thread predictions limited to 1/second per user.
-- **Workflow State Ownership:** Process-local thread/admin cooldowns live in `services/workflow_state.py`; they are not persisted and reset on process restart.
+- **Workflow State Ownership:** Process-local thread/admin cooldowns live with their owning handlers/commands; they are not persisted and reset on process restart.
 - **Token Safety:** Bot validates DISCORD_TOKEN at startup (rejects placeholders like "your_bot_token_here"). Token values are never logged.
 
 ## 7. Code Quality & Pre-commit Hooks

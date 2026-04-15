@@ -67,6 +67,16 @@ class TestSetupHook:
             yield bot
 
     @pytest.mark.asyncio
+    async def test_cleanup_task_prunes_owner_state(self, bot_instance):
+        bot_instance.thread_handler.cleanup_expired_state = MagicMock(return_value=2)
+        bot_instance.cogs["AdminCommands"].cleanup_expired_state = MagicMock(return_value=1)
+
+        with patch("typer_bot.bot.logger") as mock_logger:
+            await TyperBot._cleanup_sessions_task.coro(bot_instance)
+
+        mock_logger.debug.assert_called_once()
+
+    @pytest.mark.asyncio
     async def test_setup_hook_initializes_database(self, bot_instance):
         """Database is initialized during setup_hook."""
         await bot_instance.setup_hook()
