@@ -52,6 +52,19 @@ def _build_detail_lines(games: list[str], values: list[str]) -> list[str]:
     ]
 
 
+def _build_indexed_detail_lines(
+    game_indexes: list[int],
+    games: list[str],
+    values: list[str],
+) -> list[str]:
+    """Format detail lines while preserving original fixture row numbers."""
+    return [
+        _format_prediction_line(game_index + 1, games[game_index], value)
+        for game_index, value in zip(game_indexes, values, strict=False)
+        if 0 <= game_index < len(games)
+    ]
+
+
 def _render_panel_content(lines: list[str]) -> str:
     """Join panel lines under Discord's message limit.
 
@@ -82,6 +95,8 @@ def _render_panel_content(lines: list[str]) -> str:
 
 
 def _prediction_status_text(prediction: dict) -> str:
+    if prediction.get("pending_partial_approval"):
+        return "pending partial"
     if not prediction["is_late"]:
         return "on time"
     if prediction["late_penalty_waived"]:
@@ -262,6 +277,10 @@ class FixtureSelect(discord.ui.Select):
         load_user_options = getattr(self.parent_view, "load_user_options", None)
         if callable(load_user_options):
             await load_user_options()
+
+        set_selected_prediction = getattr(self.parent_view, "set_selected_prediction", None)
+        if callable(set_selected_prediction):
+            await set_selected_prediction()
 
         self.sync_selected_option()
 

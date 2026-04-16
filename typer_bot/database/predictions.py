@@ -13,6 +13,18 @@ from .scores import _fixture_has_scores_in_connection, _recalculate_scores_in_co
 logger = logging.getLogger(__name__)
 
 
+def _serialize_game_indexes(game_indexes: list[int] | None, prediction_count: int) -> str | None:
+    if game_indexes is None:
+        game_indexes = list(range(prediction_count))
+    return ",".join(str(index) for index in game_indexes)
+
+
+def _deserialize_game_indexes(raw: str | None, prediction_count: int) -> list[int]:
+    if not raw:
+        return list(range(prediction_count))
+    return [int(part) for part in raw.split(",") if part != ""]
+
+
 class SaveResult(StrEnum):
     """Result of an atomic prediction save attempt."""
 
@@ -34,22 +46,43 @@ class PredictionRepository:
         user_name: str,
         predictions: list[str],
         is_late: bool = False,
+        *,
+        predicted_game_indexes: list[int] | None = None,
+        pending_partial_approval: bool = False,
     ) -> None:
         """Save or update a user's predictions."""
         start_time = time.perf_counter()
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                """INSERT INTO predictions (fixture_id, user_id, user_name, predictions, is_late)
-                   VALUES (?, ?, ?, ?, ?)
+                """INSERT INTO predictions (
+                       fixture_id,
+                       user_id,
+                       user_name,
+                       predictions,
+                       is_late,
+                       predicted_game_indexes,
+                       pending_partial_approval
+                   )
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(fixture_id, user_id)
-                    DO UPDATE SET predictions = excluded.predictions,
-                                  user_name = excluded.user_name,
-                                  is_late = excluded.is_late,
-                                  late_penalty_waived = FALSE,
-                                  admin_edited_at = NULL,
-                                  admin_edited_by = NULL,
-                                  submitted_at = CURRENT_TIMESTAMP""",
-                (fixture_id, user_id, user_name, "\n".join(predictions), is_late),
+                     DO UPDATE SET predictions = excluded.predictions,
+                                   user_name = excluded.user_name,
+                                   is_late = excluded.is_late,
+                                   predicted_game_indexes = excluded.predicted_game_indexes,
+                                   pending_partial_approval = excluded.pending_partial_approval,
+                                   late_penalty_waived = FALSE,
+                                   admin_edited_at = NULL,
+                                   admin_edited_by = NULL,
+                                   submitted_at = CURRENT_TIMESTAMP""",
+                (
+                    fixture_id,
+                    user_id,
+                    user_name,
+                    "\n".join(predictions),
+                    is_late,
+                    _serialize_game_indexes(predicted_game_indexes, len(predictions)),
+                    pending_partial_approval,
+                ),
             )
             await db.commit()
 
@@ -73,6 +106,9 @@ class PredictionRepository:
         user_name: str,
         predictions: list[str],
         is_late: bool = False,
+        *,
+        predicted_game_indexes: list[int] | None = None,
+        pending_partial_approval: bool = False,
     ) -> SaveResult:
         """Insert a prediction atomically with first-write-wins and fixture-open guards.
 
@@ -111,9 +147,25 @@ class PredictionRepository:
                         return SaveResult.DUPLICATE
 
                 await db.execute(
-                    """INSERT INTO predictions (fixture_id, user_id, user_name, predictions, is_late)
-                       VALUES (?, ?, ?, ?, ?)""",
-                    (fixture_id, user_id, user_name, "\n".join(predictions), is_late),
+                    """INSERT INTO predictions (
+                           fixture_id,
+                           user_id,
+                           user_name,
+                           predictions,
+                           is_late,
+                           predicted_game_indexes,
+                           pending_partial_approval
+                       )
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        fixture_id,
+                        user_id,
+                        user_name,
+                        "\n".join(predictions),
+                        is_late,
+                        _serialize_game_indexes(predicted_game_indexes, len(predictions)),
+                        pending_partial_approval,
+                    ),
                 )
                 await db.commit()
             except Exception:
@@ -140,6 +192,9 @@ class PredictionRepository:
         user_name: str,
         predictions: list[str],
         is_late: bool = False,
+        *,
+        predicted_game_indexes: list[int] | None = None,
+        pending_partial_approval: bool = False,
     ) -> SaveResult:
         """Upsert a prediction, but only when the fixture is still open.
 
@@ -171,17 +226,35 @@ class PredictionRepository:
                         return SaveResult.FIXTURE_CLOSED
 
                 await db.execute(
-                    """INSERT INTO predictions (fixture_id, user_id, user_name, predictions, is_late)
-                       VALUES (?, ?, ?, ?, ?)
+                    """INSERT INTO predictions (
+                           fixture_id,
+                           user_id,
+                           user_name,
+                           predictions,
+                           is_late,
+                           predicted_game_indexes,
+                           pending_partial_approval
+                       )
+                       VALUES (?, ?, ?, ?, ?, ?, ?)
                        ON CONFLICT(fixture_id, user_id)
                         DO UPDATE SET predictions = excluded.predictions,
                                       user_name = excluded.user_name,
                                       is_late = excluded.is_late,
+                                      predicted_game_indexes = excluded.predicted_game_indexes,
+                                      pending_partial_approval = excluded.pending_partial_approval,
                                       late_penalty_waived = FALSE,
                                       admin_edited_at = NULL,
                                       admin_edited_by = NULL,
                                       submitted_at = CURRENT_TIMESTAMP""",
-                    (fixture_id, user_id, user_name, "\n".join(predictions), is_late),
+                    (
+                        fixture_id,
+                        user_id,
+                        user_name,
+                        "\n".join(predictions),
+                        is_late,
+                        _serialize_game_indexes(predicted_game_indexes, len(predictions)),
+                        pending_partial_approval,
+                    ),
                 )
                 await db.commit()
             except Exception:
@@ -218,6 +291,11 @@ class PredictionRepository:
                         "submitted_at": parse_iso(row["submitted_at"]),
                         "is_late": row["is_late"],
                         "late_penalty_waived": row["late_penalty_waived"],
+                        "predicted_game_indexes": _deserialize_game_indexes(
+                            row["predicted_game_indexes"],
+                            len(row["predictions"].split("\n")),
+                        ),
+                        "pending_partial_approval": bool(row["pending_partial_approval"]),
                         "admin_edited_at": parse_iso(row["admin_edited_at"])
                         if row["admin_edited_at"]
                         else None,
@@ -262,11 +340,19 @@ class PredictionRepository:
                     """
                     UPDATE predictions
                     SET predictions = ?,
+                        predicted_game_indexes = ?,
+                        pending_partial_approval = FALSE,
                         admin_edited_at = CURRENT_TIMESTAMP,
                         admin_edited_by = ?
                     WHERE fixture_id = ? AND user_id = ?
                     """,
-                    ("\n".join(predictions), admin_user_id, fixture_id, user_id),
+                    (
+                        "\n".join(predictions),
+                        _serialize_game_indexes(None, len(predictions)),
+                        admin_user_id,
+                        fixture_id,
+                        user_id,
+                    ),
                 )
                 if cursor.rowcount <= 0:
                     await db.rollback()
@@ -352,12 +438,92 @@ class PredictionRepository:
             await db.commit()
             return cursor.rowcount > 0
 
-    async def get_all_predictions(self, fixture_id: int) -> list[dict]:
+    async def set_partial_approval_pending(
+        self,
+        fixture_id: int,
+        user_id: str,
+        pending: bool,
+    ) -> bool:
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute(
+                "UPDATE predictions SET pending_partial_approval = ?, is_late = ? WHERE fixture_id = ? AND user_id = ?",
+                (pending, pending, fixture_id, user_id),
+            )
+            await db.commit()
+            return cursor.rowcount > 0
+
+    async def approve_partial_prediction_with_recalc(
+        self,
+        fixture_id: int,
+        user_id: str,
+        admin_user_id: str,
+    ) -> bool:
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await db.execute(
+                    """
+                    UPDATE predictions
+                    SET pending_partial_approval = FALSE,
+                        is_late = FALSE,
+                        late_penalty_waived = FALSE,
+                        admin_edited_at = CURRENT_TIMESTAMP,
+                        admin_edited_by = ?
+                    WHERE fixture_id = ? AND user_id = ? AND pending_partial_approval = TRUE
+                    """,
+                    (admin_user_id, fixture_id, user_id),
+                )
+                if cursor.rowcount <= 0:
+                    await db.rollback()
+                    return False
+
+                if await _fixture_has_scores_in_connection(db, fixture_id):
+                    await _recalculate_scores_in_connection(db, fixture_id)
+
+                await db.commit()
+                return True
+            except Exception:
+                await db.rollback()
+                raise
+
+    async def reject_partial_prediction_with_recalc(
+        self,
+        fixture_id: int,
+        user_id: str,
+    ) -> bool:
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                cursor = await db.execute(
+                    "DELETE FROM predictions WHERE fixture_id = ? AND user_id = ? AND pending_partial_approval = TRUE",
+                    (fixture_id, user_id),
+                )
+                if cursor.rowcount <= 0:
+                    await db.rollback()
+                    return False
+
+                if await _fixture_has_scores_in_connection(db, fixture_id):
+                    await _recalculate_scores_in_connection(db, fixture_id)
+
+                await db.commit()
+                return True
+            except Exception:
+                await db.rollback()
+                raise
+
+    async def get_all_predictions(
+        self, fixture_id: int, *, include_pending: bool = False
+    ) -> list[dict]:
         """Get all predictions for a fixture."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT * FROM predictions WHERE fixture_id = ?", (fixture_id,)
+                (
+                    "SELECT * FROM predictions WHERE fixture_id = ?"
+                    if include_pending
+                    else "SELECT * FROM predictions WHERE fixture_id = ? AND pending_partial_approval = FALSE"
+                ),
+                (fixture_id,),
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [
@@ -365,9 +531,14 @@ class PredictionRepository:
                         "user_id": row["user_id"],
                         "user_name": row["user_name"],
                         "predictions": row["predictions"].split("\n"),
+                        "predicted_game_indexes": _deserialize_game_indexes(
+                            row["predicted_game_indexes"],
+                            len(row["predictions"].split("\n")),
+                        ),
                         "submitted_at": parse_iso(row["submitted_at"]),
                         "is_late": row["is_late"],
                         "late_penalty_waived": row["late_penalty_waived"],
+                        "pending_partial_approval": bool(row["pending_partial_approval"]),
                         "admin_edited_at": parse_iso(row["admin_edited_at"])
                         if row["admin_edited_at"]
                         else None,

@@ -94,6 +94,16 @@ async def _migrate_prediction_columns(db: aiosqlite.Connection) -> None:
         logger.info("Adding admin_edited_by column to predictions table")
         await db.execute("ALTER TABLE predictions ADD COLUMN admin_edited_by TEXT")
 
+    if "predicted_game_indexes" not in columns:
+        logger.info("Adding predicted_game_indexes column to predictions table")
+        await db.execute("ALTER TABLE predictions ADD COLUMN predicted_game_indexes TEXT")
+
+    if "pending_partial_approval" not in columns:
+        logger.info("Adding pending_partial_approval column to predictions table")
+        await db.execute(
+            "ALTER TABLE predictions ADD COLUMN pending_partial_approval BOOLEAN DEFAULT FALSE"
+        )
+
 
 class Database:
     """Composition root for SQLite setup and the bot's stable data facade.
@@ -151,6 +161,8 @@ class Database:
                     late_penalty_waived BOOLEAN DEFAULT FALSE,
                     admin_edited_at DATETIME,
                     admin_edited_by TEXT,
+                    predicted_game_indexes TEXT,
+                    pending_partial_approval BOOLEAN DEFAULT FALSE,
                     FOREIGN KEY (fixture_id) REFERENCES fixtures(id),
                     UNIQUE(fixture_id, user_id)
                 )
@@ -237,23 +249,69 @@ class Database:
     async def update_fixture_announcement(self, fixture_id, message_id, channel_id):
         return await self._fixtures.update_fixture_announcement(fixture_id, message_id, channel_id)
 
-    async def save_prediction(self, fixture_id, user_id, user_name, predictions, is_late=False):
+    async def save_prediction(
+        self,
+        fixture_id,
+        user_id,
+        user_name,
+        predictions,
+        is_late=False,
+        *,
+        predicted_game_indexes=None,
+        pending_partial_approval=False,
+    ):
         return await self._predictions.save_prediction(
-            fixture_id, user_id, user_name, predictions, is_late
+            fixture_id,
+            user_id,
+            user_name,
+            predictions,
+            is_late,
+            predicted_game_indexes=predicted_game_indexes,
+            pending_partial_approval=pending_partial_approval,
         )
 
-    async def try_save_prediction(self, fixture_id, user_id, user_name, predictions, is_late=False):
+    async def try_save_prediction(
+        self,
+        fixture_id,
+        user_id,
+        user_name,
+        predictions,
+        is_late=False,
+        *,
+        predicted_game_indexes=None,
+        pending_partial_approval=False,
+    ):
         """Insert once for thread submissions with atomic duplicate and open checks."""
         return await self._predictions.try_save_prediction(
-            fixture_id, user_id, user_name, predictions, is_late
+            fixture_id,
+            user_id,
+            user_name,
+            predictions,
+            is_late,
+            predicted_game_indexes=predicted_game_indexes,
+            pending_partial_approval=pending_partial_approval,
         )
 
     async def save_prediction_guarded(
-        self, fixture_id, user_id, user_name, predictions, is_late=False
+        self,
+        fixture_id,
+        user_id,
+        user_name,
+        predictions,
+        is_late=False,
+        *,
+        predicted_game_indexes=None,
+        pending_partial_approval=False,
     ):
         """Upsert a prediction only while the fixture is still open."""
         return await self._predictions.save_prediction_guarded(
-            fixture_id, user_id, user_name, predictions, is_late
+            fixture_id,
+            user_id,
+            user_name,
+            predictions,
+            is_late,
+            predicted_game_indexes=predicted_game_indexes,
+            pending_partial_approval=pending_partial_approval,
         )
 
     async def get_prediction(self, fixture_id, user_id):
@@ -281,8 +339,18 @@ class Database:
     async def delete_prediction(self, fixture_id, user_id):
         return await self._predictions.delete_prediction(fixture_id, user_id)
 
-    async def get_all_predictions(self, fixture_id):
-        return await self._predictions.get_all_predictions(fixture_id)
+    async def get_all_predictions(self, fixture_id, include_pending=False):
+        return await self._predictions.get_all_predictions(
+            fixture_id, include_pending=include_pending
+        )
+
+    async def approve_partial_prediction(self, fixture_id, user_id, admin_user_id):
+        return await self._predictions.approve_partial_prediction_with_recalc(
+            fixture_id, user_id, admin_user_id
+        )
+
+    async def reject_partial_prediction(self, fixture_id, user_id):
+        return await self._predictions.reject_partial_prediction_with_recalc(fixture_id, user_id)
 
     async def save_results(self, fixture_id, results):
         return await self._results.save_results(fixture_id, results)

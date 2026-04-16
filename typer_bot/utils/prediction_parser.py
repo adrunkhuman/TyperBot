@@ -6,6 +6,87 @@ import re
 logger = logging.getLogger(__name__)
 
 
+def _strip_line_prefix(line: str) -> str:
+    return re.sub(r"^\s*\d+\.\s*", "", line).strip()
+
+
+def parse_prediction_lines(
+    input_text: str,
+    games: list[str],
+    *,
+    allow_partial: bool = False,
+) -> tuple[list[str], list[int], list[str]]:
+    """Parse prediction lines and map them to specific fixture rows.
+
+    Each non-empty line must end with a score like ``2:0`` or ``2-1``. When the
+    fixture label at the start of the line matches one of the provided games, the
+    prediction is mapped to that exact game row. Full submissions can still fall
+    back to positional matching for backward compatibility.
+    """
+    normalized = input_text.replace(",", "\n")
+    lines = [line.strip() for line in normalized.split("\n") if line.strip()]
+
+    predictions: list[str] = []
+    game_indexes: list[int] = []
+    errors: list[str] = []
+
+    for line_number, raw_line in enumerate(lines, 1):
+        stripped = _strip_line_prefix(raw_line)
+        is_cancelled = bool(re.search(r"[xX]\s*$", stripped))
+        cancelled_match = re.search(r"[xX]\s*$", stripped)
+        match = re.search(r"(\d+)\s*[-:]\s*(\d+)\s*$", stripped)
+        if not match and not is_cancelled:
+            errors.append(
+                f"Line {line_number}: Could not find score (expected format: '2:0' or '2-1')"
+            )
+            continue
+
+        if is_cancelled:
+            score = "x"
+            game_text = stripped[: cancelled_match.start()].strip() if cancelled_match else ""
+        else:
+            assert match is not None
+            home_score = match.group(1)
+            away_score = match.group(2)
+            score = f"{home_score}-{away_score}"
+            game_text = stripped[: match.start()].strip()
+
+        game_index: int | None = None
+        if game_text:
+            for index, game in enumerate(games):
+                if game_text == game:
+                    game_index = index
+                    break
+
+        if game_index is None:
+            if len(lines) == len(games):
+                game_index = line_number - 1
+            else:
+                errors.append(
+                    f"Line {line_number}: Could not match that line to a fixture row. Include the fixture name, e.g. '{games[0]} 2:0'."
+                )
+                continue
+
+        if game_index in game_indexes:
+            errors.append(f"Line {line_number}: That fixture row was entered more than once.")
+            continue
+
+        predictions.append(score)
+        game_indexes.append(game_index)
+
+    if errors:
+        return [], [], errors
+
+    ordered = sorted(zip(game_indexes, predictions, strict=True), key=lambda item: item[0])
+    ordered_indexes = [index for index, _ in ordered]
+    ordered_predictions = [prediction for _, prediction in ordered]
+
+    if not allow_partial and len(ordered_predictions) != len(games):
+        return [], [], [f"Expected {len(games)} predictions, found {len(ordered_predictions)}"]
+
+    return ordered_predictions, ordered_indexes, []
+
+
 def parse_predictions(input_text: str, expected_count: int = 9) -> tuple[list[str], list[str]]:
     """Parse predictions from user input.
 

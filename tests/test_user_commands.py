@@ -237,6 +237,71 @@ class TestPredictCommand:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")
+    async def test_predict_modal_accepts_pre_deadline_partial_prediction(
+        self, user_commands, mock_interaction, database
+    ):
+        await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
+        await user_commands.predict.callback(user_commands, mock_interaction)
+
+        modal = mock_interaction.modal_sent["modal"]
+        modal.predictions_input._value = "Team C - Team D 1-1\nTeam E - Team F 0-2"
+        await modal.on_submit(mock_interaction)
+
+        prediction = await database.get_prediction(1, str(mock_interaction.user.id))
+        assert prediction is not None
+        assert prediction["predictions"] == ["1-1", "0-2"]
+        assert prediction["predicted_game_indexes"] == [1, 2]
+        assert prediction["pending_partial_approval"] is False
+        assert "Partial prediction" in mock_interaction.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_dm")
+    async def test_predict_modal_marks_late_partial_as_pending(
+        self, user_commands, mock_interaction, database
+    ):
+        await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
+        fixture = await database.get_fixture_by_id(1)
+        assert fixture is not None
+        fixture["deadline"] = datetime.now(UTC) - timedelta(minutes=1)
+        user_commands.db.get_open_fixtures = AsyncMock(return_value=[fixture])
+        user_commands.db.get_fixture_by_id = AsyncMock(return_value=fixture)
+
+        await user_commands.predict.callback(user_commands, mock_interaction)
+        modal = mock_interaction.modal_sent["modal"]
+        modal.predictions_input._value = "Team C - Team D 1-1\nTeam E - Team F 0-2"
+        await modal.on_submit(mock_interaction)
+
+        prediction = await database.get_prediction(1, str(mock_interaction.user.id))
+        assert prediction is not None
+        assert prediction["pending_partial_approval"] is True
+        assert prediction["predicted_game_indexes"] == [1, 2]
+        assert "Pending admin approval" in mock_interaction.response_sent[-1]["content"]
+        assert "0 points" not in mock_interaction.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_dm")
+    async def test_my_predictions_shows_sparse_pending_prediction(
+        self, user_commands, mock_interaction, database
+    ):
+        await database.save_prediction(
+            1,
+            str(mock_interaction.user.id),
+            mock_interaction.user.name,
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+
+        await user_commands.my_predictions.callback(user_commands, mock_interaction)
+
+        content = mock_interaction.response_sent[-1]["content"]
+        assert "2. Team C - Team D **1-1**" in content
+        assert "3. Team E - Team F **0-2**" in content
+        assert "Pending admin approval" in content
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_dm")
     async def test_predict_modal_reports_closed_fixture_during_submit(
         self, user_commands, mock_interaction, monkeypatch
     ):

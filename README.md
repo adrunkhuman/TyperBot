@@ -49,6 +49,9 @@ Admins need a Discord role named `Admin` or `typer-admin`.
 - Reply in the fixture thread with one line per match.
 - Run `/predict` anywhere in the server to fill a modal, then have the bot post your prediction publicly into the fixture thread.
 - To replace a saved prediction, use `/predict` again; the bot posts a new public `Updated prediction` message in the thread.
+- Partial predictions are allowed. Each partial line must name the game it applies to.
+- Missing games count as no prediction.
+- Late partial predictions stay pending admin approval until an admin approves or rejects them.
 
 Example:
 
@@ -62,7 +65,8 @@ Team E - Team F 3:2
 - Exact score: 3 points
 - Correct outcome: 1 point
 - Wrong outcome: 0 points
-- Late predictions: 0 points unless an admin waives the penalty
+- Late full predictions: 0 points unless an admin waives the penalty
+- Late partial predictions: excluded from scoring until approved or rejected by an admin
 
 ## Operational constraints
 - Match data, predictions, results, and scores are stored in SQLite.

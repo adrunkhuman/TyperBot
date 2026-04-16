@@ -16,6 +16,8 @@ from .base import (
     OwnerRestrictedView,
     PanelSelectionState,
     _build_detail_lines,
+    _build_indexed_detail_lines,
+    _notify_user_dm,
     _render_panel_content,
 )
 from .fixtures import FixturesDeleteButton
@@ -25,8 +27,122 @@ from .predictions import (
     ReplacePredictionButton,
     ToggleWaiverButton,
     ViewPredictionsButton,
+    _prediction_status_text,
 )
 from .results import CorrectResultsButton
+
+
+class ApprovePartialButton(discord.ui.Button):
+    def __init__(self, parent_view: UnifiedAdminPanelView):
+        self.parent_view = parent_view
+        super().__init__(label="Approve Partial", style=discord.ButtonStyle.success, row=4)
+
+    async def callback(self, interaction: discord.Interaction):
+        fixture_id = self.parent_view.selection.fixture_id
+        user_id = self.parent_view.selection.user_id
+        if fixture_id is None or user_id is None:
+            await interaction.response.send_message(
+                "Select both fixture and user first.", ephemeral=True
+            )
+            return
+        try:
+            (
+                fixture,
+                prediction,
+                recalculation,
+            ) = await self.parent_view.service.approve_partial_prediction(
+                fixture_id,
+                user_id,
+                str(interaction.user.id),
+            )
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+
+        self.parent_view.selection.user_label = (
+            f"{prediction['user_name']} ({_prediction_status_text(prediction)})"
+        )
+        self.parent_view.selection.detail_lines = _build_indexed_detail_lines(
+            prediction["predicted_game_indexes"],
+            fixture["games"],
+            prediction["predictions"],
+        )
+        self.parent_view.selection.status_message = f"Approved partial prediction for {prediction['user_name']} in week {fixture['week_number']}."
+        if recalculation is not None:
+            self.parent_view.selection.status_message += " Scores were recalculated."
+
+        await self.parent_view.load_user_options()
+        self.parent_view.current_prediction = prediction
+        self.parent_view._refresh_items()
+        await interaction.response.edit_message(
+            content=self.parent_view.render_content(), view=self.parent_view
+        )
+
+        notification = (
+            f"Your partial prediction for Week {fixture['week_number']} was approved by an admin."
+        )
+        if recalculation is not None:
+            notification += " Scores were recalculated."
+        await _notify_user_dm(
+            self.parent_view.bot,
+            prediction["user_id"],
+            notification,
+            context="partial approval",
+        )
+
+
+class RejectPartialButton(discord.ui.Button):
+    def __init__(self, parent_view: UnifiedAdminPanelView):
+        self.parent_view = parent_view
+        super().__init__(label="Reject Partial", style=discord.ButtonStyle.danger, row=4)
+
+    async def callback(self, interaction: discord.Interaction):
+        fixture_id = self.parent_view.selection.fixture_id
+        user_id = self.parent_view.selection.user_id
+        if fixture_id is None or user_id is None:
+            await interaction.response.send_message(
+                "Select both fixture and user first.", ephemeral=True
+            )
+            return
+        try:
+            (
+                fixture,
+                prediction,
+                recalculation,
+            ) = await self.parent_view.service.reject_partial_prediction(
+                fixture_id,
+                user_id,
+            )
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+
+        self.parent_view.selection.user_id = None
+        self.parent_view.selection.user_label = ""
+        self.parent_view.selection.detail_lines = []
+        self.parent_view.selection.status_message = f"Rejected partial prediction for {prediction['user_name']} in week {fixture['week_number']}."
+        if recalculation is not None:
+            self.parent_view.selection.status_message += " Scores were recalculated."
+
+        await self.parent_view.load_user_options()
+        self.parent_view.current_prediction = None
+        self.parent_view._refresh_items()
+        await interaction.response.edit_message(
+            content=self.parent_view.render_content(), view=self.parent_view
+        )
+
+        notification = (
+            f"Your partial prediction for Week {fixture['week_number']} was rejected by an admin."
+        )
+        if recalculation is not None:
+            notification += " Scores were recalculated."
+        await _notify_user_dm(
+            self.parent_view.bot,
+            prediction["user_id"],
+            notification,
+            context="partial rejection",
+        )
+
 
 if TYPE_CHECKING:
     from typer_bot.commands.admin_commands import AdminCommands
@@ -300,6 +416,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.admin_commands = admin_commands
         self.selection = PanelSelectionState()
         self.has_user_overflow = False
+        self.current_prediction: dict | None = None
         self.fixture_select = FixtureSelect(self)
         self.user_select = PredictionUserSelect(self)
         self.user_select.update_options([])
@@ -316,20 +433,24 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.add_item(CalculateScoresButton(self))
         self.add_item(CorrectResultsButton(self, disabled=self.selection.fixture_id is None, row=3))
         self.add_item(PostResultsButton(self))
-        self.add_item(
-            ReplacePredictionButton(
-                self,
-                disabled=self.selection.fixture_id is None or self.selection.user_id is None,
-                row=4,
+        if self.current_prediction and self.current_prediction.get("pending_partial_approval"):
+            self.add_item(ApprovePartialButton(self))
+            self.add_item(RejectPartialButton(self))
+        else:
+            self.add_item(
+                ReplacePredictionButton(
+                    self,
+                    disabled=self.selection.fixture_id is None or self.selection.user_id is None,
+                    row=4,
+                )
             )
-        )
-        self.add_item(
-            ToggleWaiverButton(
-                self,
-                disabled=self.selection.fixture_id is None or self.selection.user_id is None,
-                row=4,
+            self.add_item(
+                ToggleWaiverButton(
+                    self,
+                    disabled=self.selection.fixture_id is None or self.selection.user_id is None,
+                    row=4,
+                )
             )
-        )
         if self.has_user_overflow:
             self.add_item(
                 ViewPredictionsButton(self, disabled=self.selection.fixture_id is None, row=4)
@@ -345,9 +466,19 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
             self.user_select.update_options([])
             return
 
-        predictions = await self.db.get_all_predictions(self.selection.fixture_id)
+        predictions = await self.db.get_all_predictions(
+            self.selection.fixture_id, include_pending=True
+        )
         self.has_user_overflow = len(predictions) > MAX_SELECT_OPTIONS
         self.user_select.update_options(predictions)
+
+    async def set_selected_prediction(self) -> None:
+        self.current_prediction = None
+        if self.selection.fixture_id is None or self.selection.user_id is None:
+            return
+        self.current_prediction = await self.db.get_prediction(
+            self.selection.fixture_id, self.selection.user_id
+        )
 
     async def populate_fixture_details(self, fixture: dict | None) -> None:
         self.selection.detail_lines = []

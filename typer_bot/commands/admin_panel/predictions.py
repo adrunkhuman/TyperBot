@@ -15,6 +15,7 @@ from .base import (
     OwnerRestrictedView,
     PanelSelectionState,
     _build_detail_lines,
+    _build_indexed_detail_lines,
     _notify_user_dm,
     _prediction_status_text,
     _render_panel_content,
@@ -66,7 +67,9 @@ class PredictionsPanelView(OwnerRestrictedView):
             self.user_select.update_options([])
             return
 
-        predictions = await self.db.get_all_predictions(self.selection.fixture_id)
+        predictions = await self.db.get_all_predictions(
+            self.selection.fixture_id, include_pending=True
+        )
         self.has_user_overflow = len(predictions) > MAX_SELECT_OPTIONS
         self.user_select.update_options(predictions)
 
@@ -181,10 +184,16 @@ class PredictionUserSelect(discord.ui.Select):
             self.parent_view.selection.user_label = (
                 f"{prediction['user_name']} ({_prediction_status_text(prediction)})"
             )
-            self.parent_view.selection.detail_lines = _build_detail_lines(
-                fixture["games"], prediction["predictions"]
+            self.parent_view.selection.detail_lines = _build_indexed_detail_lines(
+                prediction["predicted_game_indexes"],
+                fixture["games"],
+                prediction["predictions"],
             )
             self.parent_view.selection.status_message = ""
+
+        set_selected_prediction = getattr(self.parent_view, "set_selected_prediction", None)
+        if callable(set_selected_prediction):
+            await set_selected_prediction()
 
         self.sync_selected_option()
 

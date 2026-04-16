@@ -12,6 +12,7 @@ from typer_bot.utils import APP_TZ, format_for_discord, is_admin, now, parse_lin
 
 from .base import (
     _build_detail_lines,
+    _build_indexed_detail_lines,
     _format_prediction_line,
     _notify_user_dm,
     _prediction_status_text,
@@ -387,10 +388,9 @@ class ReplacePredictionModal(discord.ui.Modal):
             style=discord.TextStyle.paragraph,
             placeholder="One line per match, e.g. Team A - Team B 2:1",
             default="\n".join(
-                _format_prediction_line(index, game, result)
-                for index, (game, result) in enumerate(
-                    zip(fixture["games"], prediction["predictions"], strict=False),
-                    1,
+                _format_prediction_line(index + 1, fixture["games"][index], result)
+                for index, result in zip(
+                    prediction["predicted_game_indexes"], prediction["predictions"], strict=False
                 )
             ),
             required=True,
@@ -448,8 +448,10 @@ class ReplacePredictionModal(discord.ui.Modal):
         self.parent_view.selection.user_label = (
             f"{updated_prediction['user_name']} ({_prediction_status_text(updated_prediction)})"
         )
-        self.parent_view.selection.detail_lines = _build_detail_lines(
-            fixture["games"], updated_prediction["predictions"]
+        self.parent_view.selection.detail_lines = _build_indexed_detail_lines(
+            updated_prediction["predicted_game_indexes"],
+            fixture["games"],
+            updated_prediction["predictions"],
         )
 
         await self.parent_view.load_user_options()

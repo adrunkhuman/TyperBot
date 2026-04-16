@@ -1858,6 +1858,228 @@ class TestResultsPanelFlows:
         assert view.user_select.disabled is True
         assert "Fixture no longer exists" in mock_interaction_admin.response_sent[-1]["content"]
 
+    @pytest.mark.asyncio
+    async def test_unified_panel_shows_partial_approval_buttons_for_pending_prediction(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            50, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        assert _has_button(view, "Approve Partial") is True
+        assert _has_button(view, "Reject Partial") is True
+        assert _has_button(view, "Replace Prediction") is False
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_approve_partial_prediction(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            51, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = target_user
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        approve_button = _get_button(view, "Approve Partial")
+        await approve_button.callback(mock_interaction_admin)
+
+        prediction = await admin_cog.db.get_prediction(fixture_id, "111")
+        assert prediction is not None
+        assert prediction["pending_partial_approval"] is False
+        assert prediction["is_late"] == 0
+        assert "approved" in target_user.dm_sent[-1].lower()
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_reject_partial_prediction(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            52, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = target_user
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        reject_button = _get_button(view, "Reject Partial")
+        await reject_button.callback(mock_interaction_admin)
+
+        assert await admin_cog.db.get_prediction(fixture_id, "111") is None
+        assert "rejected" in target_user.dm_sent[-1].lower()
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_approve_partial_prediction_recalculates_scores(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            53, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "999",
+            "Full User",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        await admin_cog.service.calculate_fixture_scores(fixture_id)
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = target_user
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        approve_button = _get_button(view, "Approve Partial")
+        await approve_button.callback(mock_interaction_admin)
+
+        standings = await admin_cog.db.get_standings()
+        assert {row["user_id"] for row in standings} == {"999", "111"}
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_reject_partial_prediction_recalculates_scores(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            54, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "999",
+            "Full User",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        await admin_cog.service.calculate_fixture_scores(fixture_id)
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = target_user
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        reject_button = _get_button(view, "Reject Partial")
+        await reject_button.callback(mock_interaction_admin)
+
+        standings = await admin_cog.db.get_standings()
+        assert {row["user_id"] for row in standings} == {"999"}
+
 
 class TestAdminPanelModals:
     """Modal submit paths should reject stale permissions."""

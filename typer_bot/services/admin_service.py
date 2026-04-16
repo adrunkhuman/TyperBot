@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from typer_bot.database import Database
-from typer_bot.utils import calculate_points, parse_line_predictions
+from typer_bot.utils import align_predictions_to_fixture, calculate_points, parse_line_predictions
 
 
 @dataclass(slots=True)
@@ -67,8 +67,13 @@ class AdminService:
 
         scores = []
         for prediction in predictions:
-            score_data = calculate_points(
+            aligned_predictions = align_predictions_to_fixture(
                 prediction["predictions"],
+                prediction["predicted_game_indexes"],
+                len(results),
+            )
+            score_data = calculate_points(
+                aligned_predictions,
                 results,
                 prediction["is_late"],
                 prediction["late_penalty_waived"],
@@ -107,12 +112,61 @@ class AdminService:
         if fixture is None:
             raise ValueError("Fixture not found")
 
-        predictions = await self.db.get_all_predictions(fixture_id)
+        predictions = await self.db.get_all_predictions(fixture_id, include_pending=True)
         if not predictions:
             raise ValueError("No predictions saved for this fixture")
 
         predictions.sort(key=lambda prediction: prediction["user_name"].lower())
         return fixture, predictions
+
+    async def approve_partial_prediction(
+        self,
+        fixture_id: int,
+        user_id: str,
+        admin_user_id: str,
+    ) -> tuple[dict, dict, FixtureScoreResult | None]:
+        fixture = await self.db.get_fixture_by_id(fixture_id)
+        if fixture is None:
+            raise ValueError("Fixture not found")
+
+        prediction = await self.db.get_prediction(fixture_id, user_id)
+        if prediction is None or not prediction["pending_partial_approval"]:
+            raise ValueError("No pending partial prediction for that user")
+
+        approved = await self.db.approve_partial_prediction(fixture_id, user_id, admin_user_id)
+        if not approved:
+            raise ValueError("Partial approval failed")
+
+        refreshed_prediction = await self.db.get_prediction(fixture_id, user_id)
+        if refreshed_prediction is None:
+            raise ValueError("Prediction disappeared after approval")
+
+        recalculation = None
+        if await self.db.fixture_has_scores(fixture_id):
+            recalculation = await self._build_score_result(fixture_id)
+        return fixture, refreshed_prediction, recalculation
+
+    async def reject_partial_prediction(
+        self,
+        fixture_id: int,
+        user_id: str,
+    ) -> tuple[dict, dict, FixtureScoreResult | None]:
+        fixture = await self.db.get_fixture_by_id(fixture_id)
+        if fixture is None:
+            raise ValueError("Fixture not found")
+
+        prediction = await self.db.get_prediction(fixture_id, user_id)
+        if prediction is None or not prediction["pending_partial_approval"]:
+            raise ValueError("No pending partial prediction for that user")
+
+        rejected = await self.db.reject_partial_prediction(fixture_id, user_id)
+        if not rejected:
+            raise ValueError("Partial rejection failed")
+
+        recalculation = None
+        if await self.db.fixture_has_scores(fixture_id):
+            recalculation = await self._build_score_result(fixture_id)
+        return fixture, prediction, recalculation
 
     async def replace_prediction(
         self,
