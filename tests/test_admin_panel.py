@@ -1130,7 +1130,7 @@ class TestFixturePanelFlows:
         assert rows_by_label["Enter Results"] == 3
         assert rows_by_label["Calculate Scores"] == 3
         assert rows_by_label["Correct Results"] == 3
-        assert rows_by_label["Re-post Results"] == 4
+        assert rows_by_label["Re-post Results"] == 3
         assert rows_by_label["Replace Prediction"] == 4
         assert rows_by_label["Toggle Late Waiver"] == 4
 
