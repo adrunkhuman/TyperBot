@@ -1110,20 +1110,29 @@ class TestFixturePanelFlows:
             None,
             None,
             "Create Fixture",
-            "Enter Results",
             "Delete Fixture",
-            "Replace Prediction",
-            "Toggle Late Waiver",
+            "Jump To Week",
+            "Enter Results",
             "Calculate Scores",
             "Correct Results",
-            "Jump To Week",
             "Re-post Results",
+            "Replace Prediction",
+            "Toggle Late Waiver",
         ]
-        assert {child.row for child in view.children[2:5]} == {2}
-        assert {child.row for child in view.children[5:8]} == {3}
-        assert view.children[8].row == 4
-        assert view.children[9].row == 4
-        assert view.children[10].row == 3
+        rows_by_label = {
+            getattr(child, "label", None): child.row
+            for child in view.children
+            if getattr(child, "label", None)
+        }
+        assert rows_by_label["Create Fixture"] == 2
+        assert rows_by_label["Delete Fixture"] == 2
+        assert rows_by_label["Jump To Week"] == 2
+        assert rows_by_label["Enter Results"] == 3
+        assert rows_by_label["Calculate Scores"] == 3
+        assert rows_by_label["Correct Results"] == 3
+        assert rows_by_label["Re-post Results"] == 4
+        assert rows_by_label["Replace Prediction"] == 4
+        assert rows_by_label["Toggle Late Waiver"] == 4
 
     @pytest.mark.asyncio
     async def test_unified_panel_create_fixture_button_uses_parent_channel_from_thread(

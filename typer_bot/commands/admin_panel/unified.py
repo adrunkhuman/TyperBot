@@ -119,7 +119,7 @@ class JumpToWeekModal(discord.ui.Modal):
 class JumpToWeekButton(discord.ui.Button):
     def __init__(self, parent_view: UnifiedAdminPanelView):
         self.parent_view = parent_view
-        super().__init__(label="Jump To Week", style=discord.ButtonStyle.secondary, row=4)
+        super().__init__(label="Jump To Week", style=discord.ButtonStyle.secondary, row=2)
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.send_modal(JumpToWeekModal(self.parent_view))
@@ -132,7 +132,7 @@ class EnterResultsButton(discord.ui.Button):
             label="Enter Results",
             style=discord.ButtonStyle.secondary,
             disabled=parent_view.selection.fixture_id is None,
-            row=2,
+            row=3,
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -254,7 +254,7 @@ class PostResultsConfirmView(discord.ui.View):
 class PostResultsButton(discord.ui.Button):
     def __init__(self, parent_view: UnifiedAdminPanelView):
         self.parent_view = parent_view
-        super().__init__(label="Re-post Results", style=discord.ButtonStyle.secondary, row=3)
+        super().__init__(label="Re-post Results", style=discord.ButtonStyle.secondary, row=4)
 
     async def callback(self, interaction: discord.Interaction):
         fixture_data = await self.parent_view.db.get_last_fixture_scores()
@@ -310,26 +310,26 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.add_item(self.fixture_select)
         self.add_item(self.user_select)
         self.add_item(CreateFixtureButton(self))
-        self.add_item(EnterResultsButton(self))
         self.add_item(FixturesDeleteButton(self, disabled=self.selection.fixture_id is None, row=2))
+        self.add_item(JumpToWeekButton(self))
+        self.add_item(EnterResultsButton(self))
+        self.add_item(CalculateScoresButton(self))
+        self.add_item(CorrectResultsButton(self, disabled=self.selection.fixture_id is None, row=3))
+        self.add_item(PostResultsButton(self))
         self.add_item(
             ReplacePredictionButton(
                 self,
                 disabled=self.selection.fixture_id is None or self.selection.user_id is None,
-                row=3,
+                row=4,
             )
         )
         self.add_item(
             ToggleWaiverButton(
                 self,
                 disabled=self.selection.fixture_id is None or self.selection.user_id is None,
-                row=3,
+                row=4,
             )
         )
-        self.add_item(CalculateScoresButton(self))
-        self.add_item(CorrectResultsButton(self, disabled=self.selection.fixture_id is None, row=4))
-        self.add_item(JumpToWeekButton(self))
-        self.add_item(PostResultsButton(self))
         if self.has_user_overflow:
             self.add_item(
                 ViewPredictionsButton(self, disabled=self.selection.fixture_id is None, row=4)
@@ -370,7 +370,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
             if self.selection.detail_lines:
                 lines.extend(["", *self.selection.detail_lines])
             else:
-                guidance = "Pick a user to inspect or override predictions, correct results, calculate scores, or delete the fixture. Use Jump To Week when the older open week you want is not in the quick list."
+                guidance = "Top row: fixture management. Middle row: results workflow. Bottom row: prediction and user actions. Use Jump To Week when the older open week you want is not in the quick list."
                 lines.extend(["", guidance])
 
             if self.has_user_overflow:
@@ -382,7 +382,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
                 )
         else:
             lines.append(
-                "Select a fixture to enter or correct results, calculate scores, inspect predictions, toggle waivers, or delete it. Use Create Fixture for new rounds, Jump To Week for older open fixtures, and Re-post Results to post the latest completed standings again."
+                "Use the top row for fixture management, the middle row for results, and the bottom row for prediction-level actions."
             )
             if self.selection.status_message:
                 lines.extend(["", self.selection.status_message])
