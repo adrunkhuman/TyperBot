@@ -297,7 +297,7 @@ class EnterResultsConfirmView(discord.ui.View):
             return
 
         await interaction.response.edit_message(
-            content=f"**Results Saved!**\n\n{self.preview}\n\nUse `/admin results calculate` to calculate scores.",
+            content=f"**Results Saved!**\n\n{self.preview}\n\nUse the Calculate Scores button in `/admin panel` to post standings now. Use Re-post Results later only if you need to post them again with optional mentions.",
             view=None,
         )
 
@@ -310,7 +310,7 @@ class EnterResultsConfirmView(discord.ui.View):
             return
 
         await interaction.response.edit_message(
-            content="Results entry cancelled. Use `/admin results enter` to try again.",
+            content="Results entry cancelled. Use the Enter Results button in `/admin panel` to try again.",
             view=None,
         )
 

@@ -89,12 +89,12 @@ class FixturesPanelView(OwnerRestrictedView):
             lines.extend(
                 [
                     "",
-                    "Delete the selected open fixture, or use `/admin fixture create` for new fixtures.",
+                    "Delete the selected open fixture, or use the Create Fixture button in `/admin panel` for new fixtures.",
                 ]
             )
         else:
             lines.append(
-                "Select an open fixture to delete, or use `/admin fixture create` for new fixtures."
+                "Select an open fixture to delete, or use the Create Fixture button in `/admin panel` for new fixtures."
             )
 
         if self.selection.status_message:
@@ -104,13 +104,17 @@ class FixturesPanelView(OwnerRestrictedView):
 
 class FixturesDeleteButton(discord.ui.Button):
     def __init__(
-        self, parent_view: FixturesPanelView | UnifiedAdminPanelView, disabled: bool = False
+        self,
+        parent_view: FixturesPanelView | UnifiedAdminPanelView,
+        disabled: bool = False,
+        row: int | None = None,
     ):
         self.parent_view = parent_view
         super().__init__(
             label="Delete Fixture",
             style=discord.ButtonStyle.danger,
             disabled=disabled,
+            row=row,
         )
 
     async def callback(self, interaction: discord.Interaction):

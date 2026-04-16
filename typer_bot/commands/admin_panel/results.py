@@ -74,13 +74,17 @@ class ResultsPanelView(OwnerRestrictedView):
 
 class CorrectResultsButton(discord.ui.Button):
     def __init__(
-        self, parent_view: ResultsPanelView | UnifiedAdminPanelView, disabled: bool = False
+        self,
+        parent_view: ResultsPanelView | UnifiedAdminPanelView,
+        disabled: bool = False,
+        row: int | None = None,
     ):
         self.parent_view = parent_view
         super().__init__(
             label="Correct Results",
             style=discord.ButtonStyle.primary,
             disabled=disabled,
+            row=row,
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -110,7 +114,7 @@ class CorrectResultsButton(discord.ui.Button):
         results = await self.parent_view.db.get_results(fixture_id)
         if not results:
             await interaction.response.send_message(
-                "No results are stored for that fixture yet. Use `/admin results enter` first.",
+                "No results are stored for that fixture yet. Use the Enter Results button in `/admin panel` first.",
                 ephemeral=True,
             )
             return

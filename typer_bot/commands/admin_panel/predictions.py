@@ -198,13 +198,17 @@ class PredictionUserSelect(discord.ui.Select):
 
 class ReplacePredictionButton(discord.ui.Button):
     def __init__(
-        self, parent_view: PredictionsPanelView | UnifiedAdminPanelView, disabled: bool = False
+        self,
+        parent_view: PredictionsPanelView | UnifiedAdminPanelView,
+        disabled: bool = False,
+        row: int | None = None,
     ):
         self.parent_view = parent_view
         super().__init__(
             label="Replace Prediction",
             style=discord.ButtonStyle.primary,
             disabled=disabled,
+            row=row,
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -252,13 +256,17 @@ class ReplacePredictionButton(discord.ui.Button):
 
 class ViewPredictionsButton(discord.ui.Button):
     def __init__(
-        self, parent_view: PredictionsPanelView | UnifiedAdminPanelView, disabled: bool = False
+        self,
+        parent_view: PredictionsPanelView | UnifiedAdminPanelView,
+        disabled: bool = False,
+        row: int | None = None,
     ):
         self.parent_view = parent_view
         super().__init__(
             label="View Predictions",
             style=discord.ButtonStyle.secondary,
             disabled=disabled,
+            row=row,
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -316,13 +324,17 @@ class ToggleWaiverButton(discord.ui.Button):
     """Toggle the late waiver flag and best-effort DM the affected user."""
 
     def __init__(
-        self, parent_view: PredictionsPanelView | UnifiedAdminPanelView, disabled: bool = False
+        self,
+        parent_view: PredictionsPanelView | UnifiedAdminPanelView,
+        disabled: bool = False,
+        row: int | None = None,
     ):
         self.parent_view = parent_view
         super().__init__(
             label="Toggle Late Waiver",
             style=discord.ButtonStyle.success,
             disabled=disabled,
+            row=row,
         )
 
     async def callback(self, interaction: discord.Interaction):
