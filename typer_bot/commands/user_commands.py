@@ -536,49 +536,22 @@ class UserCommands(commands.Cog):
         admin_help = """\n\n## 🔧 Admin Commands
 
 **For Admins:**
-• `/admin panel` - Open the admin hub for fixture deletion, overrides, waivers, and result correction
-**Fixture Management:**
-• `/admin fixture create` - Create new fixture (modal + confirm, auto-creates thread)
-• `/admin fixture delete [week]` - Delete an open fixture
+• `/admin panel` - Open the main admin surface
 
-**Results Management:**
-• `/admin results enter [week]` - Enter actual scores (modal + confirm)
-• `/admin results calculate [week]` - Calculate and post scores
-• `/admin results post` - Re-post results with optional mentions
+**Admin workflow:**
+- run `/admin panel` once
+- use the panel buttons and selectors for admin actions
 
-**Admin Workflow:**
-1. **Create Fixture:**
-   - `/admin fixture create`
-   - Modal opens in Discord
-   - Enter game list and optional deadline
-   - Review preview and confirm
-   - Bot auto-creates thread for predictions
-
-2. **Enter Results:**
-   - `/admin results enter` (add `week:` if multiple fixtures are open)
-   - Modal opens in Discord
-   - Enter actual scores:
-      ```
-      Team A - Team B 1:0
-      Team C - Team D 2:2
-      ...
-      ```
-   - Review preview and confirm
-
-3. **Calculate Scores:**
-   - `/admin results calculate` (add `week:` if multiple fixtures are open)
-   - Bot posts results (overall + week) to channel
-
-4. **Re-post Results:**
-   - `/admin results post`
-   - Choose whether to mention users
-
-5. **Corrections / Exceptions:**
-   - `/admin panel`
-   - View fixture predictions
-   - Replace a stored prediction without changing original submit time
-   - Toggle a late-penalty waiver for an approved late pick
-   - Correct stored results and auto-recalculate scored fixtures
+**Inside the panel you can:**
+- create fixtures
+- delete fixtures
+- jump to an older open week that is not shown in the quick list
+- enter or correct results
+- calculate scores
+- re-post the latest completed results with optional mentions
+- replace predictions
+- toggle late waivers
+- inspect overflow prediction lists when a fixture has more than 25 users
 
 **Custom Deadline Format:**
 • `2024-02-15 18:00`

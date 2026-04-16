@@ -20,12 +20,17 @@ Discord bot for weekly football prediction leagues. Admins create fixtures and e
 - `/standings` - show the leaderboard and latest scored fixture
 
 ### Admin commands
-- `/admin panel` - open the admin panel for deletion, overrides, waivers, and result correction
-- `/admin fixture create` - create a fixture by modal and post its prediction thread
-- `/admin fixture delete [week]` - delete an open fixture
-- `/admin results enter [week]` - enter actual results by modal
-- `/admin results calculate [week]` - calculate scores and post results
-- `/admin results post` - repost results with optional mentions
+- `/admin panel` - open the main admin surface
+
+Inside the panel you can:
+- create fixtures
+- delete fixtures
+- jump to older open weeks not shown in the quick list
+- enter or correct results
+- calculate scores
+- re-post the latest completed results with optional mentions
+- replace predictions
+- toggle late waivers
 
 Admins need a Discord role named `Admin` or `typer-admin`.
 
@@ -62,7 +67,7 @@ Team E - Team F 3:2
 ## Operational constraints
 - Match data, predictions, results, and scores are stored in SQLite.
 - Short-lived cooldowns are kept in memory.
-- This includes the thread-post rate limiter and the `/admin results calculate` cooldown.
+- This includes the thread-post rate limiter and the score-calculation cooldown.
 - The bot is intentionally single-process for v1. If the process restarts, in-memory cooldowns reset.
 
 ## Configuration
@@ -154,7 +159,7 @@ uv run ty check typer_bot
 
 ## Backup and Restore
 
-- Automatic: the database is backed up after each successful `/admin results calculate`. The bot keeps the latest 10 backups in `BACKUP_DIR`.
+- Automatic: the database is backed up after each successful score calculation. The bot keeps the latest 10 backups in `BACKUP_DIR`.
 - Manual restore: run from the Railway shell.
 
 ```bash
