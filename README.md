@@ -68,31 +68,38 @@ Team E - Team F 3:2
 ## Configuration
 
 ### Required
-- `DISCORD_TOKEN` - Discord bot token
+- `DISCORD_TOKEN` - Discord bot token for live Discord-connected deploys
 
 ### Optional
 - `ENVIRONMENT` - environment label; use `production` for production deploys, default is `development`
-- `DATA_DIR` - base data directory; default `./data` locally, set `/app/data` on Railway
+- `DATA_DIR` - base data directory; default `./data` locally, set `/app/data` on production deployments
 - `DB_PATH` - database path; default `{DATA_DIR}/typer.db`
 - `BACKUP_DIR` - backup directory; default `{DATA_DIR}/backups`
 - `TZ` - timezone for admin deadline input; default `UTC`
 - `REMINDER_CHANNEL_ID` - reminder channel ID
 - `LOG_LEVEL` - logging level; default `INFO`
+- `DISABLE_DISCORD_GATEWAY` - set to `1`/`true`/`yes`/`on` for smoke-test startup without connecting to Discord
 
 ## Deployment
 
-### Railway
+### Coolify (Nixpacks)
 
-1. Fork this repo.
-2. New Project on Railway -> Deploy from GitHub.
-3. Add a persistent volume mounted at `/app/data`.
-4. Set Variables:
-   - `DISCORD_TOKEN=<your token>`
+1. Create a new Coolify service from this repo.
+2. Use Nixpacks.
+3. Mount a persistent volume at `/app/data`.
+4. Set variables:
    - `ENVIRONMENT=production`
    - `DATA_DIR=/app/data`
    - optional: `TZ=Europe/Warsaw`
+   - `DISCORD_TOKEN=<your token>` for live deploys
 
-`ENVIRONMENT` is labeling only. Any deployment with a valid `DISCORD_TOKEN` will connect to Discord and process events. Use a separate token for previews and manual testing. If `DISCORD_TOKEN` is unset, startup fails instead of connecting. Do not run multiple deployments against the same live token.
+For preview/smoke deployments, set:
+
+- `DISABLE_DISCORD_GATEWAY=1`
+
+That validates imports, DB initialization, and cog loading without connecting to Discord. A real token is not required in smoke mode, but deployment-like storage settings still matter if you want a meaningful check.
+
+Use a separate token for previews and manual testing. Do not run multiple deployments against the same live token.
 
 ## Running locally
 

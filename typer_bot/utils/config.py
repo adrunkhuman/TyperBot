@@ -3,6 +3,10 @@
 ``ENVIRONMENT`` describes whether the bot is running in production or in some
 other environment. It does not control whether the bot connects to Discord.
 
+``DISABLE_DISCORD_GATEWAY`` provides an explicit smoke-test mode for deployment
+checks. When enabled, startup validates imports/config and exits before opening
+the Discord gateway.
+
 ``DATA_DIR`` intentionally defaults to ``./data`` so local development writes
 into a repo-adjacent folder without depending on Railway's volume mount.
 Production deploys must override it to a persistent path such as ``/app/data``.
@@ -12,6 +16,12 @@ import os
 
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 IS_PRODUCTION = ENVIRONMENT.lower() in ("production", "prod")
+DISABLE_DISCORD_GATEWAY = os.getenv("DISABLE_DISCORD_GATEWAY", "").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 DATA_DIR = os.getenv("DATA_DIR", "./data")
 DB_PATH = os.getenv("DB_PATH", f"{DATA_DIR}/typer.db")

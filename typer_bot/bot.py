@@ -328,10 +328,29 @@ def main():
     """Run the bot."""
     logger.info("Starting main()...")
 
+    disable_gateway = os.getenv("DISABLE_DISCORD_GATEWAY", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if disable_gateway:
+        logger.info("Smoke test mode enabled - skipping Discord connection")
+        bot = TyperBot()
+
+        async def _run_smoke_checks() -> None:
+            await bot.db.initialize()
+            await bot.load_extension("typer_bot.commands.user_commands")
+            await bot.load_extension("typer_bot.commands.admin_commands")
+
+        asyncio.run(_run_smoke_checks())
+        logger.info("Smoke test import/init checks passed")
+        return
+
     token = os.getenv("DISCORD_TOKEN")
     if not token:
         logger.error("❌ DISCORD_TOKEN environment variable not set!")
-        logger.error("Please set DISCORD_TOKEN in Railway variables")
+        logger.error("Please set DISCORD_TOKEN in your deployment environment")
         sys.exit(1)
 
     if token == "your_bot_token_here":
