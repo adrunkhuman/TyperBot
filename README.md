@@ -2,11 +2,11 @@
 
 100% vibecoded, no guarantees given but it seems to work.
 
-Discord bot for weekly football prediction leagues. Admins create fixtures and enter results. Players submit score predictions in fixture threads or through `/predict`, which posts publicly into those threads. The bot stores picks, calculates points, and posts standings.
+Discord bot for weekly football prediction leagues. Admins create fixtures and enter results. Players post score predictions in fixture threads, either directly or through `/predict`. The bot stores picks, calculates points, and posts standings.
 
 ## Features
 - Thread predictions on fixture announcement threads
-- `/predict` modal flow that posts publicly into fixture threads
+- `/predict` prediction composer
 - Flexible score parsing: `2-1`, `2:1`, `2 : 1`
 - Per-fixture deadlines with late-pick handling
 - Standings, saved predictions, and weekly results posting
@@ -14,7 +14,7 @@ Discord bot for weekly football prediction leagues. Admins create fixtures and e
 
 ## Commands
 ### Player commands
-- `/predict` - open a modal and post predictions publicly into the fixture thread
+- `/predict` - post predictions to the fixture thread
 - `/fixtures` - show open fixtures and deadlines
 - `/mypredictions` - show your saved predictions for open fixtures
 - `/standings` - show the leaderboard and latest scored fixture
@@ -47,8 +47,8 @@ Admins need a Discord role named `Admin` or `typer-admin`.
 
 ## Prediction flow
 - Reply in the fixture thread with one line per match.
-- Run `/predict` anywhere in the server to fill a modal, then have the bot post your prediction publicly into the fixture thread.
-- To replace a saved prediction, use `/predict` again; the bot posts a new public `Updated prediction` message in the thread.
+- Or run `/predict` anywhere in the server and submit the same scores there.
+- To change a saved prediction, run `/predict` again. The bot posts a new `Updated prediction` message in the thread.
 
 Example:
 

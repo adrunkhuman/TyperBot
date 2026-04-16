@@ -499,16 +499,16 @@ class UserCommands(commands.Cog):
         user_help = """## 📖 User Commands
 
 **For Players:**
-• `/predict` - Fill predictions in a modal, then post them publicly to the fixture thread
+• `/predict` - Post predictions to the fixture thread
 • `/fixtures` - View all open fixtures
 • `/standings` - See overall leaderboard
 • `/mypredictions` - Check your submitted predictions for open fixtures
 
-**How to Predict (Two Methods):**
+**How to Predict:**
 
-**Method 1: Thread Predictions (NEW)**
-1. Look for the fixture announcement thread (created when admin posts fixtures)
-2. Reply in the thread with your predictions:
+**Reply in the fixture thread**
+1. Open the fixture thread
+2. Reply with your predictions:
    ```
    Team A - Team B 2:0
    Team C - Team D 1:1
@@ -516,11 +516,11 @@ class UserCommands(commands.Cog):
    ```
 3. Bot will react ✅ when saved
 
-**Method 2: /predict Modal**
+**Or use `/predict`**
 1. Type `/predict` in the channel
 2. If multiple fixtures are open, choose the week from the picker
 3. Enter your predictions in the modal
-4. Submit, and the bot posts them publicly in the fixture thread
+4. Submit to post them in the fixture thread
 5. Use the buttons to continue to other open fixtures
 
 **Scoring:**
@@ -531,16 +531,12 @@ class UserCommands(commands.Cog):
 
 **Input formats:** Use `2:0`, `2-0`, or `2 : 0`
 
-**To change a prediction:** Use `/predict` again. The bot will post your updated prediction publicly in the fixture thread."""
+**To change a prediction:** Use `/predict` again. The bot posts a new updated prediction in the thread."""
 
         admin_help = """\n\n## 🔧 Admin Commands
 
 **For Admins:**
 • `/admin panel` - Open the main admin surface
-
-**Admin workflow:**
-- run `/admin panel` once
-- use the panel buttons and selectors for admin actions
 
 **Inside the panel you can:**
 - create fixtures
@@ -558,7 +554,7 @@ class UserCommands(commands.Cog):
 • `15.02.2024 18:00`
 • `15/02/2024 18:00`
 
-Use the commands above directly in Discord."""
+Use these directly in Discord."""
 
         await interaction.response.send_message(user_help, ephemeral=True)
 
