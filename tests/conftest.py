@@ -85,6 +85,7 @@ class MockGuild:
         self.id = int(guild_id)
         self.name = "Test Guild"
         self._members = {}
+        self.roles = []
 
     def add_member(self, user_id: str, roles: list[str] = None):
         mock_member = MagicMock()
@@ -211,6 +212,7 @@ def handler(mock_bot, database):
 
 class MockRole:
     def __init__(self, name: str):
+        self.id = abs(hash(name)) % 1000000 or 1
         self.name = name
 
 

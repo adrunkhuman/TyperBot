@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import discord
 
 from typer_bot.database import Database, SaveResult
-from typer_bot.utils import now, parse_prediction_lines
+from typer_bot.utils import get_admin_role_mention, now, parse_prediction_lines
 from typer_bot.utils.logger import LogContextManager, log_event
 
 logger = logging.getLogger(__name__)
@@ -231,11 +231,14 @@ class ThreadPredictionHandler:
             if is_late:
                 with suppress(discord.Forbidden):
                     if pending_partial_approval:
+                        admin_role_mention = get_admin_role_mention(message.guild)
                         await message.author.send(
                             "⏳ **Late partial prediction received.** It was saved and is now awaiting admin approval."
                         )
                         await message.channel.send(
-                            f"⏳ Partial prediction from <@{message.author.id}> is awaiting admin approval."
+                            f"⏳ Partial prediction from <@{message.author.id}> is awaiting admin approval. {admin_role_mention}"
+                            if admin_role_mention
+                            else f"⏳ Partial prediction from <@{message.author.id}> is awaiting admin approval."
                         )
                     else:
                         await message.author.send(

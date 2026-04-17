@@ -14,6 +14,7 @@ from typer_bot.utils import (
     format_for_discord,
     format_predictions_preview,
     format_standings,
+    get_admin_role_mention,
     is_admin,
     now,
     parse_prediction_lines,
@@ -36,6 +37,7 @@ def _remaining_open_fixtures(
 
 def _format_thread_prediction_message(
     fixture: dict,
+    guild: discord.Guild | None,
     user_id: int,
     predictions: list[str],
     predicted_game_indexes: list[int],
@@ -52,7 +54,10 @@ def _format_thread_prediction_message(
 
     status: str | None = None
     if pending_partial_approval:
+        admin_role_mention = get_admin_role_mention(guild)
         status = "⏳ Late partial pending admin approval."
+        if admin_role_mention:
+            status += f" {admin_role_mention}"
     elif is_late:
         status = "⚠️ Late prediction."
     elif len(predicted_game_indexes) < len(fixture["games"]):
@@ -352,6 +357,7 @@ class PredictModal(discord.ui.Modal):
             public_message = await thread.send(
                 _format_thread_prediction_message(
                     fixture,
+                    interaction.guild,
                     interaction.user.id,
                     predictions,
                     predicted_game_indexes,

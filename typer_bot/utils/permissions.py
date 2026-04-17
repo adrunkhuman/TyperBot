@@ -28,3 +28,17 @@ def is_admin(interaction: discord.Interaction) -> bool:
 def is_admin_member(member: discord.Member | None) -> bool:
     """Check if a guild member currently has an admin role."""
     return _has_admin_role(member) if member else False
+
+
+def get_admin_role_mention(guild: discord.Guild | None) -> str | None:
+    """Return the preferred admin role mention for a guild, if available."""
+    if guild is None or not hasattr(guild, "roles"):
+        return None
+
+    preferred_names = ["typer-admin", "admin"]
+    lowered = {name: name.lower() for name in preferred_names}
+    for preferred_name in preferred_names:
+        for role in guild.roles:
+            if role.name.lower() == lowered[preferred_name]:
+                return f"<@&{role.id}>"
+    return None

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from tests.conftest import MockInteraction, MockThread, MockUser
+from tests.conftest import MockInteraction, MockRole, MockThread, MockUser
 from typer_bot.commands.user_commands import (
     ContinuePredictView,
     FixtureSelectView,
@@ -260,6 +260,8 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database
     ):
         await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
+        admin_role = MockRole("typer-admin")
+        mock_interaction.guild.roles = [admin_role]
         fixture = await database.get_fixture_by_id(1)
         assert fixture is not None
         fixture["deadline"] = datetime.now(UTC) - timedelta(minutes=1)
@@ -277,6 +279,8 @@ class TestPredictCommand:
         assert prediction["predicted_game_indexes"] == [1, 2]
         assert "Pending admin approval" in mock_interaction.response_sent[-1]["content"]
         assert "0 points" not in mock_interaction.response_sent[-1]["content"]
+        thread = user_commands.bot.get_channel(700001)
+        assert f"<@&{admin_role.id}>" in thread.messages_sent[-1]["content"]
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")

@@ -154,6 +154,10 @@ class TestOnMessage:
         await database.update_fixture_announcement(
             fixture_id, message_id="789012", channel_id="123456"
         )
+        admin_role = MagicMock()
+        admin_role.name = "typer-admin"
+        admin_role.id = 4242
+        mock_message.guild.roles = [admin_role]
         mock_message.content = "Team C - Team D 1-1\nTeam E - Team F 0-2"
         mock_message.channel.id = 789012
 
@@ -166,6 +170,7 @@ class TestOnMessage:
         assert predictions[0]["predicted_game_indexes"] == [1, 2]
         assert "awaiting admin approval" in mock_message.author.dm_sent[-1]
         assert "awaiting admin approval" in mock_message.channel.messages_sent[-1]["content"]
+        assert "<@&4242>" in mock_message.channel.messages_sent[-1]["content"]
 
     @pytest.mark.asyncio
     async def test_rejects_thread_resubmission_without_overwriting_prediction(
