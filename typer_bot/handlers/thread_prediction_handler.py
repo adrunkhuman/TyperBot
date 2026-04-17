@@ -111,7 +111,7 @@ class ThreadPredictionHandler:
                 return True
 
             if not any(
-                re.search(r"\d+\s*[-:]\s*\d+\s*$", line.strip())
+                re.search(r"(\d+\s*[-:]\s*\d+|[xX])\s*$", line.strip())
                 for line in message.content.splitlines()
             ):
                 logger.debug(

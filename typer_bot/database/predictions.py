@@ -458,6 +458,12 @@ class PredictionRepository:
         user_id: str,
         admin_user_id: str,
     ) -> bool:
+        """Approve a pending partial prediction and recalculate if needed.
+
+        Approval clears `pending_partial_approval`, resets `is_late`, and marks
+        the row as admin-edited. If the fixture already has scores, standings are
+        recalculated in the same transaction.
+        """
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("BEGIN IMMEDIATE")
             try:
@@ -491,6 +497,11 @@ class PredictionRepository:
         fixture_id: int,
         user_id: str,
     ) -> bool:
+        """Reject and delete a pending partial prediction.
+
+        If the fixture already has scores, standings are recalculated in the same
+        transaction after the pending row is removed.
+        """
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("BEGIN IMMEDIATE")
             try:
@@ -514,7 +525,11 @@ class PredictionRepository:
     async def get_all_predictions(
         self, fixture_id: int, *, include_pending: bool = False
     ) -> list[dict]:
-        """Get all predictions for a fixture."""
+        """Get fixture predictions, excluding pending partials by default.
+
+        Scoring paths rely on the default behavior so pending partial approvals do
+        not count until an admin explicitly approves them.
+        """
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(

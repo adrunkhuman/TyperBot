@@ -45,20 +45,21 @@ def _format_thread_prediction_message(
     pending_partial_approval: bool,
 ) -> str:
     heading = "Updated prediction" if is_update else "Prediction"
-    if pending_partial_approval:
-        heading = f"{heading} (awaiting admin approval)"
-    content = [f"**{heading} from <@{user_id}> for Week {fixture['week_number']}**", ""]
+    content = [f"**{heading} from <@{user_id}> · Week {fixture['week_number']}**", ""]
     for game_index, prediction in zip(predicted_game_indexes, predictions, strict=False):
         game = fixture["games"][game_index]
         content.append(f"{game_index + 1}. {game} **{prediction}**")
-    if len(predicted_game_indexes) < len(fixture["games"]):
-        content.append("")
-        content.append("Partial prediction.")
-    if is_late:
-        content.append("")
-        content.append("⚠️ Late prediction.")
+
+    status: str | None = None
     if pending_partial_approval:
-        content.append("Pending admin approval.")
+        status = "⏳ Late partial pending admin approval."
+    elif is_late:
+        status = "⚠️ Late prediction."
+    elif len(predicted_game_indexes) < len(fixture["games"]):
+        status = "Partial prediction."
+
+    if status:
+        content.extend(["", status])
     return "\n".join(content)
 
 
