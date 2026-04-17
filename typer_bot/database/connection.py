@@ -344,6 +344,9 @@ class Database:
             fixture_id, include_pending=include_pending
         )
 
+    async def get_pending_partial_predictions(self):
+        return await self._predictions.get_pending_partial_predictions()
+
     async def approve_partial_prediction(self, fixture_id, user_id, admin_user_id):
         return await self._predictions.approve_partial_prediction_with_recalc(
             fixture_id, user_id, admin_user_id

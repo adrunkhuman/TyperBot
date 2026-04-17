@@ -144,6 +144,58 @@ class RejectPartialButton(discord.ui.Button):
         )
 
 
+class ReviewPendingPartialsButton(discord.ui.Button):
+    def __init__(self, parent_view: UnifiedAdminPanelView):
+        self.parent_view = parent_view
+        super().__init__(label="Review Pending", style=discord.ButtonStyle.danger, row=2)
+
+    async def callback(self, interaction: discord.Interaction):
+        pending_predictions = await self.parent_view.db.get_pending_partial_predictions()
+        if not pending_predictions:
+            await interaction.response.send_message(
+                "There are no pending partial predictions right now.", ephemeral=True
+            )
+            return
+
+        current_key = (self.parent_view.selection.fixture_id, self.parent_view.selection.user_id)
+        next_prediction = pending_predictions[0]
+        for index, pending in enumerate(pending_predictions):
+            if (pending["fixture_id"], pending["user_id"]) == current_key:
+                next_prediction = pending_predictions[(index + 1) % len(pending_predictions)]
+                break
+
+        fixture = await self.parent_view.db.get_fixture_by_id(next_prediction["fixture_id"])
+        if fixture is None:
+            await interaction.response.send_message(
+                "That fixture no longer exists. Try again after refreshing the panel.",
+                ephemeral=True,
+            )
+            return
+
+        self.parent_view.selection.fixture_id = fixture["id"]
+        self.parent_view.selection.fixture_label = (
+            f"Week {fixture['week_number']} [{fixture['status'].upper()}]"
+        )
+        self.parent_view.selection.user_id = next_prediction["user_id"]
+        self.parent_view.selection.user_label = (
+            f"{next_prediction['user_name']} ({_prediction_status_text(next_prediction)})"
+        )
+        self.parent_view.selection.detail_lines = _build_indexed_detail_lines(
+            next_prediction["predicted_game_indexes"],
+            fixture["games"],
+            next_prediction["predictions"],
+        )
+        self.parent_view.selection.status_message = f"Reviewing pending partial prediction for {next_prediction['user_name']} in week {fixture['week_number']}."
+        await self.parent_view.load_user_options()
+        await self.parent_view.set_selected_prediction()
+        self.parent_view.fixture_select.sync_selected_option()
+        self.parent_view._refresh_items()
+        await interaction.response.edit_message(
+            content=self.parent_view.render_content(),
+            view=self.parent_view,
+        )
+
+
 if TYPE_CHECKING:
     from typer_bot.commands.admin_commands import AdminCommands
 
@@ -416,6 +468,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.admin_commands = admin_commands
         self.selection = PanelSelectionState()
         self.has_user_overflow = False
+        self.has_pending_partials = False
         self.current_prediction: dict | None = None
         self.fixture_select = FixtureSelect(self)
         self.user_select = PredictionUserSelect(self)
@@ -429,6 +482,8 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.add_item(CreateFixtureButton(self))
         self.add_item(FixturesDeleteButton(self, disabled=self.selection.fixture_id is None, row=2))
         self.add_item(JumpToWeekButton(self))
+        if self.has_pending_partials:
+            self.add_item(ReviewPendingPartialsButton(self))
         self.add_item(EnterResultsButton(self))
         self.add_item(CalculateScoresButton(self))
         self.add_item(CorrectResultsButton(self, disabled=self.selection.fixture_id is None, row=3))
@@ -459,6 +514,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
     async def load_fixture_options(self) -> None:
         fixtures = await self.db.get_recent_fixtures(MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
+        self.has_pending_partials = bool(await self.db.get_pending_partial_predictions())
 
     async def load_user_options(self) -> None:
         if self.selection.fixture_id is None:

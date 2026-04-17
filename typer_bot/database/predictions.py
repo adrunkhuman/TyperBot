@@ -561,3 +561,48 @@ class PredictionRepository:
                     }
                     for row in rows
                 ]
+
+    async def get_pending_partial_predictions(self) -> list[dict]:
+        """List all pending partial predictions with fixture metadata."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                """
+                SELECT
+                    p.fixture_id,
+                    p.user_id,
+                    p.user_name,
+                    p.predictions,
+                    p.predicted_game_indexes,
+                    p.is_late,
+                    p.late_penalty_waived,
+                    p.pending_partial_approval,
+                    f.week_number,
+                    f.games,
+                    f.status
+                FROM predictions p
+                JOIN fixtures f ON f.id = p.fixture_id
+                WHERE p.pending_partial_approval = TRUE
+                ORDER BY f.week_number ASC, p.user_name COLLATE NOCASE ASC
+                """
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [
+                    {
+                        "fixture_id": row["fixture_id"],
+                        "user_id": row["user_id"],
+                        "user_name": row["user_name"],
+                        "predictions": row["predictions"].split("\n"),
+                        "predicted_game_indexes": _deserialize_game_indexes(
+                            row["predicted_game_indexes"],
+                            len(row["predictions"].split("\n")),
+                        ),
+                        "is_late": row["is_late"],
+                        "late_penalty_waived": row["late_penalty_waived"],
+                        "pending_partial_approval": bool(row["pending_partial_approval"]),
+                        "week_number": row["week_number"],
+                        "games": row["games"].split("\n"),
+                        "status": row["status"],
+                    }
+                    for row in rows
+                ]
