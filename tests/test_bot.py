@@ -504,34 +504,6 @@ class TestMainFunction:
             main()
         assert exc_info.value.code == 1
 
-    @patch.dict(os.environ, {"DISABLE_DISCORD_GATEWAY": "1"}, clear=True)
-    @patch("typer_bot.bot.TyperBot")
-    @patch("typer_bot.bot.logger")
-    def test_main_smoke_mode_skips_discord_connection(self, mock_logger, mock_bot_cls):
-        """Smoke mode validates startup without opening a Discord connection."""
-        mock_bot = mock_bot_cls.return_value
-        mock_bot.db.initialize = AsyncMock()
-        mock_bot.load_extension = AsyncMock()
-
-        main()
-
-        mock_bot_cls.assert_called_once()
-        mock_bot.run.assert_not_called()
-        mock_bot.db.initialize.assert_awaited_once()
-        mock_bot.load_extension.assert_any_await("typer_bot.commands.user_commands")
-        mock_bot.load_extension.assert_any_await("typer_bot.commands.admin_commands")
-        mock_logger.info.assert_any_call("Smoke test mode enabled - skipping Discord connection")
-
-    @patch.dict(os.environ, {"DISABLE_DISCORD_GATEWAY": "1"}, clear=True)
-    @patch("typer_bot.bot.TyperBot")
-    def test_main_smoke_mode_exits_on_failed_init(self, mock_bot_cls):
-        mock_bot = mock_bot_cls.return_value
-        mock_bot.db.initialize = AsyncMock(side_effect=RuntimeError("boom"))
-        mock_bot.load_extension = AsyncMock()
-
-        with pytest.raises(RuntimeError, match="boom"):
-            main()
-
     @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token", "ENVIRONMENT": "development"})
     @patch("typer_bot.bot.TyperBot")
     @patch("typer_bot.bot.logger")

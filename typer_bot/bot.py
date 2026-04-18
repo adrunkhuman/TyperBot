@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 from typer_bot.database import Database
 from typer_bot.handlers.thread_prediction_handler import ThreadPredictionHandler
 from typer_bot.utils import format_for_discord, now
-from typer_bot.utils.config import is_truthy_env
 from typer_bot.utils.logger import set_log_context, set_trace_id
 
 logger = logging.getLogger(__name__)
@@ -424,20 +423,6 @@ class TyperBot(commands.Bot):
 def main():
     """Run the bot."""
     logger.info("Starting main()...")
-
-    disable_gateway = is_truthy_env("DISABLE_DISCORD_GATEWAY")
-    if disable_gateway:
-        logger.info("Smoke test mode enabled - skipping Discord connection")
-        bot = TyperBot()
-
-        async def _run_smoke_checks() -> None:
-            await bot.db.initialize()
-            await bot.load_extension("typer_bot.commands.user_commands")
-            await bot.load_extension("typer_bot.commands.admin_commands")
-
-        asyncio.run(_run_smoke_checks())
-        logger.info("Smoke test import/init checks passed")
-        return
 
     token = os.getenv("DISCORD_TOKEN")
     if not token:

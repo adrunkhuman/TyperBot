@@ -38,19 +38,3 @@ class TestConfigDefaults:
         monkeypatch.delenv("DB_PATH", raising=False)
         monkeypatch.delenv("BACKUP_DIR", raising=False)
         importlib.reload(reloaded)
-
-    def test_disable_discord_gateway_truthy_values(self, monkeypatch):
-        for value in ["1", "true", "yes", "on"]:
-            monkeypatch.setenv("DISABLE_DISCORD_GATEWAY", value)
-            reloaded = importlib.reload(config_module)
-            assert reloaded.DISABLE_DISCORD_GATEWAY is True
-
-        monkeypatch.delenv("DISABLE_DISCORD_GATEWAY", raising=False)
-        importlib.reload(config_module)
-
-    def test_disable_discord_gateway_defaults_false(self, monkeypatch):
-        monkeypatch.delenv("DISABLE_DISCORD_GATEWAY", raising=False)
-
-        reloaded = importlib.reload(config_module)
-
-        assert reloaded.DISABLE_DISCORD_GATEWAY is False
