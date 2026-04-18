@@ -1,13 +1,14 @@
 """Handler for thread-based predictions."""
 
 import logging
+import re
 from contextlib import suppress
 from datetime import datetime, timedelta
 
 import discord
 
 from typer_bot.database import Database, SaveResult
-from typer_bot.utils import now, parse_line_predictions
+from typer_bot.utils import get_admin_role_mention, now, parse_prediction_lines
 from typer_bot.utils.logger import LogContextManager, log_event
 
 logger = logging.getLogger(__name__)
@@ -109,12 +110,20 @@ class ThreadPredictionHandler:
                 )
                 return True
 
-            predictions, errors = parse_line_predictions(message.content, fixture["games"])
-
-            # Threads also contain chatter; only treat messages with score lines as submissions.
-            if len(predictions) == 0:
-                logger.debug(f"Ignoring message with no valid scores from {message.author.id}")
+            if not any(
+                re.search(r"(\d+\s*[-:]\s*\d+|[xX])\s*$", line.strip())
+                for line in message.content.splitlines()
+            ):
+                logger.debug(
+                    f"Ignoring message with no score-like content from {message.author.id}"
+                )
                 return False
+
+            predictions, predicted_game_indexes, errors = parse_prediction_lines(
+                message.content,
+                fixture["games"],
+                allow_partial=True,
+            )
 
             if errors:
                 error_msg = "\n".join(errors)
@@ -137,8 +146,15 @@ class ThreadPredictionHandler:
                 )
                 return True
 
+            # Threads also contain chatter; only treat messages with score lines as submissions.
+            if len(predictions) == 0:
+                logger.debug(f"Ignoring message with no valid scores from {message.author.id}")
+                return False
+
             current_time = now()
             is_late = current_time > fixture["deadline"]
+            is_partial = len(predicted_game_indexes) < len(fixture["games"])
+            pending_partial_approval = is_late and is_partial
 
         try:
             result = await self.db.try_save_prediction(
@@ -147,6 +163,10 @@ class ThreadPredictionHandler:
                 message.author.display_name,
                 predictions,
                 is_late,
+                predicted_game_indexes=predicted_game_indexes,
+                pending_partial_approval=pending_partial_approval,
+                public_message_id=str(message.id) if pending_partial_approval else None,
+                public_message_kind="thread_message" if pending_partial_approval else None,
             )
 
             if result == SaveResult.FIXTURE_CLOSED:
@@ -184,7 +204,7 @@ class ThreadPredictionHandler:
                 return True
 
             try:
-                await message.add_reaction("✅")
+                await message.add_reaction("⏳" if pending_partial_approval else "✅")
             except discord.Forbidden:
                 logger.warning(
                     f"Could not add reaction to thread prediction from {message.author.id}. "
@@ -212,9 +232,25 @@ class ThreadPredictionHandler:
 
             if is_late:
                 with suppress(discord.Forbidden):
+                    if pending_partial_approval:
+                        admin_role_mention = get_admin_role_mention(message.guild)
+                        await message.author.send(
+                            "⏳ **Late prediction received.** It was saved and is now awaiting admin review because it arrived late with missing games."
+                        )
+                        await message.channel.send(
+                            f"⏳ Late prediction from <@{message.author.id}> with missing games is awaiting admin review. {admin_role_mention}"
+                            if admin_role_mention
+                            else f"⏳ Late prediction from <@{message.author.id}> with missing games is awaiting admin review."
+                        )
+                    else:
+                        await message.author.send(
+                            "⚠️ **Late prediction!** Your prediction was saved but you will receive "
+                            "0 points for this round since the deadline has passed."
+                        )
+            elif is_partial:
+                with suppress(discord.Forbidden):
                     await message.author.send(
-                        "⚠️ **Late prediction!** Your prediction was saved but you will receive "
-                        "0 points for this round since the deadline has passed."
+                        "ℹ️ **Partial prediction saved.** Any missing games will count as no prediction. If the deadline has not passed yet, use `/predict` again to fill the rest."
                     )
 
             return True

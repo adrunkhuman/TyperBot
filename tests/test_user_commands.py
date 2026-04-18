@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from tests.conftest import MockInteraction, MockThread, MockUser
+from tests.conftest import MockInteraction, MockRole, MockThread, MockUser
 from typer_bot.commands.user_commands import (
     ContinuePredictView,
     FixtureSelectView,
@@ -237,6 +237,110 @@ class TestPredictCommand:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")
+    async def test_predict_modal_accepts_pre_deadline_partial_prediction(
+        self, user_commands, mock_interaction, database
+    ):
+        await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
+        await user_commands.predict.callback(user_commands, mock_interaction)
+
+        modal = mock_interaction.modal_sent["modal"]
+        modal.predictions_input._value = "Team C - Team D 1-1\nTeam E - Team F 0-2"
+        await modal.on_submit(mock_interaction)
+
+        prediction = await database.get_prediction(1, str(mock_interaction.user.id))
+        assert prediction is not None
+        assert prediction["predictions"] == ["1-1", "0-2"]
+        assert prediction["predicted_game_indexes"] == [1, 2]
+        assert prediction["pending_partial_approval"] is False
+        assert "Partial prediction saved" in mock_interaction.response_sent[-1]["content"]
+        assert "fill the rest" in mock_interaction.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_dm")
+    async def test_predict_modal_marks_late_partial_as_pending(
+        self, user_commands, mock_interaction, database
+    ):
+        await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
+        admin_role = MockRole("typer-admin")
+        mock_interaction.guild.roles = [admin_role]
+        fixture = await database.get_fixture_by_id(1)
+        assert fixture is not None
+        fixture["deadline"] = datetime.now(UTC) - timedelta(minutes=1)
+        user_commands.db.get_open_fixtures = AsyncMock(return_value=[fixture])
+        user_commands.db.get_fixture_by_id = AsyncMock(return_value=fixture)
+
+        await user_commands.predict.callback(user_commands, mock_interaction)
+        modal = mock_interaction.modal_sent["modal"]
+        modal.predictions_input._value = "Team C - Team D 1-1\nTeam E - Team F 0-2"
+        await modal.on_submit(mock_interaction)
+
+        prediction = await database.get_prediction(1, str(mock_interaction.user.id))
+        assert prediction is not None
+        assert prediction["pending_partial_approval"] is True
+        assert prediction["predicted_game_indexes"] == [1, 2]
+        assert prediction["public_message_id"] == "1"
+        assert prediction["public_message_kind"] == "bot_post"
+        assert (
+            "Late prediction awaiting admin review" in mock_interaction.response_sent[-1]["content"]
+        )
+        assert "0 points" not in mock_interaction.response_sent[-1]["content"]
+        thread = user_commands.bot.get_channel(700001)
+        assert f"<@&{admin_role.id}>" in thread.messages_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_dm")
+    async def test_predict_modal_replaces_previous_pending_bot_post(
+        self, user_commands, mock_interaction, database
+    ):
+        await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
+        fixture = await database.get_fixture_by_id(1)
+        assert fixture is not None
+        fixture["deadline"] = datetime.now(UTC) - timedelta(minutes=1)
+        user_commands.db.get_open_fixtures = AsyncMock(return_value=[fixture])
+        user_commands.db.get_fixture_by_id = AsyncMock(return_value=fixture)
+
+        await user_commands.predict.callback(user_commands, mock_interaction)
+        first_modal = mock_interaction.modal_sent["modal"]
+        first_modal.predictions_input._value = "Team C - Team D 1-1\nTeam E - Team F 0-2"
+        await first_modal.on_submit(mock_interaction)
+
+        thread = user_commands.bot.get_channel(700001)
+        first_public_message = thread.message_objects[1]
+
+        await user_commands.predict.callback(user_commands, mock_interaction)
+        second_modal = mock_interaction.modal_sent["modal"]
+        second_modal.predictions_input._value = "Team A - Team B 2-0\nTeam C - Team D 1-1"
+        await second_modal.on_submit(mock_interaction)
+
+        prediction = await database.get_prediction(1, str(mock_interaction.user.id))
+        assert prediction is not None
+        assert prediction["public_message_id"] == "2"
+        first_public_message.delete.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_dm")
+    async def test_my_predictions_shows_sparse_pending_prediction(
+        self, user_commands, mock_interaction, database
+    ):
+        await database.save_prediction(
+            1,
+            str(mock_interaction.user.id),
+            mock_interaction.user.name,
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+
+        await user_commands.my_predictions.callback(user_commands, mock_interaction)
+
+        content = mock_interaction.response_sent[-1]["content"]
+        assert "2. Team C - Team D **1-1**" in content
+        assert "3. Team E - Team F **0-2**" in content
+        assert "Late prediction awaiting admin review" in content
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_dm")
     async def test_predict_modal_reports_closed_fixture_during_submit(
         self, user_commands, mock_interaction, monkeypatch
     ):
@@ -287,6 +391,24 @@ class TestPredictCommand:
             "Something went wrong while saving your prediction"
             in mock_interaction.response_sent[-1]["content"]
         )
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_dm")
+    async def test_predict_modal_rejects_empty_partial_parse_result(
+        self, user_commands, mock_interaction, database
+    ):
+        await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
+        await user_commands.predict.callback(user_commands, mock_interaction)
+
+        modal = mock_interaction.modal_sent["modal"]
+        modal.predictions_input._value = ","
+        await modal.on_submit(mock_interaction)
+
+        assert (
+            "Please enter at least one prediction before submitting."
+            in mock_interaction.response_sent[-1]["content"]
+        )
+        assert await database.get_prediction(1, str(mock_interaction.user.id)) is None
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")

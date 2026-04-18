@@ -16,7 +16,10 @@ from .base import (
     OwnerRestrictedView,
     PanelSelectionState,
     _build_detail_lines,
+    _build_indexed_detail_lines,
+    _notify_user_dm,
     _render_panel_content,
+    _update_public_review_marker,
 )
 from .fixtures import FixturesDeleteButton
 from .modals import CreateFixtureModal, EnterResultsModal
@@ -25,8 +28,186 @@ from .predictions import (
     ReplacePredictionButton,
     ToggleWaiverButton,
     ViewPredictionsButton,
+    _prediction_status_text,
 )
 from .results import CorrectResultsButton
+
+
+class ApprovePartialButton(discord.ui.Button):
+    def __init__(self, parent_view: UnifiedAdminPanelView):
+        self.parent_view = parent_view
+        super().__init__(label="Approve Late", style=discord.ButtonStyle.success, row=4)
+
+    async def callback(self, interaction: discord.Interaction):
+        fixture_id = self.parent_view.selection.fixture_id
+        user_id = self.parent_view.selection.user_id
+        if fixture_id is None or user_id is None:
+            await interaction.response.send_message(
+                "Select both fixture and user first.", ephemeral=True
+            )
+            return
+        try:
+            (
+                fixture,
+                prediction,
+                recalculation,
+            ) = await self.parent_view.service.approve_partial_prediction(
+                fixture_id,
+                user_id,
+                str(interaction.user.id),
+            )
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+
+        self.parent_view.selection.user_label = (
+            f"{prediction['user_name']} ({_prediction_status_text(prediction)})"
+        )
+        self.parent_view.selection.detail_lines = _build_indexed_detail_lines(
+            prediction["predicted_game_indexes"],
+            fixture["games"],
+            prediction["predictions"],
+        )
+        self.parent_view.selection.status_message = f"Approved late prediction for {prediction['user_name']} in week {fixture['week_number']}."
+        if recalculation is not None:
+            self.parent_view.selection.status_message += " Scores were recalculated."
+
+        await self.parent_view.load_user_options()
+        self.parent_view.current_prediction = prediction
+        self.parent_view._refresh_items()
+        await interaction.response.edit_message(
+            content=self.parent_view.render_content(), view=self.parent_view
+        )
+        await _update_public_review_marker(
+            self.parent_view.bot,
+            fixture,
+            prediction,
+            approved=True,
+        )
+
+        notification = (
+            f"Your late prediction for Week {fixture['week_number']} was approved by an admin."
+        )
+        if recalculation is not None:
+            notification += " Scores were recalculated."
+        await _notify_user_dm(
+            self.parent_view.bot,
+            prediction["user_id"],
+            notification,
+            context="partial approval",
+        )
+
+
+class RejectPartialButton(discord.ui.Button):
+    def __init__(self, parent_view: UnifiedAdminPanelView):
+        self.parent_view = parent_view
+        super().__init__(label="Reject Late", style=discord.ButtonStyle.danger, row=4)
+
+    async def callback(self, interaction: discord.Interaction):
+        fixture_id = self.parent_view.selection.fixture_id
+        user_id = self.parent_view.selection.user_id
+        if fixture_id is None or user_id is None:
+            await interaction.response.send_message(
+                "Select both fixture and user first.", ephemeral=True
+            )
+            return
+        try:
+            (
+                fixture,
+                prediction,
+                recalculation,
+            ) = await self.parent_view.service.reject_partial_prediction(
+                fixture_id,
+                user_id,
+            )
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+
+        self.parent_view.selection.user_id = None
+        self.parent_view.selection.user_label = ""
+        self.parent_view.selection.detail_lines = []
+        self.parent_view.selection.status_message = f"Rejected late prediction for {prediction['user_name']} in week {fixture['week_number']}."
+        if recalculation is not None:
+            self.parent_view.selection.status_message += " Scores were recalculated."
+
+        await self.parent_view.load_user_options()
+        self.parent_view.current_prediction = None
+        self.parent_view._refresh_items()
+        await interaction.response.edit_message(
+            content=self.parent_view.render_content(), view=self.parent_view
+        )
+        await _update_public_review_marker(
+            self.parent_view.bot,
+            fixture,
+            prediction,
+            approved=False,
+        )
+
+        notification = (
+            f"Your late prediction for Week {fixture['week_number']} was rejected by an admin."
+        )
+        if recalculation is not None:
+            notification += " Scores were recalculated."
+        await _notify_user_dm(
+            self.parent_view.bot,
+            prediction["user_id"],
+            notification,
+            context="partial rejection",
+        )
+
+
+class ReviewPendingPartialsButton(discord.ui.Button):
+    def __init__(self, parent_view: UnifiedAdminPanelView):
+        self.parent_view = parent_view
+        super().__init__(label="Review Late", style=discord.ButtonStyle.primary, row=4)
+
+    async def callback(self, interaction: discord.Interaction):
+        pending_predictions = await self.parent_view.db.get_pending_partial_predictions()
+        if not pending_predictions:
+            await interaction.response.send_message(
+                "There are no late predictions awaiting review right now.", ephemeral=True
+            )
+            return
+
+        current_key = (self.parent_view.selection.fixture_id, self.parent_view.selection.user_id)
+        next_prediction = pending_predictions[0]
+        for index, pending in enumerate(pending_predictions):
+            if (pending["fixture_id"], pending["user_id"]) == current_key:
+                next_prediction = pending_predictions[(index + 1) % len(pending_predictions)]
+                break
+
+        fixture = await self.parent_view.db.get_fixture_by_id(next_prediction["fixture_id"])
+        if fixture is None:
+            await interaction.response.send_message(
+                "That fixture no longer exists. Try again after refreshing the panel.",
+                ephemeral=True,
+            )
+            return
+
+        self.parent_view.selection.fixture_id = fixture["id"]
+        self.parent_view.selection.fixture_label = (
+            f"Week {fixture['week_number']} [{fixture['status'].upper()}]"
+        )
+        self.parent_view.selection.user_id = next_prediction["user_id"]
+        self.parent_view.selection.user_label = (
+            f"{next_prediction['user_name']} ({_prediction_status_text(next_prediction)})"
+        )
+        self.parent_view.selection.detail_lines = _build_indexed_detail_lines(
+            next_prediction["predicted_game_indexes"],
+            fixture["games"],
+            next_prediction["predictions"],
+        )
+        self.parent_view.selection.status_message = f"Reviewing late prediction for {next_prediction['user_name']} in week {fixture['week_number']}."
+        await self.parent_view.load_user_options()
+        await self.parent_view.set_selected_prediction()
+        self.parent_view.fixture_select.sync_selected_option()
+        self.parent_view._refresh_items()
+        await interaction.response.edit_message(
+            content=self.parent_view.render_content(),
+            view=self.parent_view,
+        )
+
 
 if TYPE_CHECKING:
     from typer_bot.commands.admin_commands import AdminCommands
@@ -254,7 +435,7 @@ class PostResultsConfirmView(discord.ui.View):
 class PostResultsButton(discord.ui.Button):
     def __init__(self, parent_view: UnifiedAdminPanelView):
         self.parent_view = parent_view
-        super().__init__(label="Re-post Results", style=discord.ButtonStyle.secondary, row=4)
+        super().__init__(label="Re-post Results", style=discord.ButtonStyle.secondary, row=3)
 
     async def callback(self, interaction: discord.Interaction):
         fixture_data = await self.parent_view.db.get_last_fixture_scores()
@@ -300,6 +481,8 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.admin_commands = admin_commands
         self.selection = PanelSelectionState()
         self.has_user_overflow = False
+        self.has_pending_partials = False
+        self.current_prediction: dict | None = None
         self.fixture_select = FixtureSelect(self)
         self.user_select = PredictionUserSelect(self)
         self.user_select.update_options([])
@@ -312,24 +495,30 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.add_item(CreateFixtureButton(self))
         self.add_item(FixturesDeleteButton(self, disabled=self.selection.fixture_id is None, row=2))
         self.add_item(JumpToWeekButton(self))
+        if self.has_pending_partials:
+            self.add_item(ReviewPendingPartialsButton(self))
         self.add_item(EnterResultsButton(self))
         self.add_item(CalculateScoresButton(self))
         self.add_item(CorrectResultsButton(self, disabled=self.selection.fixture_id is None, row=3))
         self.add_item(PostResultsButton(self))
-        self.add_item(
-            ReplacePredictionButton(
-                self,
-                disabled=self.selection.fixture_id is None or self.selection.user_id is None,
-                row=4,
+        if self.current_prediction and self.current_prediction.get("pending_partial_approval"):
+            self.add_item(ApprovePartialButton(self))
+            self.add_item(RejectPartialButton(self))
+        else:
+            self.add_item(
+                ReplacePredictionButton(
+                    self,
+                    disabled=self.selection.fixture_id is None or self.selection.user_id is None,
+                    row=4,
+                )
             )
-        )
-        self.add_item(
-            ToggleWaiverButton(
-                self,
-                disabled=self.selection.fixture_id is None or self.selection.user_id is None,
-                row=4,
+            self.add_item(
+                ToggleWaiverButton(
+                    self,
+                    disabled=self.selection.fixture_id is None or self.selection.user_id is None,
+                    row=4,
+                )
             )
-        )
         if self.has_user_overflow:
             self.add_item(
                 ViewPredictionsButton(self, disabled=self.selection.fixture_id is None, row=4)
@@ -338,6 +527,8 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
     async def load_fixture_options(self) -> None:
         fixtures = await self.db.get_recent_fixtures(MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
+        self.has_pending_partials = bool(await self.db.get_pending_partial_predictions())
+        self._refresh_items()
 
     async def load_user_options(self) -> None:
         if self.selection.fixture_id is None:
@@ -345,9 +536,19 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
             self.user_select.update_options([])
             return
 
-        predictions = await self.db.get_all_predictions(self.selection.fixture_id)
+        predictions = await self.db.get_all_predictions(
+            self.selection.fixture_id, include_pending=True
+        )
         self.has_user_overflow = len(predictions) > MAX_SELECT_OPTIONS
         self.user_select.update_options(predictions)
+
+    async def set_selected_prediction(self) -> None:
+        self.current_prediction = None
+        if self.selection.fixture_id is None or self.selection.user_id is None:
+            return
+        self.current_prediction = await self.db.get_prediction(
+            self.selection.fixture_id, self.selection.user_id
+        )
 
     async def populate_fixture_details(self, fixture: dict | None) -> None:
         self.selection.detail_lines = []
@@ -370,7 +571,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
             if self.selection.detail_lines:
                 lines.extend(["", *self.selection.detail_lines])
             else:
-                guidance = "Top row: fixture management. Middle row: results workflow. Bottom row: prediction and user actions. Use Jump To Week when the older open week you want is not in the quick list."
+                guidance = "Top row: fixture management. Middle row: results workflow. Bottom row: prediction and late-review actions. Use Jump To Week when the older open week you want is not in the quick list."
                 lines.extend(["", guidance])
 
             if self.has_user_overflow:
@@ -382,7 +583,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
                 )
         else:
             lines.append(
-                "Use the top row for fixture management, the middle row for results, and the bottom row for prediction-level actions."
+                "Use the top row for fixture management, the middle row for results, and the bottom row for prediction and late-review actions."
             )
             if self.selection.status_message:
                 lines.extend(["", self.selection.status_message])
