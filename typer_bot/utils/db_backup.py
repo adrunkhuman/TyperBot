@@ -1,44 +1,11 @@
 """Automatic database backup utilities."""
 
 import logging
-import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
-
-def validate_backup_sql(sql_content: str) -> bool:
-    """Validate backup SQL - allows CREATE TABLE IF NOT EXISTS and INSERT only."""
-    normalized = re.sub(r"--.*?$", "", sql_content, flags=re.MULTILINE)
-    normalized = re.sub(r"/\*.*?\*/", "", normalized, flags=re.DOTALL)
-    normalized = re.sub(r"^\s*$", "", normalized, flags=re.MULTILINE)
-    normalized = normalized.upper()
-
-    dangerous = [
-        "DROP",
-        "DELETE",
-        "UPDATE",
-        "ALTER",
-        "TRUNCATE",
-        "REPLACE",
-        "ATTACH",
-        "DETACH",
-        "PRAGMA",
-    ]
-
-    for keyword in dangerous:
-        if re.search(rf"\b{keyword}\b", normalized):
-            return False
-
-    lines = normalized.split("\n")
-    for line in lines:
-        line = line.strip()
-        if line.startswith("CREATE") and ("TABLE" not in line or "IF NOT EXISTS" not in line):
-            return False
-
-    return True
 
 
 def create_backup(db_path: str, backup_dir: str) -> str:
