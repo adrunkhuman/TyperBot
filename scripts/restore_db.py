@@ -4,6 +4,9 @@
 The script validates the backup, restores it into a temporary SQLite file, and
 atomically replaces the live DB only after the restore succeeds. If a live DB is
 already present, it is copied to a timestamped backup file first.
+
+Use this for recovery from SQL dump backups. Routine host migration should copy
+the live SQLite database file directly instead of round-tripping through SQL.
 """
 
 import argparse
@@ -21,7 +24,8 @@ from typer_bot.utils.config import DB_PATH
 def main():
     """Restore one backup file after explicit operator confirmation."""
     parser = argparse.ArgumentParser(
-        prog="restore_db", description="Restore database from backup file"
+        prog="restore_db",
+        description="Restore database from SQL dump backup for recovery, not routine migration",
     )
     parser.add_argument("backup_file", help="Path to backup SQL file")
     args = parser.parse_args()
