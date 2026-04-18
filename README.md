@@ -111,7 +111,9 @@ The example below uses Coolify because that is the current operator path.
 
 Use a separate token for previews and manual testing. Do not run multiple deployments against the same live token.
 
-Routine host migration is a direct SQLite file copy of `typer.db` into the configured `DATA_DIR`. The `scripts/restore_db.py` helper is for restoring SQL dump backups during recovery, not for the normal host-to-host move.
+### Migration and Data
+
+Routine host migration is a direct copy of the live SQLite file at `DB_PATH` (default: `{DATA_DIR}/typer.db`). The `scripts/restore_db.py` helper is for restoring SQL dump backups during recovery, not for the normal host-to-host move.
 
 If you override `DB_PATH` or `BACKUP_DIR`, keep them on the persistent volume too.
 
