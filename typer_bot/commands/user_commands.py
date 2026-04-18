@@ -374,6 +374,11 @@ class PredictModal(discord.ui.Modal):
         if errors:
             await interaction.response.send_message("\n".join(errors), ephemeral=True)
             return
+        if not predictions:
+            await interaction.response.send_message(
+                "Please enter at least one prediction before submitting.", ephemeral=True
+            )
+            return
 
         thread = await _get_prediction_thread(self.bot, fixture)
         if thread is None:

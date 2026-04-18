@@ -394,6 +394,24 @@ class TestPredictCommand:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")
+    async def test_predict_modal_rejects_empty_partial_parse_result(
+        self, user_commands, mock_interaction, database
+    ):
+        await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
+        await user_commands.predict.callback(user_commands, mock_interaction)
+
+        modal = mock_interaction.modal_sent["modal"]
+        modal.predictions_input._value = ","
+        await modal.on_submit(mock_interaction)
+
+        assert (
+            "Please enter at least one prediction before submitting."
+            in mock_interaction.response_sent[-1]["content"]
+        )
+        assert await database.get_prediction(1, str(mock_interaction.user.id)) is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_dm")
     async def test_continue_predict_button_opens_next_modal(
         self, user_commands, mock_interaction, database, sample_games
     ):

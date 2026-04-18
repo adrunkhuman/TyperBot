@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 def _strip_line_prefix(line: str) -> str:
-    return re.sub(r"^\s*\d+\.\s*", "", line).strip()
+    return line.strip()
 
 
 def parse_prediction_lines(

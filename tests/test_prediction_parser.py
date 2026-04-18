@@ -162,6 +162,18 @@ class TestParsePredictionLines:
         assert game_indexes == [2]
         assert errors == []
 
+    def test_partial_mapping_preserves_team_names_starting_with_number(self):
+        games = ["1. FC Koln - Bayern", "Team C - Team D"]
+        predictions, game_indexes, errors = parse_prediction_lines(
+            "1. FC Koln - Bayern 2:1",
+            games,
+            allow_partial=True,
+        )
+
+        assert predictions == ["2-1"]
+        assert game_indexes == [0]
+        assert errors == []
+
     def test_mixed_separators_in_lines(self):
         """Lines with mixed separators."""
         input_text = "Team A 2-1\nTeam B 1:0\nTeam C 2-2"
