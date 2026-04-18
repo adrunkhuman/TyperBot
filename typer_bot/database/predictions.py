@@ -39,6 +39,29 @@ class PredictionRepository:
     def __init__(self, db_path: str) -> None:
         self.db_path = db_path
 
+    @staticmethod
+    def _prediction_row_to_dict(row: aiosqlite.Row) -> dict:
+        prediction_values = row["predictions"].split("\n")
+        return {
+            "user_id": row["user_id"],
+            "user_name": row["user_name"],
+            "predictions": prediction_values,
+            "submitted_at": parse_iso(row["submitted_at"]),
+            "is_late": row["is_late"],
+            "late_penalty_waived": row["late_penalty_waived"],
+            "predicted_game_indexes": _deserialize_game_indexes(
+                row["predicted_game_indexes"],
+                len(prediction_values),
+            ),
+            "pending_partial_approval": bool(row["pending_partial_approval"]),
+            "admin_edited_at": parse_iso(row["admin_edited_at"])
+            if row["admin_edited_at"]
+            else None,
+            "admin_edited_by": row["admin_edited_by"],
+            "public_message_id": row["public_message_id"],
+            "public_message_kind": row["public_message_kind"],
+        }
+
     async def save_prediction(
         self,
         fixture_id: int,
@@ -49,6 +72,8 @@ class PredictionRepository:
         *,
         predicted_game_indexes: list[int] | None = None,
         pending_partial_approval: bool = False,
+        public_message_id: str | None = None,
+        public_message_kind: str | None = None,
     ) -> None:
         """Save or update a user's predictions."""
         start_time = time.perf_counter()
@@ -61,18 +86,22 @@ class PredictionRepository:
                        predictions,
                        is_late,
                        predicted_game_indexes,
-                       pending_partial_approval
+                       pending_partial_approval,
+                       public_message_id,
+                       public_message_kind
                    )
-                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(fixture_id, user_id)
                      DO UPDATE SET predictions = excluded.predictions,
-                                   user_name = excluded.user_name,
-                                   is_late = excluded.is_late,
-                                   predicted_game_indexes = excluded.predicted_game_indexes,
-                                   pending_partial_approval = excluded.pending_partial_approval,
-                                   late_penalty_waived = FALSE,
-                                   admin_edited_at = NULL,
-                                   admin_edited_by = NULL,
+                                    user_name = excluded.user_name,
+                                    is_late = excluded.is_late,
+                                    predicted_game_indexes = excluded.predicted_game_indexes,
+                                    pending_partial_approval = excluded.pending_partial_approval,
+                                    public_message_id = excluded.public_message_id,
+                                    public_message_kind = excluded.public_message_kind,
+                                    late_penalty_waived = FALSE,
+                                    admin_edited_at = NULL,
+                                    admin_edited_by = NULL,
                                    submitted_at = CURRENT_TIMESTAMP""",
                 (
                     fixture_id,
@@ -82,6 +111,8 @@ class PredictionRepository:
                     is_late,
                     _serialize_game_indexes(predicted_game_indexes, len(predictions)),
                     pending_partial_approval,
+                    public_message_id,
+                    public_message_kind,
                 ),
             )
             await db.commit()
@@ -109,6 +140,8 @@ class PredictionRepository:
         *,
         predicted_game_indexes: list[int] | None = None,
         pending_partial_approval: bool = False,
+        public_message_id: str | None = None,
+        public_message_kind: str | None = None,
     ) -> SaveResult:
         """Insert a prediction atomically with first-write-wins and fixture-open guards.
 
@@ -154,9 +187,11 @@ class PredictionRepository:
                            predictions,
                            is_late,
                            predicted_game_indexes,
-                           pending_partial_approval
+                           pending_partial_approval,
+                           public_message_id,
+                           public_message_kind
                        )
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         fixture_id,
                         user_id,
@@ -165,6 +200,8 @@ class PredictionRepository:
                         is_late,
                         _serialize_game_indexes(predicted_game_indexes, len(predictions)),
                         pending_partial_approval,
+                        public_message_id,
+                        public_message_kind,
                     ),
                 )
                 await db.commit()
@@ -195,6 +232,8 @@ class PredictionRepository:
         *,
         predicted_game_indexes: list[int] | None = None,
         pending_partial_approval: bool = False,
+        public_message_id: str | None = None,
+        public_message_kind: str | None = None,
     ) -> SaveResult:
         """Upsert a prediction, but only when the fixture is still open.
 
@@ -233,15 +272,19 @@ class PredictionRepository:
                            predictions,
                            is_late,
                            predicted_game_indexes,
-                           pending_partial_approval
+                           pending_partial_approval,
+                           public_message_id,
+                           public_message_kind
                        )
-                       VALUES (?, ?, ?, ?, ?, ?, ?)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                        ON CONFLICT(fixture_id, user_id)
                         DO UPDATE SET predictions = excluded.predictions,
                                       user_name = excluded.user_name,
                                       is_late = excluded.is_late,
                                       predicted_game_indexes = excluded.predicted_game_indexes,
                                       pending_partial_approval = excluded.pending_partial_approval,
+                                      public_message_id = excluded.public_message_id,
+                                      public_message_kind = excluded.public_message_kind,
                                       late_penalty_waived = FALSE,
                                       admin_edited_at = NULL,
                                       admin_edited_by = NULL,
@@ -254,6 +297,8 @@ class PredictionRepository:
                         is_late,
                         _serialize_game_indexes(predicted_game_indexes, len(predictions)),
                         pending_partial_approval,
+                        public_message_id,
+                        public_message_kind,
                     ),
                 )
                 await db.commit()
@@ -284,23 +329,7 @@ class PredictionRepository:
             ) as cursor:
                 row = await cursor.fetchone()
                 if row:
-                    return {
-                        "user_id": row["user_id"],
-                        "user_name": row["user_name"],
-                        "predictions": row["predictions"].split("\n"),
-                        "submitted_at": parse_iso(row["submitted_at"]),
-                        "is_late": row["is_late"],
-                        "late_penalty_waived": row["late_penalty_waived"],
-                        "predicted_game_indexes": _deserialize_game_indexes(
-                            row["predicted_game_indexes"],
-                            len(row["predictions"].split("\n")),
-                        ),
-                        "pending_partial_approval": bool(row["pending_partial_approval"]),
-                        "admin_edited_at": parse_iso(row["admin_edited_at"])
-                        if row["admin_edited_at"]
-                        else None,
-                        "admin_edited_by": row["admin_edited_by"],
-                    }
+                    return self._prediction_row_to_dict(row)
                 return None
 
     async def admin_update_prediction(
@@ -541,26 +570,7 @@ class PredictionRepository:
                 (fixture_id,),
             ) as cursor:
                 rows = await cursor.fetchall()
-                return [
-                    {
-                        "user_id": row["user_id"],
-                        "user_name": row["user_name"],
-                        "predictions": row["predictions"].split("\n"),
-                        "predicted_game_indexes": _deserialize_game_indexes(
-                            row["predicted_game_indexes"],
-                            len(row["predictions"].split("\n")),
-                        ),
-                        "submitted_at": parse_iso(row["submitted_at"]),
-                        "is_late": row["is_late"],
-                        "late_penalty_waived": row["late_penalty_waived"],
-                        "pending_partial_approval": bool(row["pending_partial_approval"]),
-                        "admin_edited_at": parse_iso(row["admin_edited_at"])
-                        if row["admin_edited_at"]
-                        else None,
-                        "admin_edited_by": row["admin_edited_by"],
-                    }
-                    for row in rows
-                ]
+                return [self._prediction_row_to_dict(row) for row in rows]
 
     async def get_pending_partial_predictions(self) -> list[dict]:
         """List all pending partial predictions with fixture metadata."""
@@ -577,6 +587,8 @@ class PredictionRepository:
                     p.is_late,
                     p.late_penalty_waived,
                     p.pending_partial_approval,
+                    p.public_message_id,
+                    p.public_message_kind,
                     f.week_number,
                     f.games,
                     f.status
@@ -600,6 +612,8 @@ class PredictionRepository:
                         "is_late": row["is_late"],
                         "late_penalty_waived": row["late_penalty_waived"],
                         "pending_partial_approval": bool(row["pending_partial_approval"]),
+                        "public_message_id": row["public_message_id"],
+                        "public_message_kind": row["public_message_kind"],
                         "week_number": row["week_number"],
                         "games": row["games"].split("\n"),
                         "status": row["status"],

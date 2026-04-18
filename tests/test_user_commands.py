@@ -278,6 +278,8 @@ class TestPredictCommand:
         assert prediction is not None
         assert prediction["pending_partial_approval"] is True
         assert prediction["predicted_game_indexes"] == [1, 2]
+        assert prediction["public_message_id"] == "1"
+        assert prediction["public_message_kind"] == "bot_post"
         assert (
             "Late prediction awaiting admin review" in mock_interaction.response_sent[-1]["content"]
         )

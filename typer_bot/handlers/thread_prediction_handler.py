@@ -165,6 +165,8 @@ class ThreadPredictionHandler:
                 is_late,
                 predicted_game_indexes=predicted_game_indexes,
                 pending_partial_approval=pending_partial_approval,
+                public_message_id=str(message.id) if pending_partial_approval else None,
+                public_message_kind="thread_message" if pending_partial_approval else None,
             )
 
             if result == SaveResult.FIXTURE_CLOSED:

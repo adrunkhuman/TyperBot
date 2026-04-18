@@ -382,6 +382,8 @@ class PredictModal(discord.ui.Modal):
                 is_late,
                 predicted_game_indexes=predicted_game_indexes,
                 pending_partial_approval=pending_partial_approval,
+                public_message_id=str(public_message.id) if pending_partial_approval else None,
+                public_message_kind="bot_post" if pending_partial_approval else None,
             )
         except Exception:
             logger.exception(

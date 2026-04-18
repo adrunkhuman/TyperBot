@@ -104,6 +104,14 @@ async def _migrate_prediction_columns(db: aiosqlite.Connection) -> None:
             "ALTER TABLE predictions ADD COLUMN pending_partial_approval BOOLEAN DEFAULT FALSE"
         )
 
+    if "public_message_id" not in columns:
+        logger.info("Adding public_message_id column to predictions table")
+        await db.execute("ALTER TABLE predictions ADD COLUMN public_message_id TEXT")
+
+    if "public_message_kind" not in columns:
+        logger.info("Adding public_message_kind column to predictions table")
+        await db.execute("ALTER TABLE predictions ADD COLUMN public_message_kind TEXT")
+
 
 class Database:
     """Composition root for SQLite setup and the bot's stable data facade.
@@ -163,6 +171,8 @@ class Database:
                     admin_edited_by TEXT,
                     predicted_game_indexes TEXT,
                     pending_partial_approval BOOLEAN DEFAULT FALSE,
+                    public_message_id TEXT,
+                    public_message_kind TEXT,
                     FOREIGN KEY (fixture_id) REFERENCES fixtures(id),
                     UNIQUE(fixture_id, user_id)
                 )
@@ -259,6 +269,8 @@ class Database:
         *,
         predicted_game_indexes=None,
         pending_partial_approval=False,
+        public_message_id=None,
+        public_message_kind=None,
     ):
         return await self._predictions.save_prediction(
             fixture_id,
@@ -268,6 +280,8 @@ class Database:
             is_late,
             predicted_game_indexes=predicted_game_indexes,
             pending_partial_approval=pending_partial_approval,
+            public_message_id=public_message_id,
+            public_message_kind=public_message_kind,
         )
 
     async def try_save_prediction(
@@ -280,6 +294,8 @@ class Database:
         *,
         predicted_game_indexes=None,
         pending_partial_approval=False,
+        public_message_id=None,
+        public_message_kind=None,
     ):
         """Insert once for thread submissions with atomic duplicate and open checks."""
         return await self._predictions.try_save_prediction(
@@ -290,6 +306,8 @@ class Database:
             is_late,
             predicted_game_indexes=predicted_game_indexes,
             pending_partial_approval=pending_partial_approval,
+            public_message_id=public_message_id,
+            public_message_kind=public_message_kind,
         )
 
     async def save_prediction_guarded(
@@ -302,6 +320,8 @@ class Database:
         *,
         predicted_game_indexes=None,
         pending_partial_approval=False,
+        public_message_id=None,
+        public_message_kind=None,
     ):
         """Upsert a prediction only while the fixture is still open."""
         return await self._predictions.save_prediction_guarded(
@@ -312,6 +332,8 @@ class Database:
             is_late,
             predicted_game_indexes=predicted_game_indexes,
             pending_partial_approval=pending_partial_approval,
+            public_message_id=public_message_id,
+            public_message_kind=public_message_kind,
         )
 
     async def get_prediction(self, fixture_id, user_id):

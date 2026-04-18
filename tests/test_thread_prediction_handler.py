@@ -169,6 +169,8 @@ class TestOnMessage:
         predictions = await handler.db.get_all_predictions(fixture_id, include_pending=True)
         assert predictions[0]["pending_partial_approval"] is True
         assert predictions[0]["predicted_game_indexes"] == [1, 2]
+        assert predictions[0]["public_message_id"] == str(mock_message.id)
+        assert predictions[0]["public_message_kind"] == "thread_message"
         assert "awaiting admin review" in mock_message.author.dm_sent[-1]
         assert "awaiting admin review" in mock_message.channel.messages_sent[-1]["content"]
         assert "missing games" in mock_message.channel.messages_sent[-1]["content"]

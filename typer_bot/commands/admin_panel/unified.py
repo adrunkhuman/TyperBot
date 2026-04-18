@@ -19,6 +19,7 @@ from .base import (
     _build_indexed_detail_lines,
     _notify_user_dm,
     _render_panel_content,
+    _update_public_review_marker,
 )
 from .fixtures import FixturesDeleteButton
 from .modals import CreateFixtureModal, EnterResultsModal
@@ -77,6 +78,12 @@ class ApprovePartialButton(discord.ui.Button):
         await interaction.response.edit_message(
             content=self.parent_view.render_content(), view=self.parent_view
         )
+        await _update_public_review_marker(
+            self.parent_view.bot,
+            fixture,
+            prediction,
+            approved=True,
+        )
 
         notification = (
             f"Your late prediction for Week {fixture['week_number']} was approved by an admin."
@@ -129,6 +136,12 @@ class RejectPartialButton(discord.ui.Button):
         self.parent_view._refresh_items()
         await interaction.response.edit_message(
             content=self.parent_view.render_content(), view=self.parent_view
+        )
+        await _update_public_review_marker(
+            self.parent_view.bot,
+            fixture,
+            prediction,
+            approved=False,
         )
 
         notification = (
