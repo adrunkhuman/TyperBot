@@ -1,4 +1,4 @@
-"""Logging utilities for Railway-compatible structured logging.
+"""Logging utilities for production-compatible structured logging.
 
 This module provides structured logging capabilities for tracing user journeys,
 timing operations, and debugging production issues.
@@ -174,10 +174,10 @@ def log_context(**context_fields: Any) -> Callable[[Callable[P, T]], Callable[P,
     return decorator
 
 
-class RailwayJSONFormatter(logging.Formatter):
-    """Railway-compatible JSON formatter for structured logging.
+class ProductionJSONFormatter(logging.Formatter):
+    """JSON formatter for deployed structured logging.
 
-    Outputs single-line JSON that Railway can parse and filter.
+    Outputs single-line JSON that hosted log collectors can parse and filter.
     Example: {"level": "info", "message": "...", "timestamp": "...", "logger": "...", "event_type": "..."}
     """
 
@@ -245,19 +245,19 @@ class RailwayJSONFormatter(logging.Formatter):
         return obj
 
     def format(self, record: logging.LogRecord) -> str:
-        """Format log record as Railway-compatible JSON.
+        """Format log record as production JSON.
 
-        Railway requires ISO8601 timestamps with timezone for proper log
-        ordering. All output goes to stdout - Railway treats stderr as
+        Use ISO8601 timestamps with timezone for stable log ordering. All
+        output goes to stdout so hosted runtimes do not misclassify stderr as
         error-level logs regardless of content.
 
         Args:
             record: Standard library LogRecord to format
 
         Returns:
-            Single-line JSON string for Railway log ingestion
+            Single-line JSON string for log ingestion
         """
-        # Railway requires ISO8601 with timezone for proper log ordering
+        # ISO8601 with timezone keeps ordering stable across hosts.
         timestamp = datetime.fromtimestamp(record.created, tz=UTC).isoformat()
 
         log_entry = {
@@ -326,18 +326,20 @@ class LocalFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def is_railway_environment() -> bool:
-    """Detect if running in Railway production environment."""
+def is_production_environment() -> bool:
+    """Detect if running in a deployed production environment."""
     return (
-        os.getenv("RAILWAY_ENVIRONMENT") is not None
+        os.getenv("ENVIRONMENT") == "production"
+        or os.getenv("COOLIFY_ENVIRONMENT_NAME") is not None
+        or os.getenv("RAILWAY_ENVIRONMENT") is not None
         or os.getenv("RAILWAY_SERVICE_NAME") is not None
     )
 
 
 def setup_logging(level: int | None = None) -> None:
-    """Configure root logger for Railway or local environment.
+    """Configure root logger for production or local environment.
 
-    Forces ALL output to stdout. Railway treats stderr as error-level logs
+    Forces ALL output to stdout. Some hosts treat stderr as error-level logs
     regardless of content, which breaks log level filtering.
     """
     if level is None:
@@ -351,8 +353,8 @@ def setup_logging(level: int | None = None) -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(level)
 
-    if is_railway_environment():
-        handler.setFormatter(RailwayJSONFormatter())
+    if is_production_environment():
+        handler.setFormatter(ProductionJSONFormatter())
     else:
         handler.setFormatter(LocalFormatter())
 
@@ -362,7 +364,7 @@ def setup_logging(level: int | None = None) -> None:
     logging.getLogger("discord.http").setLevel(logging.WARNING)
 
     logger = logging.getLogger(__name__)
-    env_type = "Railway" if is_railway_environment() else "local"
+    env_type = "production" if is_production_environment() else "local"
     logger.info(
         f"Logging configured for {env_type} environment at level {logging.getLevelName(level)}"
     )

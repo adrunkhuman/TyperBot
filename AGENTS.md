@@ -6,10 +6,10 @@
 You are working on `TyperBot`, a Discord bot for football prediction leagues.
 - **Core Function:** Users predict scores -> Admins enter results -> Bot calculates points.
 - **Vibe:** Functional, simple, reliable. No bloat.
-- **Tech:** Python 3.10+, discord.py, aiosqlite, Railway hosting.
+- **Tech:** Python 3.10+, discord.py, aiosqlite, portable container hosting.
 
 ## 2. Critical Constraints
-- **Persistence:** The database defaults to `./data/typer.db` locally. On production, set `DATA_DIR=/app/data` so the live DB stays on the Railway volume.
+- **Persistence:** The database defaults to `./data/typer.db` locally. On production, set `DATA_DIR=/app/data` so the live DB stays on the mounted data volume.
 - **Transaction Safety:** Critical operations use atomic transactions (BEGIN/COMMIT/ROLLBACK) to ensure data consistency. Never modify transaction logic without understanding rollback implications.
 - **Prediction Contract:** Fixture threads are the public source of truth. `/predict` is a structured composer that posts publicly into the selected fixture thread.
 - **Configuration:** All data paths configurable via env vars in `utils/config.py`:
@@ -72,9 +72,9 @@ scores (
 - `typer_bot/utils/config.py`: Centralized configuration (data paths via env vars).
 - `typer_bot/utils/prediction_parser.py`: Central logic for parsing "2-1" or "2:1" strings.
 - `typer_bot/utils/scoring.py`: Point calculation rules.
-- `typer_bot/utils/logger.py`: structured logging configuration for Railway.
+- `typer_bot/utils/logger.py`: structured logging configuration for local and deployed environments.
 - `typer_bot/utils/db_backup.py`: Automatic database backup after successful score calculation.
-- `scripts/restore_db.py`: Manual database restore via Railway console.
+- `scripts/restore_db.py`: Manual database restore from a host or container shell.
 
 ## 5. Common Tasks
 - **Fixing Parsing:** Edit `prediction_parser.py`.
@@ -83,7 +83,7 @@ scores (
 - **New Commands:** Add Cog to `commands/` folder, load in `bot.py`.
 - **Database Changes:** Edit `typer_bot/database/connection.py` `initialize()` and the focused repositories in `typer_bot/database/` (handle migrations manually if needed).
 - **Debugging:** Check `utils/logger.py` for config. Set `LOG_LEVEL=DEBUG` in env.
-- **Database Restore:** Use `scripts/restore_db.py` from Railway console for manual database restoration from backups. The script restores into a temporary SQLite file first, then atomically replaces the live DB only after success.
+- **Database Restore:** Use `scripts/restore_db.py` from the host or container shell for manual database restoration from backups. The script restores into a temporary SQLite file first, then atomically replaces the live DB only after success.
 
 ## 5.5 Testing Guidelines
 
@@ -161,5 +161,5 @@ prek run ruff            # Run specific hook
   - Not set/`development`: Non-production environment label
 - **Runtime:** The bot still connects to Discord in non-production environments; use a separate token for manual testing and previews
 - **Token Safety:** Any deployment with a valid token will connect; never run multiple environments against the same live token
-- **Railway:** Set `ENVIRONMENT=production` in Railway variables for production deployments
-- **Portability:** Works on any platform (Railway, Coolify, local, etc.) - just set the variable accordingly
+- **Production:** Set `ENVIRONMENT=production` in deployment variables for production deployments
+- **Portability:** Works on any platform (Coolify, Railway, local, etc.) - just set the variable accordingly
