@@ -52,6 +52,9 @@ Admins need a Discord role named `Admin` or `typer-admin`.
 - Partial predictions are allowed, but before the deadline players should still try to fill the whole fixture. Each partial line must name the game it applies to.
 - Missing games count as no prediction.
 - Late predictions with missing games stay under admin review until an admin approves or rejects them.
+- If approved, the submitted lines count normally and any missing games still count as no prediction.
+- If rejected, that late submission is discarded and does not count.
+- Public review status stays visible in the fixture thread: `/predict` posts are edited after review, and thread replies switch from `⏳` to `✅` or `❌`.
 
 Example:
 

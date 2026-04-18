@@ -73,7 +73,12 @@ async def _get_prediction_thread(bot: commands.Bot, fixture: dict) -> discord.Th
     if not message_id:
         return None
 
-    thread = bot.get_channel(int(message_id))
+    try:
+        thread_id = int(message_id)
+    except (TypeError, ValueError):
+        return None
+
+    thread = bot.get_channel(thread_id)
     if isinstance(thread, discord.Thread):
         return thread
 
@@ -82,10 +87,40 @@ async def _get_prediction_thread(bot: commands.Bot, fixture: dict) -> discord.Th
         return None
 
     try:
-        fetched = await fetch_channel(int(message_id))
+        fetched = await fetch_channel(thread_id)
     except discord.HTTPException:
         return None
     return fetched if isinstance(fetched, discord.Thread) else None
+
+
+async def _delete_previous_pending_bot_post(
+    thread: discord.Thread,
+    existing_prediction: dict | None,
+    *,
+    replacement_message_id: int,
+) -> None:
+    """Delete the older pending bot post so only the latest late submission stays public."""
+    if existing_prediction is None or not existing_prediction.get("pending_partial_approval"):
+        return
+
+    if existing_prediction.get("public_message_kind") != "bot_post":
+        return
+
+    previous_message_id = existing_prediction.get("public_message_id")
+    if previous_message_id is None:
+        return
+
+    try:
+        previous_message_id_int = int(previous_message_id)
+    except (TypeError, ValueError):
+        return
+
+    if previous_message_id_int == replacement_message_id:
+        return
+
+    with suppress(discord.HTTPException, AttributeError):
+        previous_message = await thread.fetch_message(previous_message_id_int)
+        await previous_message.delete()
 
 
 def _page_slice(items: list[dict], page: int, page_size: int) -> list[dict]:
@@ -412,6 +447,13 @@ class PredictModal(discord.ui.Modal):
             )
             return
 
+        if public_message is not None:
+            await _delete_previous_pending_bot_post(
+                thread,
+                existing_prediction,
+                replacement_message_id=public_message.id,
+            )
+
         preview_games = [fixture["games"][index] for index in predicted_game_indexes]
         content = format_predictions_preview(preview_games, predictions)
         deadline_str = format_for_discord(fixture["deadline"], "F")
@@ -576,6 +618,8 @@ class UserCommands(commands.Cog):
 - Each partial line must name the game it applies to
 - Missing games count as no prediction
 - Late submissions with missing games wait for admin review before they count
+- Approval counts the submitted lines normally; rejection discards that late submission
+- Public status stays visible in the fixture thread after review
 
 **Scoring:**
 • Exact score: 3 points
@@ -607,6 +651,7 @@ class UserCommands(commands.Cog):
 - replace predictions
 - toggle late waivers
 - review, approve, or reject late predictions submitted with missing games
+- `Review Late` appears when pending items exist, and approve/reject can recalculate scored fixtures
 - inspect overflow prediction lists when a fixture has more than 25 users
 
 **Custom Deadline Format:**

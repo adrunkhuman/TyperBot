@@ -289,6 +289,36 @@ class TestPredictCommand:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")
+    async def test_predict_modal_replaces_previous_pending_bot_post(
+        self, user_commands, mock_interaction, database
+    ):
+        await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
+        fixture = await database.get_fixture_by_id(1)
+        assert fixture is not None
+        fixture["deadline"] = datetime.now(UTC) - timedelta(minutes=1)
+        user_commands.db.get_open_fixtures = AsyncMock(return_value=[fixture])
+        user_commands.db.get_fixture_by_id = AsyncMock(return_value=fixture)
+
+        await user_commands.predict.callback(user_commands, mock_interaction)
+        first_modal = mock_interaction.modal_sent["modal"]
+        first_modal.predictions_input._value = "Team C - Team D 1-1\nTeam E - Team F 0-2"
+        await first_modal.on_submit(mock_interaction)
+
+        thread = user_commands.bot.get_channel(700001)
+        first_public_message = thread.message_objects[1]
+
+        await user_commands.predict.callback(user_commands, mock_interaction)
+        second_modal = mock_interaction.modal_sent["modal"]
+        second_modal.predictions_input._value = "Team A - Team B 2-0\nTeam C - Team D 1-1"
+        await second_modal.on_submit(mock_interaction)
+
+        prediction = await database.get_prediction(1, str(mock_interaction.user.id))
+        assert prediction is not None
+        assert prediction["public_message_id"] == "2"
+        first_public_message.delete.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_dm")
     async def test_my_predictions_shows_sparse_pending_prediction(
         self, user_commands, mock_interaction, database
     ):

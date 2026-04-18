@@ -206,7 +206,13 @@ async def _get_fixture_thread(
     if not message_id:
         return None
 
-    thread = bot.get_channel(int(message_id))
+    try:
+        thread_id = int(message_id)
+    except (TypeError, ValueError):
+        logger.warning("Could not parse fixture thread id %s for public review update", message_id)
+        return None
+
+    thread = bot.get_channel(thread_id)
     if isinstance(thread, discord.Thread):
         return thread
 
@@ -215,7 +221,7 @@ async def _get_fixture_thread(
         return None
 
     try:
-        fetched = await fetch_channel(int(message_id))
+        fetched = await fetch_channel(thread_id)
     except discord.HTTPException:
         logger.warning("Could not fetch fixture thread %s for public review update", message_id)
         return None
@@ -231,6 +237,7 @@ def _review_status_line(*, approved: bool) -> str:
 
 
 def _render_public_review_content(content: str, *, approved: bool) -> str:
+    """Replace any pending/reviewed footer in a public bot post, including older variants."""
     lines = content.splitlines()
     status_prefixes = (
         "⏳ Late prediction awaiting admin review.",
