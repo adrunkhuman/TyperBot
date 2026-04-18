@@ -515,6 +515,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         fixtures = await self.db.get_recent_fixtures(MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
         self.has_pending_partials = bool(await self.db.get_pending_partial_predictions())
+        self._refresh_items()
 
     async def load_user_options(self) -> None:
         if self.selection.fixture_id is None:

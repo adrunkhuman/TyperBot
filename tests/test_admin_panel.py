@@ -1180,7 +1180,6 @@ class TestFixturePanelFlows:
             bot=admin_cog.bot,
         )
         await view.load_fixture_options()
-        view._refresh_items()
 
         assert _has_button(view, "Review Pending") is True
 
@@ -1212,7 +1211,6 @@ class TestFixturePanelFlows:
             bot=admin_cog.bot,
         )
         await view.load_fixture_options()
-        view._refresh_items()
 
         review_button = _get_button(view, "Review Pending")
         await review_button.callback(mock_interaction_admin)
