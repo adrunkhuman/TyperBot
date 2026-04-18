@@ -131,7 +131,7 @@ class AdminService:
 
         prediction = await self.db.get_prediction(fixture_id, user_id)
         if prediction is None or not prediction["pending_partial_approval"]:
-            raise ValueError("No pending partial prediction for that user")
+            raise ValueError("No late prediction awaiting review for that user")
 
         approved = await self.db.approve_partial_prediction(fixture_id, user_id, admin_user_id)
         if not approved:
@@ -157,7 +157,7 @@ class AdminService:
 
         prediction = await self.db.get_prediction(fixture_id, user_id)
         if prediction is None or not prediction["pending_partial_approval"]:
-            raise ValueError("No pending partial prediction for that user")
+            raise ValueError("No late prediction awaiting review for that user")
 
         rejected = await self.db.reject_partial_prediction(fixture_id, user_id)
         if not rejected:

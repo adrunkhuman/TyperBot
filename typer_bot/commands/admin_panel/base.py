@@ -96,7 +96,7 @@ def _render_panel_content(lines: list[str]) -> str:
 
 def _prediction_status_text(prediction: dict) -> str:
     if prediction.get("pending_partial_approval"):
-        return "pending partial"
+        return "late, pending review"
     if not prediction["is_late"]:
         return "on time"
     if prediction["late_penalty_waived"]:

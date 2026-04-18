@@ -233,12 +233,12 @@ class ThreadPredictionHandler:
                     if pending_partial_approval:
                         admin_role_mention = get_admin_role_mention(message.guild)
                         await message.author.send(
-                            "⏳ **Late partial prediction received.** It was saved and is now awaiting admin approval."
+                            "⏳ **Late prediction received.** It was saved and is now awaiting admin review because it arrived late with missing games."
                         )
                         await message.channel.send(
-                            f"⏳ Partial prediction from <@{message.author.id}> is awaiting admin approval. {admin_role_mention}"
+                            f"⏳ Late prediction from <@{message.author.id}> with missing games is awaiting admin review. {admin_role_mention}"
                             if admin_role_mention
-                            else f"⏳ Partial prediction from <@{message.author.id}> is awaiting admin approval."
+                            else f"⏳ Late prediction from <@{message.author.id}> with missing games is awaiting admin review."
                         )
                     else:
                         await message.author.send(
@@ -248,7 +248,7 @@ class ThreadPredictionHandler:
             elif is_partial:
                 with suppress(discord.Forbidden):
                     await message.author.send(
-                        "ℹ️ **Partial prediction saved.** Any missing games will count as no prediction."
+                        "ℹ️ **Partial prediction saved.** Any missing games will count as no prediction. If the deadline has not passed yet, use `/predict` again to fill the rest."
                     )
 
             return True

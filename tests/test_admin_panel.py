@@ -1150,7 +1150,7 @@ class TestFixturePanelFlows:
         await view.load_fixture_options()
         view._refresh_items()
 
-        assert _has_button(view, "Review Pending") is False
+        assert _has_button(view, "Review Late") is False
 
     @pytest.mark.asyncio
     async def test_unified_panel_shows_review_pending_button_when_pending_partials_exist(
@@ -1181,8 +1181,9 @@ class TestFixturePanelFlows:
         )
         await view.load_fixture_options()
 
-        assert _has_button(view, "Review Pending") is True
-        assert _get_button(view, "Review Pending").row == 4
+        assert _has_button(view, "Review Late") is True
+        assert _get_button(view, "Review Late").row == 4
+        assert _get_button(view, "Review Late").style == discord.ButtonStyle.primary
 
     @pytest.mark.asyncio
     async def test_unified_panel_review_pending_button_jumps_to_pending_submission(
@@ -1213,14 +1214,16 @@ class TestFixturePanelFlows:
         )
         await view.load_fixture_options()
 
-        review_button = _get_button(view, "Review Pending")
+        review_button = _get_button(view, "Review Late")
         await review_button.callback(mock_interaction_admin)
 
         assert view.selection.fixture_label == "Week 56 [OPEN]"
         assert view.selection.user_id == "111"
-        assert _has_button(view, "Approve Partial") is True
-        assert _get_button(view, "Approve Partial").row == 4
-        assert _get_button(view, "Reject Partial").row == 4
+        assert _has_button(view, "Approve Late") is True
+        assert _get_button(view, "Approve Late").row == 4
+        assert _get_button(view, "Approve Late").style == discord.ButtonStyle.success
+        assert _get_button(view, "Reject Late").row == 4
+        assert _get_button(view, "Reject Late").style == discord.ButtonStyle.danger
 
     @pytest.mark.asyncio
     async def test_unified_panel_review_pending_button_cycles_pending_submissions(
@@ -1264,7 +1267,7 @@ class TestFixturePanelFlows:
         await view.load_fixture_options()
         view._refresh_items()
 
-        review_button = _get_button(view, "Review Pending")
+        review_button = _get_button(view, "Review Late")
         await review_button.callback(mock_interaction_admin)
         first_selection = (view.selection.fixture_id, view.selection.user_id)
 
@@ -2030,8 +2033,8 @@ class TestResultsPanelFlows:
         view.user_select._values = ["111"]
         await view.user_select.callback(mock_interaction_admin)
 
-        assert _has_button(view, "Approve Partial") is True
-        assert _has_button(view, "Reject Partial") is True
+        assert _has_button(view, "Approve Late") is True
+        assert _has_button(view, "Reject Late") is True
         assert _has_button(view, "Replace Prediction") is False
 
     @pytest.mark.asyncio
@@ -2069,7 +2072,7 @@ class TestResultsPanelFlows:
         view.user_select._values = ["111"]
         await view.user_select.callback(mock_interaction_admin)
 
-        approve_button = _get_button(view, "Approve Partial")
+        approve_button = _get_button(view, "Approve Late")
         await approve_button.callback(mock_interaction_admin)
 
         prediction = await admin_cog.db.get_prediction(fixture_id, "111")
@@ -2113,7 +2116,7 @@ class TestResultsPanelFlows:
         view.user_select._values = ["111"]
         await view.user_select.callback(mock_interaction_admin)
 
-        reject_button = _get_button(view, "Reject Partial")
+        reject_button = _get_button(view, "Reject Late")
         await reject_button.callback(mock_interaction_admin)
 
         assert await admin_cog.db.get_prediction(fixture_id, "111") is None
@@ -2163,7 +2166,7 @@ class TestResultsPanelFlows:
         view.user_select._values = ["111"]
         await view.user_select.callback(mock_interaction_admin)
 
-        approve_button = _get_button(view, "Approve Partial")
+        approve_button = _get_button(view, "Approve Late")
         await approve_button.callback(mock_interaction_admin)
 
         standings = await admin_cog.db.get_standings()
@@ -2213,7 +2216,7 @@ class TestResultsPanelFlows:
         view.user_select._values = ["111"]
         await view.user_select.callback(mock_interaction_admin)
 
-        reject_button = _get_button(view, "Reject Partial")
+        reject_button = _get_button(view, "Reject Late")
         await reject_button.callback(mock_interaction_admin)
 
         standings = await admin_cog.db.get_standings()

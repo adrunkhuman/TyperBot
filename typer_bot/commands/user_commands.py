@@ -55,13 +55,13 @@ def _format_thread_prediction_message(
     status: str | None = None
     if pending_partial_approval:
         admin_role_mention = get_admin_role_mention(guild)
-        status = "⏳ Late partial pending admin approval."
+        status = "⏳ Late prediction awaiting admin review."
         if admin_role_mention:
             status += f" {admin_role_mention}"
     elif is_late:
         status = "⚠️ Late prediction."
     elif len(predicted_game_indexes) < len(fixture["games"]):
-        status = "Partial prediction."
+        status = "Partial prediction. Add the missing games before the deadline if you can."
 
     if status:
         content.extend(["", status])
@@ -416,12 +416,16 @@ class PredictModal(discord.ui.Modal):
         relative_str = format_for_discord(fixture["deadline"], "R")
         content += f"\n\n**Posted publicly in the fixture thread.**\n**Deadline:** {deadline_str} ({relative_str})"
         if pending_partial_approval:
-            content += "\n\n⏳ **Pending admin approval:** your predicted games will only count if an admin approves this late partial submission."
+            content += (
+                "\n\n⏳ **Late prediction awaiting admin review:** your predicted games will only count "
+                "if an admin approves this late submission with missing games."
+            )
         elif is_late:
             content += "\n\n⚠️ **Late prediction!** You will receive 0 points for this round."
         elif is_partial:
             content += (
-                "\n\nℹ️ **Partial prediction:** any missing games will count as no prediction."
+                "\n\nℹ️ **Partial prediction saved:** any missing games will count as no prediction. "
+                "If the deadline has not passed yet, use `/predict` again to fill the rest."
             )
 
         completed_fixture_ids = set(self.completed_fixture_ids)
@@ -556,7 +560,7 @@ class UserCommands(commands.Cog):
    ...
    ```
 3. Bot reacts ✅ when saved
-4. Late partial submissions react ⏳ and wait for admin approval
+4. Late submissions with missing games react ⏳ and wait for admin review
 
 **Or use `/predict`**
 1. Type `/predict` in the channel
@@ -566,17 +570,17 @@ class UserCommands(commands.Cog):
 5. Use the buttons to continue to other open fixtures
 
 **Partial predictions:**
-- You can leave some games out
+- You can leave some games out, but before the deadline you should still try to fill the whole fixture
 - Each partial line must name the game it applies to
 - Missing games count as no prediction
-- Late partials wait for admin approval before they count
+- Late submissions with missing games wait for admin review before they count
 
 **Scoring:**
 • Exact score: 3 points
 • Correct result (win/loss/draw): 1 point
 • Wrong: 0 points
 • Late full predictions: 0 points
-• Late partial predictions: pending admin approval
+• Late predictions with missing games: pending admin review
 
 **Input formats:** Use `2:0`, `2-0`, or `2 : 0`
 
@@ -600,7 +604,7 @@ class UserCommands(commands.Cog):
 - re-post the latest completed results with optional mentions
 - replace predictions
 - toggle late waivers
-- approve or reject pending late partial predictions
+- review, approve, or reject late predictions submitted with missing games
 - inspect overflow prediction lists when a fixture has more than 25 users
 
 **Custom Deadline Format:**
@@ -690,7 +694,7 @@ Use these directly in Discord."""
 
             late_status = "✅ On time"
             if prediction["pending_partial_approval"]:
-                late_status = "⏳ Pending admin approval"
+                late_status = "⏳ Late prediction awaiting admin review"
             elif prediction["is_late"]:
                 late_status = "⚠️ **LATE**"
                 if prediction["late_penalty_waived"]:
@@ -735,7 +739,7 @@ Use these directly in Discord."""
 
             late_status = "✅ On time"
             if prediction["pending_partial_approval"]:
-                late_status = "⏳ Pending admin approval"
+                late_status = "⏳ Late prediction awaiting admin review"
             elif prediction["is_late"]:
                 late_status = "⚠️ **LATE**"
                 if prediction["late_penalty_waived"]:

@@ -144,6 +144,7 @@ class TestOnMessage:
         assert predictions[0]["predicted_game_indexes"] == [1, 2]
         assert predictions[0]["pending_partial_approval"] is False
         assert "Partial prediction saved" in mock_message.author.dm_sent[-1]
+        assert "fill the rest" in mock_message.author.dm_sent[-1]
 
     @pytest.mark.asyncio
     async def test_marks_late_partial_thread_prediction_pending(
@@ -168,8 +169,9 @@ class TestOnMessage:
         predictions = await handler.db.get_all_predictions(fixture_id, include_pending=True)
         assert predictions[0]["pending_partial_approval"] is True
         assert predictions[0]["predicted_game_indexes"] == [1, 2]
-        assert "awaiting admin approval" in mock_message.author.dm_sent[-1]
-        assert "awaiting admin approval" in mock_message.channel.messages_sent[-1]["content"]
+        assert "awaiting admin review" in mock_message.author.dm_sent[-1]
+        assert "awaiting admin review" in mock_message.channel.messages_sent[-1]["content"]
+        assert "missing games" in mock_message.channel.messages_sent[-1]["content"]
         assert "<@&4242>" in mock_message.channel.messages_sent[-1]["content"]
 
     @pytest.mark.asyncio

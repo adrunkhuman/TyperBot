@@ -252,7 +252,8 @@ class TestPredictCommand:
         assert prediction["predictions"] == ["1-1", "0-2"]
         assert prediction["predicted_game_indexes"] == [1, 2]
         assert prediction["pending_partial_approval"] is False
-        assert "Partial prediction" in mock_interaction.response_sent[-1]["content"]
+        assert "Partial prediction saved" in mock_interaction.response_sent[-1]["content"]
+        assert "fill the rest" in mock_interaction.response_sent[-1]["content"]
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")
@@ -277,7 +278,9 @@ class TestPredictCommand:
         assert prediction is not None
         assert prediction["pending_partial_approval"] is True
         assert prediction["predicted_game_indexes"] == [1, 2]
-        assert "Pending admin approval" in mock_interaction.response_sent[-1]["content"]
+        assert (
+            "Late prediction awaiting admin review" in mock_interaction.response_sent[-1]["content"]
+        )
         assert "0 points" not in mock_interaction.response_sent[-1]["content"]
         thread = user_commands.bot.get_channel(700001)
         assert f"<@&{admin_role.id}>" in thread.messages_sent[-1]["content"]
@@ -302,7 +305,7 @@ class TestPredictCommand:
         content = mock_interaction.response_sent[-1]["content"]
         assert "2. Team C - Team D **1-1**" in content
         assert "3. Team E - Team F **0-2**" in content
-        assert "Pending admin approval" in content
+        assert "Late prediction awaiting admin review" in content
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")
