@@ -593,60 +593,47 @@ class UserCommands(commands.Cog):
         user_help = """## 📖 User Commands
 
 **For Players:**
-• `/predict` - Fill predictions in a modal, then post them publicly to the fixture thread
-• `/fixtures` - View all open fixtures
-• `/standings` - See overall leaderboard
-• `/mypredictions` - Check your submitted predictions for open fixtures
+• `/predict` - Choose the week if needed, fill the modal, and post predictions publicly to the fixture thread
+• `/fixtures` - View open fixtures and deadlines
+• `/standings` - See the leaderboard
+• `/mypredictions` - Check your saved predictions
 
 **How to Predict:**
+• Reply in the fixture thread with one line per match
+• Or use `/predict` anywhere in the server
+• If multiple fixtures are open, `/predict` lets you pick the week first
+• Use `/predict` again to replace a saved prediction with a new public thread post
 
-**Reply in the fixture thread**
-1. Open the fixture thread
-2. Reply with your predictions:
-   ```
-   Team A - Team B 2:0
-   Team C - Team D 1:1
-   ...
-   ```
-3. Bot reacts ✅ when saved
-4. Late submissions with missing games react ⏳ and wait for admin review
-
-**Or use `/predict`**
-1. Type `/predict` in the channel
-2. If multiple fixtures are open, choose the week from the picker
-3. Enter your predictions in the modal
-4. Submit to post them in the fixture thread
-5. Use the buttons to continue to other open fixtures
+Example:
+```
+Team A - Team B 2:0
+Team C - Team D 1:1
+```
 
 **Partial predictions:**
-- You can leave some games out, but before the deadline you should still try to fill the whole fixture
-- Each partial line must name the game it applies to
-- Missing games count as no prediction
-- Late submissions with missing games wait for admin review before they count
-- Approval counts the submitted lines normally; rejection discards that late submission
-- Public status stays visible in the fixture thread after review
+• You can leave some games out
+• Each partial line must name the game it applies to
+• Missing games count as no prediction
+• Late submissions with missing games wait for admin review
+• Approved late submissions count the submitted lines normally, and missing games still count as no prediction
+• Rejected late submissions are discarded
+• Public review status stays visible in the fixture thread
 
 **Scoring:**
 • Exact score: 3 points
 • Correct result (win/loss/draw): 1 point
 • Wrong: 0 points
-• Late full predictions: 0 points
+• Late full predictions: 0 points unless an admin waives the penalty
 • Late predictions with missing games: pending admin review
 
-**Input formats:** Use `2:0`, `2-0`, or `2 : 0`
-
-**To change a prediction:** Use `/predict` again. The bot will post an updated prediction in the fixture thread."""
+**Input formats:** `2:0`, `2-0`, `2 : 0`"""
 
         admin_help = """\n\n## 🔧 Admin Commands
 
 **For Admins:**
 • `/admin panel` - Open the main admin surface
 
-**Admin workflow:**
-- run `/admin panel` once
-- use the panel buttons and selectors for admin actions
-
-**Inside the panel you can:**
+**The panel handles:**
 - create fixtures
 - delete fixtures
 - jump to an older open week that is not shown in the quick list
@@ -656,7 +643,7 @@ class UserCommands(commands.Cog):
 - replace predictions
 - toggle late waivers
 - review, approve, or reject late predictions submitted with missing games
-- `Review Late` appears when pending items exist, and approve/reject can recalculate scored fixtures
+- approve/reject can recalculate already scored fixtures
 - inspect overflow prediction lists when a fixture has more than 25 users
 
 **Custom Deadline Format:**
