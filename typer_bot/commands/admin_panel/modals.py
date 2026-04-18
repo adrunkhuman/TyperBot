@@ -152,7 +152,7 @@ class CreateFixtureConfirmView(discord.ui.View):
                 )
                 await thread.send(
                     "💬 **Post your predictions here!**\n"
-                    "Reply with your scores (one per line or comma-separated).\n"
+                    "Reply with one line per match. For partial updates, include the game name on each line.\n"
                     "Predictions are one-shot here. To change one, use `/predict`."
                 )
             except Exception:
@@ -322,7 +322,7 @@ class EnterResultsConfirmView(discord.ui.View):
 
 
 class EnterResultsModal(discord.ui.Modal):
-    """Collect results for an open fixture without starting a DM session.
+    """Collect results for an open fixture in one modal.
 
     Parse failures are returned ephemerally, and nothing is persisted until the
     follow-up confirm view succeeds.

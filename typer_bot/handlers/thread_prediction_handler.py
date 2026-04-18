@@ -54,6 +54,13 @@ class ThreadPredictionHandler:
 
         return previous_attempt
 
+    def is_rate_limited(self, user_id: str, current_time: datetime) -> bool:
+        """Return whether a recognized prediction attempt should be rate limited."""
+        last_time = self._thread_prediction_cooldowns.get(user_id)
+        if last_time is None:
+            return False
+        return (current_time - last_time).total_seconds() < PREDICTION_RATE_LIMIT_SECONDS
+
     def get_thread_prediction_cooldown(self, user_id: str) -> datetime | None:
         return self._thread_prediction_cooldowns.get(user_id)
 
@@ -93,15 +100,18 @@ class ThreadPredictionHandler:
             week_number=fixture["week_number"],
             source="thread",
         ):
-            # Update and check the cooldown in one step so rapid reposts cannot race each other.
             current_time = now()
-            last_time = self.record_thread_prediction_attempt(user_id, current_time)
-            if (
-                last_time
-                and (current_time - last_time).total_seconds() < PREDICTION_RATE_LIMIT_SECONDS
-            ):
-                logger.debug(f"Rate limiting prediction from {user_id}")
-                return True
+            has_score_like_content = any(
+                re.search(r"(\d+\s*[-:]\s*\d+|[xX])\s*$", line.strip())
+                for line in message.content.splitlines()
+            )
+
+            if len(message.content) > MAX_MESSAGE_LENGTH or has_score_like_content:
+                if self.is_rate_limited(user_id, current_time):
+                    logger.debug(f"Rate limiting prediction from {user_id}")
+                    return True
+
+                self.record_thread_prediction_attempt(user_id, current_time)
 
             if len(message.content) > MAX_MESSAGE_LENGTH:
                 await self._handle_error(
@@ -110,10 +120,7 @@ class ThreadPredictionHandler:
                 )
                 return True
 
-            if not any(
-                re.search(r"(\d+\s*[-:]\s*\d+|[xX])\s*$", line.strip())
-                for line in message.content.splitlines()
-            ):
+            if not has_score_like_content:
                 logger.debug(
                     f"Ignoring message with no score-like content from {message.author.id}"
                 )
@@ -151,7 +158,6 @@ class ThreadPredictionHandler:
                 logger.debug(f"Ignoring message with no valid scores from {message.author.id}")
                 return False
 
-            current_time = now()
             is_late = current_time > fixture["deadline"]
             is_partial = len(predicted_game_indexes) < len(fixture["games"])
             pending_partial_approval = is_late and is_partial

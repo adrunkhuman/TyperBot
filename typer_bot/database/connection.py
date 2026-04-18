@@ -216,7 +216,7 @@ class Database:
             await _migrate_prediction_columns(db)
             await _migrate_results_table(db)
 
-            # Legacy DBs create this during migration; fresh installs skip that path.
+            # Keep one results row per fixture on both fresh installs and upgraded DBs.
             await db.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_results_fixture_id_unique ON results(fixture_id)"
             )

@@ -1,7 +1,5 @@
 # TyperBot
 
-100% vibecoded, no guarantees given but it seems to work.
-
 Discord bot for weekly football prediction leagues. Admins create fixtures and enter results. Players submit score predictions in fixture threads or through `/predict`, which posts publicly into those threads. The bot stores picks, calculates points, and posts standings.
 
 ## Features
@@ -30,12 +28,14 @@ The panel handles:
 - calculate scores
 - re-post the latest completed results with optional mentions
 - replace predictions
+- review late partial predictions
 - toggle late waivers
 
 Admins need a Discord role named `Admin` or `typer-admin`.
 
 ## Permissions
 - `Send Messages`
+- `Send Messages in Threads`
 - `Read Message History`
 - `Add Reactions`
 - `Create Public Threads`
@@ -94,9 +94,7 @@ Team E - Team F 3:2
 
 This bot runs anywhere you can deploy a persistent container.
 
-The example below uses Coolify.
-
-### Coolify (Nixpacks)
+### Coolify
 
 1. Create a new Coolify worker/background service from this repo.
 2. Use Nixpacks.

@@ -313,7 +313,7 @@ class FixtureSelectView(PaginatedFixtureView):
 
 
 class PredictModal(discord.ui.Modal):
-    """Collect predictions for one fixture through a modal instead of DMs.
+    """Collect predictions for one fixture in one modal.
 
     Submitting can overwrite an existing open prediction, late submissions are
     accepted but marked late, and successful saves can chain into a follow-up
