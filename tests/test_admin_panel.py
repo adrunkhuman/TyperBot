@@ -1182,6 +1182,7 @@ class TestFixturePanelFlows:
         await view.load_fixture_options()
 
         assert _has_button(view, "Review Pending") is True
+        assert _get_button(view, "Review Pending").row == 4
 
     @pytest.mark.asyncio
     async def test_unified_panel_review_pending_button_jumps_to_pending_submission(
@@ -1218,6 +1219,8 @@ class TestFixturePanelFlows:
         assert view.selection.fixture_label == "Week 56 [OPEN]"
         assert view.selection.user_id == "111"
         assert _has_button(view, "Approve Partial") is True
+        assert _get_button(view, "Approve Partial").row == 4
+        assert _get_button(view, "Reject Partial").row == 4
 
     @pytest.mark.asyncio
     async def test_unified_panel_review_pending_button_cycles_pending_submissions(

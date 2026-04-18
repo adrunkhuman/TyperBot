@@ -147,7 +147,7 @@ class RejectPartialButton(discord.ui.Button):
 class ReviewPendingPartialsButton(discord.ui.Button):
     def __init__(self, parent_view: UnifiedAdminPanelView):
         self.parent_view = parent_view
-        super().__init__(label="Review Pending", style=discord.ButtonStyle.danger, row=2)
+        super().__init__(label="Review Pending", style=discord.ButtonStyle.danger, row=4)
 
     async def callback(self, interaction: discord.Interaction):
         pending_predictions = await self.parent_view.db.get_pending_partial_predictions()
