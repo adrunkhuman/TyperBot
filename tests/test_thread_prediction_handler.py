@@ -74,6 +74,7 @@ class TestOnMessage:
         assert result is False
         assert len(mock_message.reactions_added) == 0
         assert len(mock_message.author.dm_sent) == 0
+        assert handler.get_thread_prediction_cooldown("123456") is None
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_thread")
@@ -88,6 +89,7 @@ class TestOnMessage:
         assert "❌" in mock_message.reactions_added
         assert len(mock_message.author.dm_sent) == 1
         assert "Invalid predictions" in mock_message.author.dm_sent[0]
+        assert handler.get_thread_prediction_cooldown("123456") is not None
 
     @pytest.mark.asyncio
     async def test_saves_valid_predictions(self, handler, fixture_with_thread, mock_message):
@@ -230,6 +232,74 @@ class TestOnMessage:
         assert predictions[0]["predictions"] == ["2-1", "1-1", "0-2"]
         assert second_message.reactions_added == []
         assert second_message.author.dm_sent == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_chatty_message_does_not_consume_next_prediction_cooldown(
+        self, handler, mock_message
+    ):
+        mock_message.channel.id = 789012
+        mock_message.content = "Anyone backing an upset here?"
+
+        first = await handler.on_message(mock_message)
+
+        prediction_message = type(mock_message)(
+            content="Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2",
+            message_id="777779",
+            author=mock_message.author,
+            channel=mock_message.channel,
+            guild=mock_message.guild,
+        )
+        prediction_message.channel.id = 789012
+        second = await handler.on_message(prediction_message)
+
+        assert first is False
+        assert second is True
+        assert "✅" in prediction_message.reactions_added
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_invalid_prediction_consumes_cooldown(self, handler, mock_message):
+        mock_message.channel.id = 789012
+        mock_message.content = "Team A - Team B invalid\nTeam C - Team D 1-1"
+
+        first = await handler.on_message(mock_message)
+
+        retry_message = type(mock_message)(
+            content="Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2",
+            message_id="777780",
+            author=mock_message.author,
+            channel=mock_message.channel,
+            guild=mock_message.guild,
+        )
+        retry_message.channel.id = 789012
+        second = await handler.on_message(retry_message)
+
+        assert first is True
+        assert second is True
+        assert retry_message.reactions_added == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_oversized_message_consumes_cooldown(self, handler, mock_message):
+        mock_message.channel.id = 789012
+        mock_message.content = "x" * 5001
+
+        first = await handler.on_message(mock_message)
+
+        retry_message = type(mock_message)(
+            content="Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2",
+            message_id="777781",
+            author=mock_message.author,
+            channel=mock_message.channel,
+            guild=mock_message.guild,
+        )
+        retry_message.channel.id = 789012
+        second = await handler.on_message(retry_message)
+
+        assert first is True
+        assert second is True
+        assert retry_message.reactions_added == []
 
     def test_cleanup_expired_state_removes_stale_cooldowns(self, handler):
         handler.record_thread_prediction_attempt("user-1", datetime.now(UTC) - timedelta(hours=2))

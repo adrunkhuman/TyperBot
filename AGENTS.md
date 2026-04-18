@@ -17,7 +17,7 @@ You are working on `TyperBot`, a Discord bot for football prediction leagues.
   - `DB_PATH`: Full database path (default: `{DATA_DIR}/typer.db`)
   - `BACKUP_DIR`: Backup storage (default: `{DATA_DIR}/backups`)
 - **Modal Workflow:** Complex inputs (fixture creation, results entry, `/predict`) use Discord modals instead of DM sessions.
-- **Thread Predictions:** Users can post predictions in public threads under fixture announcements (NEW - see handlers/thread_prediction_handler.py).
+- **Thread Predictions:** Users can post predictions in public threads under fixture announcements.
 - **Rate Limiting:** Thread predictions are rate-limited to 1 per second per user. Cooldown entries auto-expire after 1 hour.
 - **Async:** All database ops must be async (`aiosqlite`).
 - **Parsing:** Use `utils.prediction_parser.parse_line_predictions` for all score parsing. Do NOT write ad-hoc regex.
@@ -65,7 +65,6 @@ scores (
 ## 4. Codebase Map
 - `typer_bot/bot.py`: Entry point and setup hook.
 - `typer_bot/commands/user_commands.py`: Public slash commands, including modal-driven `/predict` flow.
-- `typer_bot/commands/admin_commands.py`: `/admin` command surface and orchestration for admin workflows.
 - `typer_bot/commands/admin_panel/`: Admin panel UI views, selects, and modals split out of `admin_commands.py`.
 - `typer_bot/handlers/thread_prediction_handler.py`: Thread-based prediction processing (on_message) plus thread prediction cooldown state.
 - `typer_bot/commands/admin_commands.py`: `/admin` command surface and orchestration for admin workflows, including admin calculation cooldown state.
@@ -151,8 +150,7 @@ prek run ruff            # Run specific hook
 ```
 
 **Type Checking:**
-- Tool: `ty` (Astral's type checker, 10-100x faster than mypy)
-- Current status: **0 errors** (complete)
+- Tool: `ty`
 - Run: `ty check typer_bot`
 
 ## 8. Deployment Environment

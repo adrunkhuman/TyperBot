@@ -497,6 +497,52 @@ class TestPartialPredictionApproval:
         assert {row["user_id"] for row in standings} == {"111", "222"}
 
     @pytest.mark.asyncio
+    async def test_approve_partial_prediction_rolls_back_if_recalculation_fails(
+        self,
+        database,
+        sample_games,
+        monkeypatch,
+    ):
+        service = AdminService(database)
+        fixture_id = await database.create_fixture(
+            5, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await database.save_prediction(
+            fixture_id,
+            "111",
+            "Full User",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        await service.calculate_fixture_scores(fixture_id)
+        await database.save_prediction(
+            fixture_id,
+            "222",
+            "Pending User",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+
+        async def raise_recalc_error(*_args, **_kwargs):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(
+            predictions_module, "_recalculate_scores_in_connection", raise_recalc_error
+        )
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await service.approve_partial_prediction(fixture_id, "222", "admin-1")
+
+        prediction = await database.get_prediction(fixture_id, "222")
+        assert prediction is not None
+        assert prediction["pending_partial_approval"] is True
+        assert prediction["is_late"] == 1
+        assert prediction["admin_edited_by"] is None
+
+    @pytest.mark.asyncio
     async def test_reject_partial_prediction_recalculates_scored_fixture(
         self,
         database,
@@ -533,3 +579,48 @@ class TestPartialPredictionApproval:
         assert prediction["pending_partial_approval"] is True
         assert recalculation is not None
         assert await database.get_prediction(fixture_id, "222") is None
+
+    @pytest.mark.asyncio
+    async def test_reject_partial_prediction_rolls_back_if_recalculation_fails(
+        self,
+        database,
+        sample_games,
+        monkeypatch,
+    ):
+        service = AdminService(database)
+        fixture_id = await database.create_fixture(
+            6, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await database.save_prediction(
+            fixture_id,
+            "111",
+            "Full User",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        await service.calculate_fixture_scores(fixture_id)
+        await database.save_prediction(
+            fixture_id,
+            "222",
+            "Pending User",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+
+        async def raise_recalc_error(*_args, **_kwargs):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(
+            predictions_module, "_recalculate_scores_in_connection", raise_recalc_error
+        )
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await service.reject_partial_prediction(fixture_id, "222")
+
+        prediction = await database.get_prediction(fixture_id, "222")
+        assert prediction is not None
+        assert prediction["pending_partial_approval"] is True
+        assert prediction["is_late"] == 1

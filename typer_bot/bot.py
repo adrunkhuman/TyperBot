@@ -51,8 +51,8 @@ class TyperBot(commands.Bot):
         """Route inbound messages through thread handling or the normal cog pipeline.
 
         Thread predictions run first so public fixture threads behave like a
-        dedicated submission surface. All other messages, including DMs, fall
-        back to the normal command/cog pipeline.
+        dedicated submission surface. All other messages fall back to the normal
+        command/cog pipeline.
         """
         if message.author.bot:
             return

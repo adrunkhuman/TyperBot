@@ -391,6 +391,105 @@ class TestPredictCommand:
             "Something went wrong while saving your prediction"
             in mock_interaction.response_sent[-1]["content"]
         )
+        thread = user_commands.bot.get_channel(700001)
+        thread.message_objects[1].delete.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_dm")
+    async def test_predict_modal_reports_missing_prediction_thread(
+        self, user_commands, mock_interaction
+    ):
+        await user_commands.predict.callback(user_commands, mock_interaction)
+
+        modal = mock_interaction.modal_sent["modal"]
+        modal.predictions_input._value = (
+            "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        )
+        await modal.on_submit(mock_interaction)
+
+        assert (
+            "does not have a usable prediction thread"
+            in mock_interaction.response_sent[-1]["content"]
+        )
+        assert await user_commands.db.get_prediction(1, str(mock_interaction.user.id)) is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_dm")
+    async def test_predict_modal_uses_fetch_channel_fallback(
+        self, user_commands, mock_interaction, database
+    ):
+        thread = MockThread(thread_id="700001", name="week-1", guild=mock_interaction.guild)
+        await database.update_fixture_announcement(1, message_id="700001", channel_id="123456")
+        user_commands.bot.get_channel.return_value = None
+        user_commands.bot.fetch_channel = AsyncMock(return_value=thread)
+
+        await user_commands.predict.callback(user_commands, mock_interaction)
+
+        modal = mock_interaction.modal_sent["modal"]
+        modal.predictions_input._value = (
+            "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        )
+        await modal.on_submit(mock_interaction)
+
+        assert await database.get_prediction(1, str(mock_interaction.user.id)) is not None
+        user_commands.bot.fetch_channel.assert_awaited_once_with(700001)
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_dm")
+    async def test_predict_modal_reports_thread_post_failure(
+        self, user_commands, mock_interaction, database, monkeypatch
+    ):
+        await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
+        thread = user_commands.bot.get_channel(700001)
+
+        import discord
+
+        async def raise_http_exception(*_args, **_kwargs):
+            raise discord.HTTPException(response=AsyncMock(status=500), message="boom")
+
+        monkeypatch.setattr(thread, "send", raise_http_exception)
+
+        await user_commands.predict.callback(user_commands, mock_interaction)
+        modal = mock_interaction.modal_sent["modal"]
+        modal.predictions_input._value = (
+            "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        )
+        await modal.on_submit(mock_interaction)
+
+        assert (
+            "does not have a usable prediction thread"
+            in mock_interaction.response_sent[-1]["content"]
+        )
+        assert await database.get_prediction(1, str(mock_interaction.user.id)) is None
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_dm")
+    async def test_predict_modal_deletes_public_post_if_fixture_closes_during_save(
+        self, user_commands, mock_interaction, monkeypatch
+    ):
+        await _attach_prediction_threads(
+            user_commands, user_commands.db, [1], mock_interaction.guild
+        )
+        await user_commands.predict.callback(user_commands, mock_interaction)
+
+        modal = mock_interaction.modal_sent["modal"]
+        modal.predictions_input._value = (
+            "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+        )
+        monkeypatch.setattr(
+            user_commands.db,
+            "save_prediction_guarded",
+            AsyncMock(return_value=SaveResult.FIXTURE_CLOSED),
+        )
+
+        await modal.on_submit(mock_interaction)
+
+        thread = user_commands.bot.get_channel(700001)
+        thread.message_objects[1].delete.assert_awaited_once()
+        assert (
+            "closed before your prediction could be saved"
+            in mock_interaction.response_sent[-1]["content"]
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")
