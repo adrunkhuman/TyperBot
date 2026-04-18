@@ -94,16 +94,20 @@ Team E - Team F 3:2
 
 ## Deployment
 
+This bot runs anywhere you can deploy a persistent container. Common options for a project this size are Coolify, Railway, Render, Fly.io, or a small VPS with Docker Compose.
+
+The example below uses Coolify because that is the current operator path.
+
 ### Coolify (Nixpacks)
 
 1. Create a new Coolify service from this repo.
 2. Use Nixpacks.
 3. Mount a persistent volume at `/app/data`.
 4. Set variables:
+   - `DISCORD_TOKEN=<your token>` for live deploys
    - `ENVIRONMENT=production`
    - `DATA_DIR=/app/data`
    - optional: `TZ=Europe/Warsaw`
-   - `DISCORD_TOKEN=<your token>` for live deploys
 
 For preview/smoke deployments, set:
 
@@ -111,7 +115,11 @@ For preview/smoke deployments, set:
 
 That validates imports, DB initialization, and cog loading without connecting to Discord. A real token is not required in smoke mode, but deployment-like storage settings still matter if you want a meaningful check.
 
+It does not validate Discord login, token validity, privileged intents, command sync, `on_ready`, or live guild permissions.
+
 Use a separate token for previews and manual testing. Do not run multiple deployments against the same live token.
+
+Routine host migration is a direct SQLite file copy of `typer.db` into the configured `DATA_DIR`. The `scripts/restore_db.py` helper is for restoring SQL dump backups during recovery, not for the normal host-to-host move.
 
 ## Running locally
 

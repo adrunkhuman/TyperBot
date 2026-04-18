@@ -8,20 +8,21 @@ checks. When enabled, startup validates imports/config and exits before opening
 the Discord gateway.
 
 ``DATA_DIR`` intentionally defaults to ``./data`` so local development writes
-into a repo-adjacent folder without depending on Railway's volume mount.
+into a repo-adjacent folder without depending on container volume mounts.
 Production deploys must override it to a persistent path such as ``/app/data``.
 """
 
 import os
 
+
+def is_truthy_env(name: str) -> bool:
+    """Treat common operator-friendly values as enabled for boolean env flags."""
+    return os.getenv(name, "").lower() in {"1", "true", "yes", "on"}
+
+
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 IS_PRODUCTION = ENVIRONMENT.lower() in ("production", "prod")
-DISABLE_DISCORD_GATEWAY = os.getenv("DISABLE_DISCORD_GATEWAY", "").lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
+DISABLE_DISCORD_GATEWAY = is_truthy_env("DISABLE_DISCORD_GATEWAY")
 
 DATA_DIR = os.getenv("DATA_DIR", "./data")
 DB_PATH = os.getenv("DB_PATH", f"{DATA_DIR}/typer.db")

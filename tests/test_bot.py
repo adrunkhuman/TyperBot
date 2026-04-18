@@ -522,6 +522,16 @@ class TestMainFunction:
         mock_bot.load_extension.assert_any_await("typer_bot.commands.admin_commands")
         mock_logger.info.assert_any_call("Smoke test mode enabled - skipping Discord connection")
 
+    @patch.dict(os.environ, {"DISABLE_DISCORD_GATEWAY": "1"}, clear=True)
+    @patch("typer_bot.bot.TyperBot")
+    def test_main_smoke_mode_exits_on_failed_init(self, mock_bot_cls):
+        mock_bot = mock_bot_cls.return_value
+        mock_bot.db.initialize = AsyncMock(side_effect=RuntimeError("boom"))
+        mock_bot.load_extension = AsyncMock()
+
+        with pytest.raises(RuntimeError, match="boom"):
+            main()
+
     @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token", "ENVIRONMENT": "development"})
     @patch("typer_bot.bot.TyperBot")
     @patch("typer_bot.bot.logger")
