@@ -243,9 +243,11 @@ class TyperBot(commands.Bot):
     async def _sync_fixture_thread(self):
         """Verify fixture announcement exists on startup.
 
-        Checks that the open fixture's announcement message is accessible.
-        The stored message_id doubles as the thread_id since Discord
-        public threads inherit their parent message's snowflake ID.
+        Checks that each open fixture's announcement message is accessible.
+        Stored channel/message IDs are used directly when available; the slower
+        guild-wide scan only exists for legacy fixtures missing ``channel_id``.
+        The stored message_id doubles as the thread_id since Discord public
+        threads inherit their parent message's snowflake ID.
         """
         logger.info("Verifying fixture announcement...")
 
@@ -261,39 +263,133 @@ class TyperBot(commands.Bot):
                     logger.info(f"Fixture {fixture['id']} has no message_id, skipping verification")
                     continue
 
-                found = False
-                for guild in self.guilds:
-                    for channel in guild.text_channels:
-                        try:
-                            message = await channel.fetch_message(int(message_id))
-                            if message.thread:
-                                logger.info(
-                                    f"Fixture {fixture['id']} has thread {message.thread.id}"
-                                )
-                            else:
-                                logger.info(
-                                    f"Fixture {fixture['id']} has no thread (/predict cannot post publicly)"
-                                )
-                            found = True
-                            break
-                        except discord.NotFound:
-                            continue
-                        except discord.Forbidden:
-                            logger.warning(f"No permission to read channel {channel.id}")
-                            continue
-                        except Exception as e:
-                            logger.warning(f"Could not verify fixture in {channel.id}: {e}")
-                            continue
-                    if found:
-                        break
-
-                if not found:
+                message = await self._find_fixture_announcement_message(fixture)
+                if message is None:
                     logger.warning(
                         f"Could not find announcement message {message_id} for fixture {fixture['id']}"
+                    )
+                    continue
+
+                if message.thread:
+                    logger.info(f"Fixture {fixture['id']} has thread {message.thread.id}")
+                else:
+                    logger.info(
+                        f"Fixture {fixture['id']} has no thread (/predict cannot post publicly)"
                     )
 
         except Exception as e:
             logger.exception(f"Error during fixture verification: {e}")
+
+    async def _find_fixture_announcement_message(self, fixture: dict):
+        message_id = fixture.get("message_id")
+        channel_id = fixture.get("channel_id")
+        if not message_id:
+            return None
+
+        if channel_id:
+            message = await self._fetch_fixture_message_from_channel(
+                fixture_id=fixture["id"],
+                channel_id=channel_id,
+                message_id=message_id,
+            )
+            if message is not None:
+                return message
+            return None
+
+        logger.info(
+            "Fixture %s has no channel_id, scanning guild text channels for legacy verification",
+            fixture["id"],
+        )
+        return await self._scan_fixture_message_across_guilds(message_id)
+
+    async def _fetch_fixture_message_from_channel(
+        self,
+        *,
+        fixture_id: int,
+        channel_id: str,
+        message_id: str,
+    ):
+        try:
+            discord_channel_id = int(channel_id)
+            discord_message_id = int(message_id)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Fixture %s has invalid stored announcement reference channel_id=%s message_id=%s",
+                fixture_id,
+                channel_id,
+                message_id,
+            )
+            return None
+
+        channel = self.get_channel(discord_channel_id)
+        if channel is None:
+            fetch_channel = getattr(self, "fetch_channel", None)
+            if fetch_channel is None:
+                logger.warning(
+                    "Could not resolve stored channel %s for fixture %s announcement verification",
+                    channel_id,
+                    fixture_id,
+                )
+                return None
+            try:
+                channel = await fetch_channel(discord_channel_id)
+            except discord.HTTPException:
+                logger.warning(
+                    "Could not fetch stored channel %s for fixture %s announcement verification",
+                    channel_id,
+                    fixture_id,
+                )
+                return None
+
+        fetch_message = getattr(channel, "fetch_message", None)
+        if fetch_message is None:
+            logger.warning(
+                "Stored channel %s for fixture %s does not support message fetch",
+                channel_id,
+                fixture_id,
+            )
+            return None
+
+        try:
+            return await fetch_message(discord_message_id)
+        except discord.NotFound:
+            return None
+        except discord.Forbidden:
+            logger.warning(
+                "No permission to read stored channel %s for fixture %s",
+                channel_id,
+                fixture_id,
+            )
+            return None
+        except Exception as exc:
+            logger.warning(
+                "Could not verify fixture %s announcement in stored channel %s: %s",
+                fixture_id,
+                channel_id,
+                exc,
+            )
+            return None
+
+    async def _scan_fixture_message_across_guilds(self, message_id: str):
+        try:
+            discord_message_id = int(message_id)
+        except (TypeError, ValueError):
+            return None
+
+        for guild in self.guilds:
+            for channel in guild.text_channels:
+                try:
+                    return await channel.fetch_message(discord_message_id)
+                except discord.NotFound:
+                    continue
+                except discord.Forbidden:
+                    logger.warning(f"No permission to read channel {channel.id}")
+                    continue
+                except Exception as exc:
+                    logger.warning(f"Could not verify fixture in {channel.id}: {exc}")
+                    continue
+
+        return None
 
     async def _check_permissions(self):
         """Warn when a guild is missing permissions required for prediction workflows."""
