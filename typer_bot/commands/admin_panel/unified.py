@@ -422,7 +422,7 @@ class PostResultsConfirmView(discord.ui.View):
 class PostResultsButton(discord.ui.Button):
     def __init__(self, parent_view: UnifiedAdminPanelView):
         self.parent_view = parent_view
-        super().__init__(label="Re-post Results", style=discord.ButtonStyle.secondary, row=4)
+        super().__init__(label="Re-post Results", style=discord.ButtonStyle.secondary, row=3)
 
     async def callback(self, interaction: discord.Interaction):
         fixture_data = await self.parent_view.db.get_last_fixture_scores()
