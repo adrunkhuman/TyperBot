@@ -6,7 +6,7 @@ Discord bot for weekly football prediction leagues. Admins create fixtures and e
 
 ## Features
 - Thread predictions on fixture announcement threads
-- `/predict` modal flow that posts publicly into fixture threads
+- `/predict` posts publicly into fixture threads
 - Flexible score parsing: `2-1`, `2:1`, `2 : 1`
 - Per-fixture deadlines with late-pick handling
 - Standings, saved predictions, and weekly results posting
@@ -22,7 +22,7 @@ Discord bot for weekly football prediction leagues. Admins create fixtures and e
 ### Admin commands
 - `/admin panel` - open the main admin surface
 
-Inside the panel you can:
+Inside the panel:
 - create fixtures
 - delete fixtures
 - jump to older open weeks not shown in the quick list
@@ -47,14 +47,14 @@ Admins need a Discord role named `Admin` or `typer-admin`.
 
 ## Prediction flow
 - Reply in the fixture thread with one line per match.
-- Run `/predict` anywhere in the server to fill a modal, then have the bot post your prediction publicly into the fixture thread.
-- To replace a saved prediction, use `/predict` again; the bot posts a new public `Updated prediction` message in the thread.
-- Partial predictions are allowed, but before the deadline players should still try to fill the whole fixture. Each partial line must name the game it applies to.
+- Or run `/predict` anywhere in the server, choose the week if needed, fill the modal, and let the bot post it in the fixture thread.
+- To replace a saved prediction, use `/predict` again; the bot posts an updated public message in the fixture thread.
+- Partial predictions are allowed. Each partial line must name the game it applies to.
 - Missing games count as no prediction.
 - Late predictions with missing games stay under admin review until an admin approves or rejects them.
-- If approved, the submitted lines count normally and any missing games still count as no prediction.
-- If rejected, that late submission is discarded and does not count.
-- Public review status stays visible in the fixture thread: `/predict` posts are edited after review, and thread replies switch from `⏳` to `✅` or `❌`.
+- Approved late submissions count the submitted lines normally, and missing games still count as no prediction.
+- Rejected late submissions are discarded.
+- Public review status stays visible in the fixture thread.
 
 Example:
 
@@ -73,8 +73,7 @@ Team E - Team F 3:2
 
 ## Operational constraints
 - Match data, predictions, results, and scores are stored in SQLite.
-- Short-lived cooldowns are kept in memory.
-- This includes the thread-post rate limiter and the score-calculation cooldown.
+- Short-lived cooldowns are kept in memory, including the thread-post rate limiter and the score-calculation cooldown.
 - The bot is intentionally single-process for v1. If the process restarts, in-memory cooldowns reset.
 
 ## Configuration
@@ -95,7 +94,7 @@ Team E - Team F 3:2
 
 This bot runs anywhere you can deploy a persistent container. Common options for a project this size are Coolify, Railway, Render, Fly.io, or a small VPS with Docker Compose.
 
-The example below uses Coolify because that is the current operator path.
+The example below uses Coolify.
 
 ### Coolify (Nixpacks)
 
@@ -151,7 +150,7 @@ uv run python -m typer_bot.dev.seed_test_data --tester-user-id "your_discord_use
 uv run python -m typer_bot
 ```
 
-The seed command resets that local test database and creates one mixed scenario:
+The seed command resets that local test database and creates:
 - one scored past fixture for standings/history
 - one open fixture with saved predictions
 - one late open fixture with a late prediction
@@ -160,10 +159,10 @@ Outside `./.local/manual-discord-test`, add `--force-reset`.
 
 `--force-reset` deletes the target DB, its `-wal` and `-shm` files, and the configured backup directory before reseeding.
 
-In a PR deployment shell, use the same command against that deployment's `DB_PATH` and `BACKUP_DIR`.
+In a deployment shell, use the same command against that deployment's `DB_PATH` and `BACKUP_DIR`.
 Those paths usually are not `./.local/manual-discord-test`, so add `--force-reset`.
 
-Create a real fixture when you need to test announcement posting, thread creation, reactions, or modal-to-thread prediction posting. The seed data is only there to save setup time.
+Create a real fixture when you need to test announcement posting, thread creation, reactions, or modal-to-thread prediction posting.
 
 ## Development
 
@@ -178,14 +177,14 @@ uv run ty check typer_bot
 ## Backup and Restore
 
 - Automatic: the database is backed up after each successful score calculation. The bot keeps the latest 10 backups in `BACKUP_DIR`.
-- Manual restore: run from the host or container shell where the live database volume is mounted.
+- Manual restore: run from the host or container shell where the live data volume is mounted.
 
 ```bash
 ls /app/data/backups/
 python scripts/restore_db.py /app/data/backups/backup_*.sql
 ```
 
-The restore script asks for confirmation, restores into a temporary SQLite file first, and only replaces the live database after a successful restore.
+The restore script asks for confirmation, restores into a temporary SQLite file first, and only replaces the live database after success.
 
 ## License
 MIT.
