@@ -8,6 +8,11 @@ from typing import TYPE_CHECKING
 import discord
 
 from typer_bot.database import Database
+from typer_bot.services import (
+    FixtureNotFoundError,
+    PredictionDisappearedError,
+    PredictionNotFoundError,
+)
 from typer_bot.utils import APP_TZ, format_for_discord, is_admin, now, parse_line_predictions
 
 from .base import (
@@ -416,28 +421,23 @@ class ReplacePredictionModal(discord.ui.Modal):
                 self.predictions_input.value,
                 str(interaction.user.id),
             )
+        except (FixtureNotFoundError, PredictionNotFoundError, PredictionDisappearedError) as exc:
+            self.parent_view.selection.user_id = None
+            self.parent_view.selection.user_label = ""
+            self.parent_view.selection.detail_lines = []
+            self.parent_view.selection.status_message = str(exc)
+            if isinstance(exc, FixtureNotFoundError):
+                self.parent_view.selection.fixture_id = None
+                self.parent_view.selection.fixture_label = ""
+                await self.parent_view.load_fixture_options()
+            await self.parent_view.load_user_options()
+            self.parent_view._refresh_items()
+            await interaction.response.edit_message(
+                content=self.parent_view.render_content(),
+                view=self.parent_view,
+            )
+            return
         except ValueError as exc:
-            if str(exc) in {
-                "Fixture not found",
-                "Prediction not found for that user",
-                "Prediction disappeared after update",
-            }:
-                self.parent_view.selection.user_id = None
-                self.parent_view.selection.user_label = ""
-                self.parent_view.selection.detail_lines = []
-                self.parent_view.selection.status_message = str(exc)
-                if str(exc) == "Fixture not found":
-                    self.parent_view.selection.fixture_id = None
-                    self.parent_view.selection.fixture_label = ""
-                    await self.parent_view.load_fixture_options()
-                await self.parent_view.load_user_options()
-                self.parent_view._refresh_items()
-                await interaction.response.edit_message(
-                    content=self.parent_view.render_content(),
-                    view=self.parent_view,
-                )
-                return
-
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
 
@@ -530,25 +530,24 @@ class CorrectResultsModal(discord.ui.Modal):
                 self.fixture["id"],
                 self.results_input.value,
             )
+        except FixtureNotFoundError as exc:
+            self.parent_view.selection.fixture_id = None
+            self.parent_view.selection.fixture_label = ""
+            self.parent_view.selection.user_id = None
+            self.parent_view.selection.user_label = ""
+            self.parent_view.selection.detail_lines = []
+            self.parent_view.selection.status_message = str(exc)
+            await self.parent_view.load_fixture_options()
+            load_user_options = getattr(self.parent_view, "load_user_options", None)
+            if callable(load_user_options):
+                await load_user_options()
+            self.parent_view._refresh_items()
+            await interaction.response.edit_message(
+                content=self.parent_view.render_content(),
+                view=self.parent_view,
+            )
+            return
         except ValueError as exc:
-            if str(exc) == "Fixture not found":
-                self.parent_view.selection.fixture_id = None
-                self.parent_view.selection.fixture_label = ""
-                self.parent_view.selection.user_id = None
-                self.parent_view.selection.user_label = ""
-                self.parent_view.selection.detail_lines = []
-                self.parent_view.selection.status_message = str(exc)
-                await self.parent_view.load_fixture_options()
-                load_user_options = getattr(self.parent_view, "load_user_options", None)
-                if callable(load_user_options):
-                    await load_user_options()
-                self.parent_view._refresh_items()
-                await interaction.response.edit_message(
-                    content=self.parent_view.render_content(),
-                    view=self.parent_view,
-                )
-                return
-
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
 

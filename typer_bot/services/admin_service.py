@@ -5,6 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from typer_bot.database import Database
+from typer_bot.services.errors import (
+    FixtureNotFoundError,
+    NoPredictionsSavedError,
+    PredictionDisappearedError,
+    PredictionNotFoundError,
+)
 from typer_bot.utils import align_predictions_to_fixture, calculate_points, parse_line_predictions
 
 
@@ -29,7 +35,7 @@ class AdminService:
     async def _build_score_result(self, fixture_id: int) -> FixtureScoreResult:
         fixture = await self.db.get_fixture_by_id(fixture_id)
         if fixture is None:
-            raise ValueError("Fixture not found")
+            raise FixtureNotFoundError
 
         results = await self.db.get_results(fixture_id)
         if not results:
@@ -55,7 +61,7 @@ class AdminService:
         """Recalculate one fixture and refresh standings."""
         fixture = await self.db.get_fixture_by_id(fixture_id)
         if fixture is None:
-            raise ValueError("Fixture not found")
+            raise FixtureNotFoundError
 
         results = await self.db.get_results(fixture_id)
         if not results:
@@ -107,14 +113,19 @@ class AdminService:
         return await self.calculate_fixture_scores(fixture_id)
 
     async def get_fixture_prediction_summary(self, fixture_id: int) -> tuple[dict, list[dict]]:
-        """Return fixture and its predictions for panel display."""
+        """Return fixture and its predictions for panel display.
+
+        Raises:
+            FixtureNotFoundError: Fixture was deleted before the panel action ran.
+            NoPredictionsSavedError: Fixture still exists but has no saved predictions.
+        """
         fixture = await self.db.get_fixture_by_id(fixture_id)
         if fixture is None:
-            raise ValueError("Fixture not found")
+            raise FixtureNotFoundError
 
         predictions = await self.db.get_all_predictions(fixture_id, include_pending=True)
         if not predictions:
-            raise ValueError("No predictions saved for this fixture")
+            raise NoPredictionsSavedError
 
         predictions.sort(key=lambda prediction: prediction["user_name"].lower())
         return fixture, predictions
@@ -127,7 +138,7 @@ class AdminService:
     ) -> tuple[dict, dict, FixtureScoreResult | None]:
         fixture = await self.db.get_fixture_by_id(fixture_id)
         if fixture is None:
-            raise ValueError("Fixture not found")
+            raise FixtureNotFoundError
 
         prediction = await self.db.get_prediction(fixture_id, user_id)
         if prediction is None or not prediction["pending_partial_approval"]:
@@ -153,7 +164,7 @@ class AdminService:
     ) -> tuple[dict, dict, FixtureScoreResult | None]:
         fixture = await self.db.get_fixture_by_id(fixture_id)
         if fixture is None:
-            raise ValueError("Fixture not found")
+            raise FixtureNotFoundError
 
         prediction = await self.db.get_prediction(fixture_id, user_id)
         if prediction is None or not prediction["pending_partial_approval"]:
@@ -175,14 +186,21 @@ class AdminService:
         prediction_lines: str,
         admin_user_id: str,
     ) -> tuple[dict, dict, FixtureScoreResult | None]:
-        """Replace a stored prediction through an explicit admin action."""
+        """Replace a stored prediction through an explicit admin action.
+
+        Raises:
+            FixtureNotFoundError: Fixture was deleted before the admin action ran.
+            PredictionNotFoundError: Selected prediction no longer exists.
+            PredictionDisappearedError: Update succeeded but the refreshed row vanished.
+            ValueError: Validation or write failures that should surface directly to admins.
+        """
         fixture = await self.db.get_fixture_by_id(fixture_id)
         if fixture is None:
-            raise ValueError("Fixture not found")
+            raise FixtureNotFoundError
 
         existing_prediction = await self.db.get_prediction(fixture_id, user_id)
         if existing_prediction is None:
-            raise ValueError("Prediction not found for that user")
+            raise PredictionNotFoundError
 
         predictions, errors = parse_line_predictions(prediction_lines, fixture["games"])
         if errors:
@@ -199,7 +217,7 @@ class AdminService:
 
         refreshed_prediction = await self.db.get_prediction(fixture_id, user_id)
         if refreshed_prediction is None:
-            raise ValueError("Prediction disappeared after update")
+            raise PredictionDisappearedError("update")
 
         recalculation = None
         if await self.db.fixture_has_scores(fixture_id):
@@ -211,14 +229,21 @@ class AdminService:
         fixture_id: int,
         user_id: str,
     ) -> tuple[dict, dict, FixtureScoreResult | None]:
-        """Toggle the waiver flag for a stored late prediction."""
+        """Toggle the waiver flag for a stored late prediction.
+
+        Raises:
+            FixtureNotFoundError: Fixture was deleted before the admin action ran.
+            PredictionNotFoundError: Selected prediction no longer exists.
+            PredictionDisappearedError: Waiver update succeeded but the refreshed row vanished.
+            ValueError: On-time or write-failure cases that should surface directly to admins.
+        """
         fixture = await self.db.get_fixture_by_id(fixture_id)
         if fixture is None:
-            raise ValueError("Fixture not found")
+            raise FixtureNotFoundError
 
         prediction = await self.db.get_prediction(fixture_id, user_id)
         if prediction is None:
-            raise ValueError("Prediction not found for that user")
+            raise PredictionNotFoundError
         if not prediction["is_late"]:
             raise ValueError("That prediction was submitted on time")
 
@@ -228,7 +253,7 @@ class AdminService:
 
         refreshed_prediction = await self.db.get_prediction(fixture_id, user_id)
         if refreshed_prediction is None:
-            raise ValueError("Prediction disappeared after waiver update")
+            raise PredictionDisappearedError("waiver update")
 
         recalculation = None
         if await self.db.fixture_has_scores(fixture_id):
@@ -243,7 +268,7 @@ class AdminService:
         """Replace stored results and recalculate scored fixtures."""
         fixture = await self.db.get_fixture_by_id(fixture_id)
         if fixture is None:
-            raise ValueError("Fixture not found")
+            raise FixtureNotFoundError
 
         results, errors = parse_line_predictions(results_lines, fixture["games"])
         if errors:

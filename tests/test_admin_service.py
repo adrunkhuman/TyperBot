@@ -8,6 +8,12 @@ import pytest
 import typer_bot.database.predictions as predictions_module
 import typer_bot.database.results as results_module
 from typer_bot.services import AdminService
+from typer_bot.services.errors import (
+    FixtureNotFoundError,
+    NoPredictionsSavedError,
+    PredictionDisappearedError,
+    PredictionNotFoundError,
+)
 
 
 class TestLatePenaltyWaiver:
@@ -84,6 +90,73 @@ class TestLatePenaltyWaiver:
         prediction = await database.get_prediction(fixture_id, "late-user")
         assert prediction is not None
         assert prediction["late_penalty_waived"] == 0
+
+
+class TestAdminFlowErrors:
+    @pytest.mark.asyncio
+    async def test_get_fixture_prediction_summary_raises_typed_fixture_not_found(self, database):
+        service = AdminService(database)
+
+        with pytest.raises(FixtureNotFoundError):
+            await service.get_fixture_prediction_summary(999)
+
+    @pytest.mark.asyncio
+    async def test_get_fixture_prediction_summary_raises_typed_no_predictions(
+        self, database, sample_games
+    ):
+        service = AdminService(database)
+        fixture_id = await database.create_fixture(
+            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+
+        with pytest.raises(NoPredictionsSavedError):
+            await service.get_fixture_prediction_summary(fixture_id)
+
+    @pytest.mark.asyncio
+    async def test_replace_prediction_raises_typed_prediction_not_found(
+        self, database, sample_games
+    ):
+        service = AdminService(database)
+        fixture_id = await database.create_fixture(
+            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+
+        with pytest.raises(PredictionNotFoundError):
+            await service.replace_prediction(
+                fixture_id,
+                "missing-user",
+                "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2",
+                "admin-1",
+            )
+
+    @pytest.mark.asyncio
+    async def test_toggle_waiver_raises_typed_prediction_disappeared(
+        self, database, sample_games, monkeypatch
+    ):
+        service = AdminService(database)
+        fixture_id = await database.create_fixture(
+            1, sample_games, datetime.now(UTC) - timedelta(hours=2)
+        )
+        await database.save_prediction(
+            fixture_id,
+            "late-user",
+            "Late User",
+            ["2-1", "1-1", "0-2"],
+            True,
+        )
+
+        original_get_prediction = database.get_prediction
+
+        async def disappear_after_toggle(request_fixture_id: int, user_id: str):
+            prediction = await original_get_prediction(request_fixture_id, user_id)
+            if prediction is not None and prediction["late_penalty_waived"]:
+                return None
+            return prediction
+
+        monkeypatch.setattr(database, "get_prediction", disappear_after_toggle)
+
+        with pytest.raises(PredictionDisappearedError, match="waiver update"):
+            await service.toggle_late_penalty_waiver(fixture_id, "late-user")
 
 
 class TestPredictionReplacement:
