@@ -5,12 +5,12 @@
 Discord bot for weekly football prediction leagues. Admins create fixtures and enter results. Players submit score predictions in fixture threads or through `/predict`, which posts publicly into those threads. The bot stores picks, calculates points, and posts standings.
 
 ## Features
-- Thread predictions on fixture announcement threads
-- `/predict` posts publicly into fixture threads
-- Flexible score parsing: `2-1`, `2:1`, `2 : 1`
-- Per-fixture deadlines with late-pick handling
-- Standings, saved predictions, and weekly results posting
-- SQLite persistence with automatic backups after successful score calculation
+- Thread predictions
+- `/predict`
+- Flexible score parsing
+- Deadlines and late-pick handling
+- Standings and results
+- SQLite backups
 
 ## Commands
 ### Player commands
@@ -22,7 +22,7 @@ Discord bot for weekly football prediction leagues. Admins create fixtures and e
 ### Admin commands
 - `/admin panel` - open the main admin surface
 
-Inside the panel:
+The panel handles:
 - create fixtures
 - delete fixtures
 - jump to older open weeks not shown in the quick list
@@ -47,7 +47,7 @@ Admins need a Discord role named `Admin` or `typer-admin`.
 
 ## Prediction flow
 - Reply in the fixture thread with one line per match.
-- Or run `/predict` anywhere in the server, choose the week if needed, fill the modal, and let the bot post it in the fixture thread.
+- Or run `/predict` anywhere in the server, choose the week if needed, fill the modal, and let the bot post it publicly in the fixture thread.
 - To replace a saved prediction, use `/predict` again; the bot posts an updated public message in the fixture thread.
 - Partial predictions are allowed. Each partial line must name the game it applies to.
 - Missing games count as no prediction.
@@ -92,7 +92,7 @@ Team E - Team F 3:2
 
 ## Deployment
 
-This bot runs anywhere you can deploy a persistent container. Common options for a project this size are Coolify, Railway, Render, Fly.io, or a small VPS with Docker Compose.
+This bot runs anywhere you can deploy a persistent container.
 
 The example below uses Coolify.
 
@@ -162,7 +162,7 @@ Outside `./.local/manual-discord-test`, add `--force-reset`.
 In a deployment shell, use the same command against that deployment's `DB_PATH` and `BACKUP_DIR`.
 Those paths usually are not `./.local/manual-discord-test`, so add `--force-reset`.
 
-Create a real fixture when you need to test announcement posting, thread creation, reactions, or modal-to-thread prediction posting.
+Create a real fixture when you need to test posting, thread creation, reactions, or modal-to-thread prediction posting.
 
 ## Development
 

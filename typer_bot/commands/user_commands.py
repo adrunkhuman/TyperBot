@@ -633,7 +633,7 @@ Team C - Team D 1:1
 **For Admins:**
 • `/admin panel` - Open the main admin surface
 
-**Inside the panel:**
+**The panel handles:**
 - create fixtures
 - delete fixtures
 - jump to an older open week that is not shown in the quick list
