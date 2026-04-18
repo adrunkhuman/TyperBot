@@ -84,7 +84,7 @@ Team E - Team F 3:2
 
 ### Optional
 - `ENVIRONMENT` - environment label; use `production` for production deploys, default is `development`
-- `DATA_DIR` - base data directory; default `./data` locally, set `/app/data` on Railway
+- `DATA_DIR` - base data directory; default `./data` locally, set `/app/data` on production deployments
 - `DB_PATH` - database path; default `{DATA_DIR}/typer.db`
 - `BACKUP_DIR` - backup directory; default `{DATA_DIR}/backups`
 - `TZ` - timezone for admin deadline input; default `UTC`
@@ -93,18 +93,27 @@ Team E - Team F 3:2
 
 ## Deployment
 
-### Railway
+This bot runs anywhere you can deploy a persistent container. Common options for a project this size are Coolify, Railway, Render, Fly.io, or a small VPS with Docker Compose.
 
-1. Fork this repo.
-2. New Project on Railway -> Deploy from GitHub.
-3. Add a persistent volume mounted at `/app/data`.
-4. Set Variables:
+The example below uses Coolify because that is the current operator path.
+
+### Coolify (Nixpacks)
+
+1. Create a new Coolify worker/background service from this repo.
+2. Use Nixpacks.
+3. Disable HTTP/port health checks if Coolify enables them by default for the service.
+4. Mount a persistent volume at `/app/data`.
+5. Set variables:
    - `DISCORD_TOKEN=<your token>`
    - `ENVIRONMENT=production`
    - `DATA_DIR=/app/data`
    - optional: `TZ=Europe/Warsaw`
 
-`ENVIRONMENT` is labeling only. Any deployment with a valid `DISCORD_TOKEN` will connect to Discord and process events. Use a separate token for previews and manual testing. If `DISCORD_TOKEN` is unset, startup fails instead of connecting. Do not run multiple deployments against the same live token.
+Use a separate token for previews and manual testing. Do not run multiple deployments against the same live token.
+
+Routine host migration is a direct SQLite file copy of `typer.db` into the configured `DATA_DIR`. The `scripts/restore_db.py` helper is for restoring SQL dump backups during recovery, not for the normal host-to-host move.
+
+If you override `DB_PATH` or `BACKUP_DIR`, keep them on the persistent volume too.
 
 ## Running locally
 
@@ -130,7 +139,7 @@ uv run python -m typer_bot
 
 ## Manual Discord Testing
 
-Use a separate bot token in a private test guild. Point it at an isolated data directory, not your normal local or Railway database.
+Use a separate bot token in a private test guild. Point it at an isolated data directory, not your normal local or deployed database.
 
 ```powershell
 $env:DISCORD_TOKEN="your_test_bot_token"
@@ -167,7 +176,7 @@ uv run ty check typer_bot
 ## Backup and Restore
 
 - Automatic: the database is backed up after each successful score calculation. The bot keeps the latest 10 backups in `BACKUP_DIR`.
-- Manual restore: run from the Railway shell.
+- Manual restore: run from the host or container shell where the live database volume is mounted.
 
 ```bash
 ls /app/data/backups/

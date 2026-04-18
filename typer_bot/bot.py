@@ -427,7 +427,7 @@ def main():
     token = os.getenv("DISCORD_TOKEN")
     if not token:
         logger.error("❌ DISCORD_TOKEN environment variable not set!")
-        logger.error("Please set DISCORD_TOKEN in Railway variables")
+        logger.error("Please set DISCORD_TOKEN in your deployment environment")
         sys.exit(1)
 
     if token == "your_bot_token_here":

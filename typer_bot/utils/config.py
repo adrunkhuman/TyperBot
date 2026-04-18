@@ -4,7 +4,7 @@
 other environment. It does not control whether the bot connects to Discord.
 
 ``DATA_DIR`` intentionally defaults to ``./data`` so local development writes
-into a repo-adjacent folder without depending on Railway's volume mount.
+into a repo-adjacent folder without depending on container volume mounts.
 Production deploys must override it to a persistent path such as ``/app/data``.
 """
 
