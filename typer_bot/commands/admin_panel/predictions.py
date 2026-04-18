@@ -7,7 +7,13 @@ from typing import TYPE_CHECKING
 import discord
 
 from typer_bot.database import Database
-from typer_bot.services import AdminService
+from typer_bot.services import (
+    AdminService,
+    FixtureNotFoundError,
+    NoPredictionsSavedError,
+    PredictionDisappearedError,
+    PredictionNotFoundError,
+)
 
 from .base import (
     MAX_SELECT_OPTIONS,
@@ -15,6 +21,7 @@ from .base import (
     OwnerRestrictedView,
     PanelSelectionState,
     _build_detail_lines,
+    _build_indexed_detail_lines,
     _notify_user_dm,
     _prediction_status_text,
     _render_panel_content,
@@ -66,7 +73,9 @@ class PredictionsPanelView(OwnerRestrictedView):
             self.user_select.update_options([])
             return
 
-        predictions = await self.db.get_all_predictions(self.selection.fixture_id)
+        predictions = await self.db.get_all_predictions(
+            self.selection.fixture_id, include_pending=True
+        )
         self.has_user_overflow = len(predictions) > MAX_SELECT_OPTIONS
         self.user_select.update_options(predictions)
 
@@ -181,10 +190,16 @@ class PredictionUserSelect(discord.ui.Select):
             self.parent_view.selection.user_label = (
                 f"{prediction['user_name']} ({_prediction_status_text(prediction)})"
             )
-            self.parent_view.selection.detail_lines = _build_detail_lines(
-                fixture["games"], prediction["predictions"]
+            self.parent_view.selection.detail_lines = _build_indexed_detail_lines(
+                prediction["predicted_game_indexes"],
+                fixture["games"],
+                prediction["predictions"],
             )
             self.parent_view.selection.status_message = ""
+
+        set_selected_prediction = getattr(self.parent_view, "set_selected_prediction", None)
+        if callable(set_selected_prediction):
+            await set_selected_prediction()
 
         self.sync_selected_option()
 
@@ -198,13 +213,17 @@ class PredictionUserSelect(discord.ui.Select):
 
 class ReplacePredictionButton(discord.ui.Button):
     def __init__(
-        self, parent_view: PredictionsPanelView | UnifiedAdminPanelView, disabled: bool = False
+        self,
+        parent_view: PredictionsPanelView | UnifiedAdminPanelView,
+        disabled: bool = False,
+        row: int | None = None,
     ):
         self.parent_view = parent_view
         super().__init__(
             label="Replace Prediction",
             style=discord.ButtonStyle.primary,
             disabled=disabled,
+            row=row,
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -252,13 +271,17 @@ class ReplacePredictionButton(discord.ui.Button):
 
 class ViewPredictionsButton(discord.ui.Button):
     def __init__(
-        self, parent_view: PredictionsPanelView | UnifiedAdminPanelView, disabled: bool = False
+        self,
+        parent_view: PredictionsPanelView | UnifiedAdminPanelView,
+        disabled: bool = False,
+        row: int | None = None,
     ):
         self.parent_view = parent_view
         super().__init__(
             label="View Predictions",
             style=discord.ButtonStyle.secondary,
             disabled=disabled,
+            row=row,
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -271,35 +294,34 @@ class ViewPredictionsButton(discord.ui.Button):
             fixture, predictions = await self.parent_view.service.get_fixture_prediction_summary(
                 fixture_id
             )
+        except FixtureNotFoundError as exc:
+            self.parent_view.selection.fixture_id = None
+            self.parent_view.selection.fixture_label = ""
+            self.parent_view.selection.user_id = None
+            self.parent_view.selection.user_label = ""
+            self.parent_view.selection.detail_lines = []
+            self.parent_view.selection.status_message = str(exc)
+            await self.parent_view.load_fixture_options()
+            await self.parent_view.load_user_options()
+            self.parent_view._refresh_items()
+            await interaction.response.edit_message(
+                content=self.parent_view.render_content(),
+                view=self.parent_view,
+            )
+            return
+        except NoPredictionsSavedError as exc:
+            self.parent_view.selection.user_id = None
+            self.parent_view.selection.user_label = ""
+            self.parent_view.selection.detail_lines = []
+            self.parent_view.selection.status_message = str(exc)
+            await self.parent_view.load_user_options()
+            self.parent_view._refresh_items()
+            await interaction.response.edit_message(
+                content=self.parent_view.render_content(),
+                view=self.parent_view,
+            )
+            return
         except ValueError as exc:
-            if str(exc) == "Fixture not found":
-                self.parent_view.selection.fixture_id = None
-                self.parent_view.selection.fixture_label = ""
-                self.parent_view.selection.user_id = None
-                self.parent_view.selection.user_label = ""
-                self.parent_view.selection.detail_lines = []
-                self.parent_view.selection.status_message = str(exc)
-                await self.parent_view.load_fixture_options()
-                await self.parent_view.load_user_options()
-                self.parent_view._refresh_items()
-                await interaction.response.edit_message(
-                    content=self.parent_view.render_content(),
-                    view=self.parent_view,
-                )
-                return
-            if str(exc) == "No predictions saved for this fixture":
-                self.parent_view.selection.user_id = None
-                self.parent_view.selection.user_label = ""
-                self.parent_view.selection.detail_lines = []
-                self.parent_view.selection.status_message = str(exc)
-                await self.parent_view.load_user_options()
-                self.parent_view._refresh_items()
-                await interaction.response.edit_message(
-                    content=self.parent_view.render_content(),
-                    view=self.parent_view,
-                )
-                return
-
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
 
@@ -316,13 +338,17 @@ class ToggleWaiverButton(discord.ui.Button):
     """Toggle the late waiver flag and best-effort DM the affected user."""
 
     def __init__(
-        self, parent_view: PredictionsPanelView | UnifiedAdminPanelView, disabled: bool = False
+        self,
+        parent_view: PredictionsPanelView | UnifiedAdminPanelView,
+        disabled: bool = False,
+        row: int | None = None,
     ):
         self.parent_view = parent_view
         super().__init__(
             label="Toggle Late Waiver",
             style=discord.ButtonStyle.success,
             disabled=disabled,
+            row=row,
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -374,38 +400,34 @@ class ToggleWaiverButton(discord.ui.Button):
                 fixture_id,
                 user_id,
             )
+        except FixtureNotFoundError as exc:
+            self.parent_view.selection.fixture_id = None
+            self.parent_view.selection.fixture_label = ""
+            self.parent_view.selection.user_id = None
+            self.parent_view.selection.user_label = ""
+            self.parent_view.selection.detail_lines = []
+            self.parent_view.selection.status_message = str(exc)
+            await self.parent_view.load_fixture_options()
+            await self.parent_view.load_user_options()
+            self.parent_view._refresh_items()
+            await interaction.response.edit_message(
+                content=self.parent_view.render_content(),
+                view=self.parent_view,
+            )
+            return
+        except (PredictionNotFoundError, PredictionDisappearedError) as exc:
+            self.parent_view.selection.user_id = None
+            self.parent_view.selection.user_label = ""
+            self.parent_view.selection.detail_lines = []
+            self.parent_view.selection.status_message = str(exc)
+            await self.parent_view.load_user_options()
+            self.parent_view._refresh_items()
+            await interaction.response.edit_message(
+                content=self.parent_view.render_content(),
+                view=self.parent_view,
+            )
+            return
         except ValueError as exc:
-            if str(exc) == "Fixture not found":
-                self.parent_view.selection.fixture_id = None
-                self.parent_view.selection.fixture_label = ""
-                self.parent_view.selection.user_id = None
-                self.parent_view.selection.user_label = ""
-                self.parent_view.selection.detail_lines = []
-                self.parent_view.selection.status_message = str(exc)
-                await self.parent_view.load_fixture_options()
-                await self.parent_view.load_user_options()
-                self.parent_view._refresh_items()
-                await interaction.response.edit_message(
-                    content=self.parent_view.render_content(),
-                    view=self.parent_view,
-                )
-                return
-            if str(exc) in {
-                "Prediction not found for that user",
-                "Prediction disappeared after waiver update",
-            }:
-                self.parent_view.selection.user_id = None
-                self.parent_view.selection.user_label = ""
-                self.parent_view.selection.detail_lines = []
-                self.parent_view.selection.status_message = str(exc)
-                await self.parent_view.load_user_options()
-                self.parent_view._refresh_items()
-                await interaction.response.edit_message(
-                    content=self.parent_view.render_content(),
-                    view=self.parent_view,
-                )
-                return
-
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
 

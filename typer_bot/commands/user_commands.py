@@ -14,9 +14,10 @@ from typer_bot.utils import (
     format_for_discord,
     format_predictions_preview,
     format_standings,
+    get_admin_role_mention,
     is_admin,
     now,
-    parse_line_predictions,
+    parse_prediction_lines,
 )
 
 SELECT_PAGE_SIZE = 25
@@ -35,15 +36,35 @@ def _remaining_open_fixtures(
 
 
 def _format_thread_prediction_message(
-    fixture: dict, user_id: int, predictions: list[str], *, is_update: bool, is_late: bool
+    fixture: dict,
+    guild: discord.Guild | None,
+    user_id: int,
+    predictions: list[str],
+    predicted_game_indexes: list[int],
+    *,
+    is_update: bool,
+    is_late: bool,
+    pending_partial_approval: bool,
 ) -> str:
     heading = "Updated prediction" if is_update else "Prediction"
-    content = [f"**{heading} from <@{user_id}> for Week {fixture['week_number']}**", ""]
-    for index, (game, prediction) in enumerate(zip(fixture["games"], predictions, strict=False), 1):
-        content.append(f"{index}. {game} **{prediction}**")
-    if is_late:
-        content.append("")
-        content.append("⚠️ Late prediction.")
+    content = [f"**{heading} from <@{user_id}> · Week {fixture['week_number']}**", ""]
+    for game_index, prediction in zip(predicted_game_indexes, predictions, strict=False):
+        game = fixture["games"][game_index]
+        content.append(f"{game_index + 1}. {game} **{prediction}**")
+
+    status: str | None = None
+    if pending_partial_approval:
+        admin_role_mention = get_admin_role_mention(guild)
+        status = "⏳ Late prediction awaiting admin review."
+        if admin_role_mention:
+            status += f" {admin_role_mention}"
+    elif is_late:
+        status = "⚠️ Late prediction."
+    elif len(predicted_game_indexes) < len(fixture["games"]):
+        status = "Partial prediction. Add the missing games before the deadline if you can."
+
+    if status:
+        content.extend(["", status])
     return "\n".join(content)
 
 
@@ -52,7 +73,12 @@ async def _get_prediction_thread(bot: commands.Bot, fixture: dict) -> discord.Th
     if not message_id:
         return None
 
-    thread = bot.get_channel(int(message_id))
+    try:
+        thread_id = int(message_id)
+    except (TypeError, ValueError):
+        return None
+
+    thread = bot.get_channel(thread_id)
     if isinstance(thread, discord.Thread):
         return thread
 
@@ -61,10 +87,40 @@ async def _get_prediction_thread(bot: commands.Bot, fixture: dict) -> discord.Th
         return None
 
     try:
-        fetched = await fetch_channel(int(message_id))
+        fetched = await fetch_channel(thread_id)
     except discord.HTTPException:
         return None
     return fetched if isinstance(fetched, discord.Thread) else None
+
+
+async def _delete_previous_pending_bot_post(
+    thread: discord.Thread,
+    existing_prediction: dict | None,
+    *,
+    replacement_message_id: int,
+) -> None:
+    """Delete the older pending bot post so only the latest late submission stays public."""
+    if existing_prediction is None or not existing_prediction.get("pending_partial_approval"):
+        return
+
+    if existing_prediction.get("public_message_kind") != "bot_post":
+        return
+
+    previous_message_id = existing_prediction.get("public_message_id")
+    if previous_message_id is None:
+        return
+
+    try:
+        previous_message_id_int = int(previous_message_id)
+    except (TypeError, ValueError):
+        return
+
+    if previous_message_id_int == replacement_message_id:
+        return
+
+    with suppress(discord.HTTPException, AttributeError):
+        previous_message = await thread.fetch_message(previous_message_id_int)
+        await previous_message.delete()
 
 
 def _page_slice(items: list[dict], page: int, page_size: int) -> list[dict]:
@@ -281,9 +337,11 @@ class PredictModal(discord.ui.Modal):
         self.completed_fixture_ids = completed_fixture_ids or set()
         default_value = (
             "\n".join(
-                f"{game} {prediction}"
-                for game, prediction in zip(
-                    fixture["games"], existing_prediction["predictions"], strict=False
+                f"{fixture['games'][game_index]} {prediction}"
+                for game_index, prediction in zip(
+                    existing_prediction["predicted_game_indexes"],
+                    existing_prediction["predictions"],
+                    strict=False,
                 )
             )
             if existing_prediction
@@ -308,9 +366,18 @@ class PredictModal(discord.ui.Modal):
             )
             return
 
-        predictions, errors = parse_line_predictions(self.predictions_input.value, fixture["games"])
+        predictions, predicted_game_indexes, errors = parse_prediction_lines(
+            self.predictions_input.value,
+            fixture["games"],
+            allow_partial=True,
+        )
         if errors:
             await interaction.response.send_message("\n".join(errors), ephemeral=True)
+            return
+        if not predictions:
+            await interaction.response.send_message(
+                "Please enter at least one prediction before submitting.", ephemeral=True
+            )
             return
 
         thread = await _get_prediction_thread(self.bot, fixture)
@@ -323,15 +390,20 @@ class PredictModal(discord.ui.Modal):
 
         is_late = now() > fixture["deadline"]
         existing_prediction = await self.db.get_prediction(fixture["id"], str(interaction.user.id))
+        is_partial = len(predicted_game_indexes) < len(fixture["games"])
+        pending_partial_approval = is_late and is_partial
         public_message = None
         try:
             public_message = await thread.send(
                 _format_thread_prediction_message(
                     fixture,
+                    interaction.guild,
                     interaction.user.id,
                     predictions,
+                    predicted_game_indexes,
                     is_update=existing_prediction is not None,
                     is_late=is_late,
+                    pending_partial_approval=pending_partial_approval,
                 )
             )
         except discord.HTTPException:
@@ -348,6 +420,10 @@ class PredictModal(discord.ui.Modal):
                 self.user_name,
                 predictions,
                 is_late,
+                predicted_game_indexes=predicted_game_indexes,
+                pending_partial_approval=pending_partial_approval,
+                public_message_id=str(public_message.id) if pending_partial_approval else None,
+                public_message_kind="bot_post" if pending_partial_approval else None,
             )
         except Exception:
             logger.exception(
@@ -376,12 +452,30 @@ class PredictModal(discord.ui.Modal):
             )
             return
 
-        content = format_predictions_preview(fixture["games"], predictions)
+        if public_message is not None:
+            await _delete_previous_pending_bot_post(
+                thread,
+                existing_prediction,
+                replacement_message_id=public_message.id,
+            )
+
+        preview_games = [fixture["games"][index] for index in predicted_game_indexes]
+        content = format_predictions_preview(preview_games, predictions)
         deadline_str = format_for_discord(fixture["deadline"], "F")
         relative_str = format_for_discord(fixture["deadline"], "R")
         content += f"\n\n**Posted publicly in the fixture thread.**\n**Deadline:** {deadline_str} ({relative_str})"
-        if is_late:
+        if pending_partial_approval:
+            content += (
+                "\n\n⏳ **Late prediction awaiting admin review:** your predicted games will only count "
+                "if an admin approves this late submission with missing games."
+            )
+        elif is_late:
             content += "\n\n⚠️ **Late prediction!** You will receive 0 points for this round."
+        elif is_partial:
+            content += (
+                "\n\nℹ️ **Partial prediction saved:** any missing games will count as no prediction. "
+                "If the deadline has not passed yet, use `/predict` again to fill the rest."
+            )
 
         completed_fixture_ids = set(self.completed_fixture_ids)
         completed_fixture_ids.add(fixture["id"])
@@ -504,88 +598,73 @@ class UserCommands(commands.Cog):
 • `/standings` - See overall leaderboard
 • `/mypredictions` - Check your submitted predictions for open fixtures
 
-**How to Predict (Two Methods):**
+**How to Predict:**
 
-**Method 1: Thread Predictions (NEW)**
-1. Look for the fixture announcement thread (created when admin posts fixtures)
-2. Reply in the thread with your predictions:
+**Reply in the fixture thread**
+1. Open the fixture thread
+2. Reply with your predictions:
    ```
    Team A - Team B 2:0
    Team C - Team D 1:1
    ...
    ```
-3. Bot will react ✅ when saved
+3. Bot reacts ✅ when saved
+4. Late submissions with missing games react ⏳ and wait for admin review
 
-**Method 2: /predict Modal**
+**Or use `/predict`**
 1. Type `/predict` in the channel
 2. If multiple fixtures are open, choose the week from the picker
 3. Enter your predictions in the modal
-4. Submit, and the bot posts them publicly in the fixture thread
+4. Submit to post them in the fixture thread
 5. Use the buttons to continue to other open fixtures
+
+**Partial predictions:**
+- You can leave some games out, but before the deadline you should still try to fill the whole fixture
+- Each partial line must name the game it applies to
+- Missing games count as no prediction
+- Late submissions with missing games wait for admin review before they count
+- Approval counts the submitted lines normally; rejection discards that late submission
+- Public status stays visible in the fixture thread after review
 
 **Scoring:**
 • Exact score: 3 points
 • Correct result (win/loss/draw): 1 point
 • Wrong: 0 points
-• Late predictions: 0 points (submit before deadline!)
+• Late full predictions: 0 points
+• Late predictions with missing games: pending admin review
 
 **Input formats:** Use `2:0`, `2-0`, or `2 : 0`
 
-**To change a prediction:** Use `/predict` again. The bot will post your updated prediction publicly in the fixture thread."""
+**To change a prediction:** Use `/predict` again. The bot will post an updated prediction in the fixture thread."""
 
         admin_help = """\n\n## 🔧 Admin Commands
 
 **For Admins:**
-• `/admin panel` - Open the admin hub for fixture deletion, overrides, waivers, and result correction
-**Fixture Management:**
-• `/admin fixture create` - Create new fixture (modal + confirm, auto-creates thread)
-• `/admin fixture delete [week]` - Delete an open fixture
+• `/admin panel` - Open the main admin surface
 
-**Results Management:**
-• `/admin results enter [week]` - Enter actual scores (modal + confirm)
-• `/admin results calculate [week]` - Calculate and post scores
-• `/admin results post` - Re-post results with optional mentions
+**Admin workflow:**
+- run `/admin panel` once
+- use the panel buttons and selectors for admin actions
 
-**Admin Workflow:**
-1. **Create Fixture:**
-   - `/admin fixture create`
-   - Modal opens in Discord
-   - Enter game list and optional deadline
-   - Review preview and confirm
-   - Bot auto-creates thread for predictions
-
-2. **Enter Results:**
-   - `/admin results enter` (add `week:` if multiple fixtures are open)
-   - Modal opens in Discord
-   - Enter actual scores:
-      ```
-      Team A - Team B 1:0
-      Team C - Team D 2:2
-      ...
-      ```
-   - Review preview and confirm
-
-3. **Calculate Scores:**
-   - `/admin results calculate` (add `week:` if multiple fixtures are open)
-   - Bot posts results (overall + week) to channel
-
-4. **Re-post Results:**
-   - `/admin results post`
-   - Choose whether to mention users
-
-5. **Corrections / Exceptions:**
-   - `/admin panel`
-   - View fixture predictions
-   - Replace a stored prediction without changing original submit time
-   - Toggle a late-penalty waiver for an approved late pick
-   - Correct stored results and auto-recalculate scored fixtures
+**Inside the panel you can:**
+- create fixtures
+- delete fixtures
+- jump to an older open week that is not shown in the quick list
+- enter or correct results
+- calculate scores
+- re-post the latest completed results with optional mentions
+- replace predictions
+- toggle late waivers
+- review, approve, or reject late predictions submitted with missing games
+- `Review Late` appears when pending items exist, and approve/reject can recalculate scored fixtures
+- inspect overflow prediction lists when a fixture has more than 25 users
 
 **Custom Deadline Format:**
 • `2024-02-15 18:00`
 • `15.02.2024 18:00`
 • `15/02/2024 18:00`
 
-Use the commands above directly in Discord."""
+Use these directly in Discord."""
 
         await interaction.response.send_message(user_help, ephemeral=True)
 
@@ -660,13 +739,15 @@ Use the commands above directly in Discord."""
                 return
 
             lines = ["**Your Predictions:**\n"]
-            for i, (game, pred) in enumerate(
-                zip(fixture["games"], prediction["predictions"], strict=False), 1
+            for game_index, pred in zip(
+                prediction["predicted_game_indexes"], prediction["predictions"], strict=False
             ):
-                lines.append(f"{i}. {game} **{pred}**")
+                lines.append(f"{game_index + 1}. {fixture['games'][game_index]} **{pred}**")
 
             late_status = "✅ On time"
-            if prediction["is_late"]:
+            if prediction["pending_partial_approval"]:
+                late_status = "⏳ Late prediction awaiting admin review"
+            elif prediction["is_late"]:
                 late_status = "⚠️ **LATE**"
                 if prediction["late_penalty_waived"]:
                     late_status += " (waiver active)"
@@ -703,13 +784,15 @@ Use the commands above directly in Discord."""
                 continue
 
             has_any_prediction = True
-            for i, (game, pred) in enumerate(
-                zip(fixture["games"], prediction["predictions"], strict=False), 1
+            for game_index, pred in zip(
+                prediction["predicted_game_indexes"], prediction["predictions"], strict=False
             ):
-                lines.append(f"{i}. {game} **{pred}**")
+                lines.append(f"{game_index + 1}. {fixture['games'][game_index]} **{pred}**")
 
             late_status = "✅ On time"
-            if prediction["is_late"]:
+            if prediction["pending_partial_approval"]:
+                late_status = "⏳ Late prediction awaiting admin review"
+            elif prediction["is_late"]:
                 late_status = "⚠️ **LATE**"
                 if prediction["late_penalty_waived"]:
                     late_status += " (waiver active)"

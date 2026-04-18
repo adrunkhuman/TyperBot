@@ -8,10 +8,16 @@ from typing import TYPE_CHECKING
 import discord
 
 from typer_bot.database import Database
+from typer_bot.services import (
+    FixtureNotFoundError,
+    PredictionDisappearedError,
+    PredictionNotFoundError,
+)
 from typer_bot.utils import APP_TZ, format_for_discord, is_admin, now, parse_line_predictions
 
 from .base import (
     _build_detail_lines,
+    _build_indexed_detail_lines,
     _format_prediction_line,
     _notify_user_dm,
     _prediction_status_text,
@@ -297,7 +303,7 @@ class EnterResultsConfirmView(discord.ui.View):
             return
 
         await interaction.response.edit_message(
-            content=f"**Results Saved!**\n\n{self.preview}\n\nUse `/admin results calculate` to calculate scores.",
+            content=f"**Results Saved!**\n\n{self.preview}\n\nUse the Calculate Scores button in `/admin panel` to post standings now. Use Re-post Results later only if you need to post them again with optional mentions.",
             view=None,
         )
 
@@ -310,7 +316,7 @@ class EnterResultsConfirmView(discord.ui.View):
             return
 
         await interaction.response.edit_message(
-            content="Results entry cancelled. Use `/admin results enter` to try again.",
+            content="Results entry cancelled. Use the Enter Results button in `/admin panel` to try again.",
             view=None,
         )
 
@@ -387,10 +393,9 @@ class ReplacePredictionModal(discord.ui.Modal):
             style=discord.TextStyle.paragraph,
             placeholder="One line per match, e.g. Team A - Team B 2:1",
             default="\n".join(
-                _format_prediction_line(index, game, result)
-                for index, (game, result) in enumerate(
-                    zip(fixture["games"], prediction["predictions"], strict=False),
-                    1,
+                _format_prediction_line(index + 1, fixture["games"][index], result)
+                for index, result in zip(
+                    prediction["predicted_game_indexes"], prediction["predictions"], strict=False
                 )
             ),
             required=True,
@@ -416,28 +421,23 @@ class ReplacePredictionModal(discord.ui.Modal):
                 self.predictions_input.value,
                 str(interaction.user.id),
             )
+        except (FixtureNotFoundError, PredictionNotFoundError, PredictionDisappearedError) as exc:
+            self.parent_view.selection.user_id = None
+            self.parent_view.selection.user_label = ""
+            self.parent_view.selection.detail_lines = []
+            self.parent_view.selection.status_message = str(exc)
+            if isinstance(exc, FixtureNotFoundError):
+                self.parent_view.selection.fixture_id = None
+                self.parent_view.selection.fixture_label = ""
+                await self.parent_view.load_fixture_options()
+            await self.parent_view.load_user_options()
+            self.parent_view._refresh_items()
+            await interaction.response.edit_message(
+                content=self.parent_view.render_content(),
+                view=self.parent_view,
+            )
+            return
         except ValueError as exc:
-            if str(exc) in {
-                "Fixture not found",
-                "Prediction not found for that user",
-                "Prediction disappeared after update",
-            }:
-                self.parent_view.selection.user_id = None
-                self.parent_view.selection.user_label = ""
-                self.parent_view.selection.detail_lines = []
-                self.parent_view.selection.status_message = str(exc)
-                if str(exc) == "Fixture not found":
-                    self.parent_view.selection.fixture_id = None
-                    self.parent_view.selection.fixture_label = ""
-                    await self.parent_view.load_fixture_options()
-                await self.parent_view.load_user_options()
-                self.parent_view._refresh_items()
-                await interaction.response.edit_message(
-                    content=self.parent_view.render_content(),
-                    view=self.parent_view,
-                )
-                return
-
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
 
@@ -448,8 +448,10 @@ class ReplacePredictionModal(discord.ui.Modal):
         self.parent_view.selection.user_label = (
             f"{updated_prediction['user_name']} ({_prediction_status_text(updated_prediction)})"
         )
-        self.parent_view.selection.detail_lines = _build_detail_lines(
-            fixture["games"], updated_prediction["predictions"]
+        self.parent_view.selection.detail_lines = _build_indexed_detail_lines(
+            updated_prediction["predicted_game_indexes"],
+            fixture["games"],
+            updated_prediction["predictions"],
         )
 
         await self.parent_view.load_user_options()
@@ -528,25 +530,24 @@ class CorrectResultsModal(discord.ui.Modal):
                 self.fixture["id"],
                 self.results_input.value,
             )
+        except FixtureNotFoundError as exc:
+            self.parent_view.selection.fixture_id = None
+            self.parent_view.selection.fixture_label = ""
+            self.parent_view.selection.user_id = None
+            self.parent_view.selection.user_label = ""
+            self.parent_view.selection.detail_lines = []
+            self.parent_view.selection.status_message = str(exc)
+            await self.parent_view.load_fixture_options()
+            load_user_options = getattr(self.parent_view, "load_user_options", None)
+            if callable(load_user_options):
+                await load_user_options()
+            self.parent_view._refresh_items()
+            await interaction.response.edit_message(
+                content=self.parent_view.render_content(),
+                view=self.parent_view,
+            )
+            return
         except ValueError as exc:
-            if str(exc) == "Fixture not found":
-                self.parent_view.selection.fixture_id = None
-                self.parent_view.selection.fixture_label = ""
-                self.parent_view.selection.user_id = None
-                self.parent_view.selection.user_label = ""
-                self.parent_view.selection.detail_lines = []
-                self.parent_view.selection.status_message = str(exc)
-                await self.parent_view.load_fixture_options()
-                load_user_options = getattr(self.parent_view, "load_user_options", None)
-                if callable(load_user_options):
-                    await load_user_options()
-                self.parent_view._refresh_items()
-                await interaction.response.edit_message(
-                    content=self.parent_view.render_content(),
-                    view=self.parent_view,
-                )
-                return
-
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
 

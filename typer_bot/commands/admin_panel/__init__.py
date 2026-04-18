@@ -13,7 +13,7 @@ from .modals import (
 )
 from .predictions import PredictionsPanelView
 from .results import ResultsPanelView
-from .unified import UnifiedAdminPanelView
+from .unified import PostResultsConfirmView, UnifiedAdminPanelView
 
 __all__ = [
     "CorrectResultsModal",
@@ -24,6 +24,7 @@ __all__ = [
     "PredictionsPanelView",
     "ReplacePredictionModal",
     "ResultsPanelView",
+    "PostResultsConfirmView",
     "UnifiedAdminPanelView",
     "_build_delete_confirmation_content",
 ]

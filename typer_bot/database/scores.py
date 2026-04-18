@@ -4,7 +4,7 @@ import logging
 
 import aiosqlite
 
-from typer_bot.utils import calculate_points
+from typer_bot.utils import align_predictions_to_fixture, calculate_points
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,8 @@ async def _recalculate_scores_in_connection(db: aiosqlite.Connection, fixture_id
             raise ValueError("No results entered for this fixture")
 
         async with db.execute(
-            "SELECT * FROM predictions WHERE fixture_id = ?", (fixture_id,)
+            "SELECT * FROM predictions WHERE fixture_id = ? AND pending_partial_approval = FALSE",
+            (fixture_id,),
         ) as cursor:
             prediction_rows = await cursor.fetchall()
         if not prediction_rows:
@@ -43,8 +44,20 @@ async def _recalculate_scores_in_connection(db: aiosqlite.Connection, fixture_id
         results = results_row["results"].split("\n")
         scores = []
         for prediction_row in prediction_rows:
+            raw_predictions = prediction_row["predictions"].split("\n")
+            raw_indexes = prediction_row["predicted_game_indexes"]
+            predicted_game_indexes = (
+                [int(part) for part in raw_indexes.split(",") if part != ""]
+                if raw_indexes
+                else list(range(len(raw_predictions)))
+            )
+            aligned_predictions = align_predictions_to_fixture(
+                raw_predictions,
+                predicted_game_indexes,
+                len(results),
+            )
             score_data = calculate_points(
-                prediction_row["predictions"].split("\n"),
+                aligned_predictions,
                 results,
                 bool(prediction_row["is_late"]),
                 bool(prediction_row["late_penalty_waived"]),

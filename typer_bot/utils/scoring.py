@@ -1,9 +1,24 @@
 """Scoring calculation utilities."""
 
+from collections.abc import Sequence
+
+
+def align_predictions_to_fixture(
+    predictions: list[str],
+    predicted_game_indexes: list[int],
+    fixture_length: int,
+) -> list[str | None]:
+    """Expand sparse predictions to fixture length with missing rows as ``None``."""
+    aligned: list[str | None] = [None] * fixture_length
+    for game_index, prediction in zip(predicted_game_indexes, predictions, strict=False):
+        if 0 <= game_index < fixture_length:
+            aligned[game_index] = prediction
+    return aligned
+
 
 def calculate_points(
-    predictions: list[str],
-    actual_results: list[str],
+    predictions: Sequence[str | None],
+    actual_results: Sequence[str],
     is_late: bool = False,
     late_penalty_waived: bool = False,
 ) -> dict:

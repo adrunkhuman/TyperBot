@@ -3,16 +3,13 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
-import discord
 import pytest
 
 from typer_bot.commands.admin_commands import (
     CALCULATE_COOLDOWN,
     AdminCommands,
-    PostResultsConfirmView,
 )
-from typer_bot.commands.admin_panel import CreateFixtureModal, EnterResultsModal
-from typer_bot.services.admin_service import FixtureScoreResult
+from typer_bot.commands.admin_panel import PostResultsConfirmView, UnifiedAdminPanelView
 from typer_bot.utils import now
 from typer_bot.utils.permissions import is_admin
 
@@ -50,154 +47,20 @@ class TestAdminOnlyDecorator:
         assert result is True
 
 
-class TestFixtureCreateLogic:
-    """Test suite for fixture create command logic."""
-
+class TestAdminPanelEntry:
     @pytest.fixture
     def admin_cog(self, mock_bot, database):
         mock_bot.db = database
         return AdminCommands(mock_bot)
 
     @pytest.mark.asyncio
-    async def test_fixture_create_opens_modal(self, admin_cog, mock_interaction_admin):
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.id = mock_interaction_admin.channel.id
-        mock_interaction_admin.channel = channel
+    async def test_admin_panel_opens_unified_view(self, admin_cog, mock_interaction_admin):
+        await admin_cog.panel.callback(admin_cog, mock_interaction_admin)
 
-        await admin_cog.fixture_create.callback(admin_cog, mock_interaction_admin)
+        assert isinstance(mock_interaction_admin.response_sent[0]["view"], UnifiedAdminPanelView)
 
-        assert isinstance(mock_interaction_admin.modal_sent["modal"], CreateFixtureModal)
-
-    @pytest.mark.asyncio
-    async def test_fixture_create_from_thread_uses_parent_channel(
-        self, admin_cog, mock_interaction_admin
-    ):
-        parent_channel = MagicMock(spec=discord.TextChannel)
-        parent_channel.id = 123456
-        thread = MagicMock(spec=discord.Thread)
-        thread.parent = parent_channel
-        mock_interaction_admin.channel = thread
-
-        await admin_cog.fixture_create.callback(admin_cog, mock_interaction_admin)
-
-        assert mock_interaction_admin.modal_sent["modal"].channel is parent_channel
-
-    @pytest.mark.asyncio
-    async def test_fixture_create_still_opens_modal_when_open_fixture_exists(
-        self, admin_cog, mock_interaction_admin, sample_games
-    ):
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.id = mock_interaction_admin.channel.id
-        mock_interaction_admin.channel = channel
-        await admin_cog.db.create_fixture(5, sample_games, datetime.now(UTC) + timedelta(days=1))
-
-        await admin_cog.fixture_create.callback(admin_cog, mock_interaction_admin)
-
-        assert isinstance(mock_interaction_admin.modal_sent["modal"], CreateFixtureModal)
-
-    @pytest.mark.asyncio
-    async def test_fixture_create_opens_modal_when_no_open_fixtures(
-        self, admin_cog, mock_interaction_admin
-    ):
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.id = mock_interaction_admin.channel.id
-        mock_interaction_admin.channel = channel
-        await admin_cog.fixture_create.callback(admin_cog, mock_interaction_admin)
-
-        assert isinstance(mock_interaction_admin.modal_sent["modal"], CreateFixtureModal)
-
-
-class TestFixtureDeleteLogic:
-    """Test suite for fixture delete command logic."""
-
-    @pytest.fixture
-    def admin_cog(self, mock_bot, database):
-        mock_bot.db = database
-        return AdminCommands(mock_bot)
-
-    @pytest.mark.asyncio
-    async def test_fixture_delete_no_active_fixture(self, database):
-        """Deleting without an active fixture fails gracefully."""
-        fixture = await database.get_current_fixture()
-        assert fixture is None
-
-    @pytest.mark.asyncio
-    async def test_fixture_delete_deletes_fixture(self, database, sample_games):
-        """Fixture deletion cascades to predictions and results."""
-        deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_id = await database.create_fixture(1, sample_games, deadline)
-
-        fixture = await database.get_fixture_by_id(fixture_id)
-        assert fixture is not None
-
-        await database.delete_fixture(fixture_id)
-
-        fixture = await database.get_fixture_by_id(fixture_id)
-        assert fixture is None
-
-    @pytest.mark.asyncio
-    async def test_fixture_delete_shows_picker_when_multiple_open(
-        self, admin_cog, mock_interaction_admin, sample_games
-    ):
-        deadline = datetime.now(UTC) + timedelta(days=1)
-        await admin_cog.db.create_fixture(1, sample_games, deadline)
-        await admin_cog.db.create_fixture(2, sample_games, deadline)
-
-        await admin_cog.fixture_delete.callback(admin_cog, mock_interaction_admin, None)
-
-        assert "Multiple fixtures are open" in mock_interaction_admin.response_sent[0]["content"]
-        assert isinstance(mock_interaction_admin.response_sent[0]["view"], discord.ui.View)
-
-    @pytest.mark.asyncio
-    async def test_fixture_delete_picker_opens_confirmation(
-        self, admin_cog, mock_interaction_admin, sample_games
-    ):
-        deadline = datetime.now(UTC) + timedelta(days=1)
-        first_id = await admin_cog.db.create_fixture(1, sample_games, deadline)
-        await admin_cog.db.create_fixture(2, sample_games, deadline)
-
-        await admin_cog.fixture_delete.callback(admin_cog, mock_interaction_admin, None)
-
-        view = mock_interaction_admin.response_sent[0]["view"]
-        select = view.children[0]
-        select._values = [str(first_id)]
-        await select.callback(mock_interaction_admin)
-
-        assert "Delete Week 1?" in mock_interaction_admin.response_sent[-1]["content"]
-
-
-class TestResultsEnterLogic:
-    """Test suite for results enter command logic."""
-
-    @pytest.fixture
-    def admin_cog(self, mock_bot, database):
-        mock_bot.db = database
-        return AdminCommands(mock_bot)
-
-    @pytest.mark.asyncio
-    async def test_results_enter_opens_modal(self, admin_cog, mock_interaction_admin, sample_games):
-        deadline = datetime.now(UTC) + timedelta(days=1)
-        await admin_cog.db.create_fixture(1, sample_games, deadline)
-
-        await admin_cog.results_enter.callback(admin_cog, mock_interaction_admin, 1)
-
-        assert isinstance(mock_interaction_admin.modal_sent["modal"], EnterResultsModal)
-        assert mock_interaction_admin.modal_sent["modal"].title == "Enter Week 1 Results"
-
-    @pytest.mark.asyncio
-    async def test_results_enter_rejects_fixture_that_already_has_results(
-        self, admin_cog, mock_interaction_admin, sample_games
-    ):
-        """Re-entering results routes admins to correction/calculate flows instead of starting a DM."""
-        deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_id = await admin_cog.db.create_fixture(1, sample_games, deadline)
-        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
-        mock_interaction_admin.guild_id = mock_interaction_admin.guild.id
-
-        await admin_cog.results_enter.callback(admin_cog, mock_interaction_admin, 1)
-
-        assert "Results already entered" in mock_interaction_admin.response_sent[0]["content"]
-        assert mock_interaction_admin.user.dm_sent == []
+    def test_admin_group_exposes_only_panel_command(self, admin_cog):
+        assert [command.name for command in admin_cog.admin.commands] == ["panel"]
 
 
 class TestResultsCalculateLogic:
@@ -270,148 +133,12 @@ class TestResultsCalculateLogic:
         assert standings[0]["user_name"] == "User1"
         assert standings[0]["total_points"] == 9
 
-    @pytest.mark.asyncio
-    async def test_results_calculate_records_cooldown_and_calls_followup_steps(
-        self, admin_cog, mock_interaction_admin, monkeypatch
-    ):
-        """Successful calculation records cooldown, creates a backup, and posts results."""
-        fixture = {"id": 7, "week_number": 7, "games": ["A - B"], "deadline": datetime.now(UTC)}
-        score_result = FixtureScoreResult(
-            fixture=fixture,
-            results=["2-1"],
-            predictions=[
-                {
-                    "user_id": "123",
-                    "user_name": "User1",
-                    "predictions": ["2-1"],
-                    "is_late": False,
-                    "late_penalty_waived": False,
-                }
-            ],
-            scores=[
-                {
-                    "user_id": "123",
-                    "user_name": "User1",
-                    "points": 3,
-                    "exact_scores": 1,
-                    "correct_results": 1,
-                }
-            ],
-            standings=[
-                {
-                    "user_id": "123",
-                    "user_name": "User1",
-                    "total_points": 3,
-                    "total_exact": 1,
-                    "total_correct": 1,
-                }
-            ],
-            last_fixture=None,
-        )
-        monkeypatch.setattr(admin_cog.db, "get_open_fixtures", AsyncMock(return_value=[fixture]))
-        admin_cog.service.calculate_fixture_scores = AsyncMock(return_value=score_result)
-        admin_cog._create_backup = AsyncMock()
-        admin_cog._post_calculation_to_channel = AsyncMock()
-
-        await admin_cog.results_calculate.callback(admin_cog, mock_interaction_admin, None)
-
-        user_id = str(mock_interaction_admin.user.id)
-        assert admin_cog.get_calculate_cooldown(user_id) is not None
-        admin_cog.service.calculate_fixture_scores.assert_called_once_with(7)
-        admin_cog._create_backup.assert_called_once()
-        admin_cog._post_calculation_to_channel.assert_called_once_with(
-            mock_interaction_admin, score_result
-        )
-
-    @pytest.mark.asyncio
-    async def test_results_calculate_does_not_record_cooldown_when_scoring_fails(
-        self, admin_cog, mock_interaction_admin, monkeypatch
-    ):
-        """Validation failures should not throttle a retry after the admin fixes results state."""
-        fixture = {"id": 7, "week_number": 7, "games": ["A - B"], "deadline": datetime.now(UTC)}
-
-        monkeypatch.setattr(admin_cog.db, "get_open_fixtures", AsyncMock(return_value=[fixture]))
-        admin_cog.service.calculate_fixture_scores = AsyncMock(
-            side_effect=ValueError("No results entered")
-        )
-        admin_cog._create_backup = AsyncMock()
-        admin_cog._post_calculation_to_channel = AsyncMock()
-
-        await admin_cog.results_calculate.callback(admin_cog, mock_interaction_admin, None)
-
-        user_id = str(mock_interaction_admin.user.id)
-        assert admin_cog.get_calculate_cooldown(user_id) is None
-        assert mock_interaction_admin.response_sent[-1]["content"] == "No results entered"
-        admin_cog._create_backup.assert_not_called()
-        admin_cog._post_calculation_to_channel.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_results_calculate_rejects_active_cooldown(
-        self, admin_cog, mock_interaction_admin
-    ):
-        """Cooldown should stop duplicate clicks before any scoring work starts."""
-        user_id = str(mock_interaction_admin.user.id)
-        admin_cog.record_calculate_cooldown(user_id, current_time=now().timestamp())
-        admin_cog.service.calculate_fixture_scores = AsyncMock()
-
-        await admin_cog.results_calculate.callback(admin_cog, mock_interaction_admin, None)
-
-        assert "Please wait" in mock_interaction_admin.response_sent[-1]["content"]
-        admin_cog.service.calculate_fixture_scores.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_results_calculate_reports_missing_open_fixture(
-        self, admin_cog, mock_interaction_admin
-    ):
-        """Missing fixture selection should fail through the slash-command response path."""
-        await admin_cog.results_calculate.callback(admin_cog, mock_interaction_admin, None)
-
-        assert mock_interaction_admin.response_sent[-1]["content"] == "No open fixtures found!"
-
 
 class TestResultsPostFlow:
     @pytest.fixture
     def admin_cog(self, mock_bot, database):
         mock_bot.db = database
         return AdminCommands(mock_bot)
-
-    @pytest.mark.asyncio
-    async def test_results_post_rejects_non_text_channel(self, admin_cog, mock_interaction_admin):
-        """Slash command rejects preview posting outside text channels."""
-        admin_cog.db.get_last_fixture_scores = AsyncMock(
-            return_value={
-                "week_number": 1,
-                "games": ["A - B"],
-                "results": ["2-1"],
-                "scores": [
-                    {
-                        "user_id": "123",
-                        "user_name": "User1",
-                        "points": 3,
-                        "exact_scores": 1,
-                        "correct_results": 1,
-                    }
-                ],
-            }
-        )
-        admin_cog.db.get_standings = AsyncMock(
-            return_value=[
-                {
-                    "user_id": "123",
-                    "user_name": "User1",
-                    "total_points": 3,
-                    "total_exact": 1,
-                    "total_correct": 1,
-                }
-            ]
-        )
-
-        await admin_cog.results_post.callback(admin_cog, mock_interaction_admin)
-
-        assert (
-            mock_interaction_admin.response_sent[0]["content"]
-            == "This command can only be used in text channels."
-        )
 
     @pytest.mark.asyncio
     async def test_post_results_view_posts_without_mentions(
@@ -441,8 +168,8 @@ class TestResultsPostFlow:
                 "total_correct": 1,
             }
         ]
-        view = PostResultsConfirmView(MagicMock(), fixture_data, standings, mock_text_channel)
-        no_button = next(child for child in view.children if child.label == "NO")
+        view = PostResultsConfirmView(fixture_data, standings, mock_text_channel)
+        no_button = next(child for child in view.children if child.label == "No Mentions")
 
         await no_button.callback(mock_interaction_admin)
 
@@ -481,8 +208,8 @@ class TestResultsPostFlow:
                 "total_correct": 1,
             }
         ]
-        view = PostResultsConfirmView(MagicMock(), fixture_data, standings, mock_text_channel)
-        yes_button = next(child for child in view.children if child.label == "YES")
+        view = PostResultsConfirmView(fixture_data, standings, mock_text_channel)
+        yes_button = next(child for child in view.children if child.label == "Mention Users")
 
         await yes_button.callback(mock_interaction_admin)
 
@@ -520,8 +247,8 @@ class TestResultsPostFlow:
             }
         ]
         mock_text_channel.send = AsyncMock(side_effect=RuntimeError("boom"))
-        view = PostResultsConfirmView(MagicMock(), fixture_data, standings, mock_text_channel)
-        no_button = next(child for child in view.children if child.label == "NO")
+        view = PostResultsConfirmView(fixture_data, standings, mock_text_channel)
+        no_button = next(child for child in view.children if child.label == "No Mentions")
 
         await no_button.callback(mock_interaction_admin)
 
@@ -530,6 +257,80 @@ class TestResultsPostFlow:
             == "Results posted without mentions!"
         )
         assert mock_interaction_admin.followup_sent[-1]["content"] == "Failed to post results: boom"
+
+    @pytest.mark.asyncio
+    async def test_post_results_view_aborts_when_acknowledgement_fails(
+        self, mock_text_channel, mock_interaction_admin
+    ):
+        fixture_data = {
+            "week_number": 1,
+            "games": ["A - B"],
+            "results": ["2-1"],
+            "scores": [
+                {
+                    "user_id": "123",
+                    "user_name": "User1",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 1,
+                }
+            ],
+        }
+        standings = [
+            {
+                "user_id": "123",
+                "user_name": "User1",
+                "total_points": 3,
+                "total_exact": 1,
+                "total_correct": 1,
+            }
+        ]
+        mock_interaction_admin.response.edit_message = AsyncMock(
+            side_effect=RuntimeError("expired")
+        )
+        view = PostResultsConfirmView(fixture_data, standings, mock_text_channel)
+        no_button = next(child for child in view.children if child.label == "No Mentions")
+
+        await no_button.callback(mock_interaction_admin)
+
+        assert mock_text_channel.messages_sent == []
+
+    @pytest.mark.asyncio
+    async def test_post_results_view_mentions_branch_aborts_when_acknowledgement_fails(
+        self, mock_text_channel, mock_interaction_admin
+    ):
+        fixture_data = {
+            "week_number": 1,
+            "games": ["A - B"],
+            "results": ["2-1"],
+            "scores": [
+                {
+                    "user_id": "123",
+                    "user_name": "User1",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 1,
+                }
+            ],
+        }
+        standings = [
+            {
+                "user_id": "123",
+                "user_name": "User1",
+                "total_points": 3,
+                "total_exact": 1,
+                "total_correct": 1,
+            }
+        ]
+        mock_interaction_admin.response.edit_message = AsyncMock(
+            side_effect=RuntimeError("expired")
+        )
+        view = PostResultsConfirmView(fixture_data, standings, mock_text_channel)
+        yes_button = next(child for child in view.children if child.label == "Mention Users")
+
+        await yes_button.callback(mock_interaction_admin)
+
+        assert mock_text_channel.messages_sent == []
 
 
 class TestCalculationPostFormat:
@@ -595,85 +396,3 @@ class TestCooldownLogic:
         removed = admin_cog.cleanup_expired_state()
 
         assert removed == 1
-
-
-class TestMultiOpenFixtureTargeting:
-    """Test suite for explicit week targeting when multiple fixtures are open."""
-
-    @pytest.fixture
-    def admin_cog(self, mock_bot, database):
-        mock_bot.db = database
-        return AdminCommands(mock_bot)
-
-    @pytest.mark.asyncio
-    async def test_fixture_delete_requires_week_when_multiple_open(
-        self,
-        admin_cog,
-        mock_interaction_admin,
-        sample_games,
-    ):
-        """Delete command shows a picker when multiple fixtures are open."""
-        deadline = datetime.now(UTC) + timedelta(days=1)
-        await admin_cog.db.create_fixture(1, sample_games, deadline)
-        await admin_cog.db.create_fixture(2, sample_games, deadline)
-
-        await admin_cog.fixture_delete.callback(admin_cog, mock_interaction_admin, None)
-
-        assert len(mock_interaction_admin.response_sent) == 1
-        content = mock_interaction_admin.response_sent[0]["content"]
-        assert "Multiple fixtures are open" in content
-        assert mock_interaction_admin.response_sent[0]["view"] is not None
-
-    @pytest.mark.asyncio
-    async def test_results_enter_targets_explicit_week(
-        self,
-        admin_cog,
-        mock_interaction_admin,
-        sample_games,
-    ):
-        """Results modal targets the requested open fixture week."""
-        deadline = datetime.now(UTC) + timedelta(days=1)
-        await admin_cog.db.create_fixture(1, sample_games, deadline)
-        await admin_cog.db.create_fixture(2, sample_games, deadline)
-
-        await admin_cog.results_enter.callback(admin_cog, mock_interaction_admin, 1)
-
-        assert mock_interaction_admin.modal_sent["modal"].title == "Enter Week 1 Results"
-
-    @pytest.mark.asyncio
-    async def test_results_calculate_requires_week_when_multiple_open(
-        self,
-        admin_cog,
-        mock_interaction_admin,
-        sample_games,
-    ):
-        """Calculate command requires explicit week when more than one fixture is open."""
-        deadline = datetime.now(UTC) + timedelta(days=1)
-        await admin_cog.db.create_fixture(1, sample_games, deadline)
-        await admin_cog.db.create_fixture(2, sample_games, deadline)
-
-        user_id = str(mock_interaction_admin.user.id)
-        await admin_cog.results_calculate.callback(admin_cog, mock_interaction_admin, None)
-
-        assert len(mock_interaction_admin.response_sent) == 1
-        content = mock_interaction_admin.response_sent[0]["content"]
-        assert "Multiple fixtures are currently open" in content
-        assert admin_cog.get_calculate_cooldown(user_id) is None
-
-    @pytest.mark.asyncio
-    async def test_results_enter_rejects_duplicate_open_week_numbers(
-        self,
-        admin_cog,
-        mock_interaction_admin,
-        sample_games,
-    ):
-        """Duplicate open week numbers are rejected to avoid targeting wrong fixture."""
-        deadline = datetime.now(UTC) + timedelta(days=1)
-        await admin_cog.db.create_fixture(5, sample_games, deadline)
-        await admin_cog.db.create_fixture(5, sample_games, deadline)
-
-        await admin_cog.results_enter.callback(admin_cog, mock_interaction_admin, 5)
-
-        assert len(mock_interaction_admin.response_sent) == 1
-        content = mock_interaction_admin.response_sent[0]["content"]
-        assert "More than one open fixture was found for week 5" in content

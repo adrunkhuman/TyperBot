@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from tests.conftest import MockInteraction, MockUser
+from tests.conftest import MockInteraction, MockMessage, MockThread, MockUser
 from typer_bot.commands.admin_commands import AdminCommands
 from typer_bot.commands.admin_panel import (
     CorrectResultsModal,
@@ -14,6 +14,7 @@ from typer_bot.commands.admin_panel import (
     DeleteConfirmView,
     EnterResultsModal,
     FixturesPanelView,
+    PostResultsConfirmView,
     PredictionsPanelView,
     ReplacePredictionModal,
     ResultsPanelView,
@@ -21,6 +22,7 @@ from typer_bot.commands.admin_panel import (
 )
 from typer_bot.commands.admin_panel.fixtures import _cleanup_discord_announcement
 from typer_bot.database import Database
+from typer_bot.utils import now
 
 
 def _get_button(view: discord.ui.View, label: str) -> discord.ui.Button:
@@ -457,7 +459,11 @@ class TestPredictionPanelFlows:
         await admin_cog.db.create_fixture(1, sample_games, datetime.now(UTC) + timedelta(days=1))
 
         unified_view = UnifiedAdminPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
         )
         await unified_view.load_fixture_options()
 
@@ -1000,7 +1006,11 @@ class TestFixturePanelFlows:
         await admin_cog.db.create_fixture(4, sample_games, datetime.now(UTC) + timedelta(days=1))
 
         view = UnifiedAdminPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
         )
         await view.load_fixture_options()
 
@@ -1044,7 +1054,11 @@ class TestFixturePanelFlows:
         )
 
         view = UnifiedAdminPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
         )
         await view.load_fixture_options()
 
@@ -1059,6 +1073,580 @@ class TestFixturePanelFlows:
         confirmation_content = mock_interaction_admin.response_sent[-1]["content"]
         assert "Delete Week 6?" in confirmation_content
         assert "Team A - Team B" in confirmation_content
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_create_fixture_button_opens_modal(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = mock_interaction_admin.channel.id
+        mock_interaction_admin.channel = channel
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        create_button = _get_button(view, "Create Fixture")
+
+        await create_button.callback(mock_interaction_admin)
+
+        assert isinstance(mock_interaction_admin.modal_sent["modal"], CreateFixtureModal)
+
+    def test_unified_panel_layout_contract(self, admin_cog, mock_interaction_admin):
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+
+        labels = [getattr(child, "label", None) for child in view.children]
+        assert labels == [
+            None,
+            None,
+            "Create Fixture",
+            "Delete Fixture",
+            "Jump To Week",
+            "Enter Results",
+            "Calculate Scores",
+            "Correct Results",
+            "Re-post Results",
+            "Replace Prediction",
+            "Toggle Late Waiver",
+        ]
+        rows_by_label = {
+            getattr(child, "label", None): child.row
+            for child in view.children
+            if getattr(child, "label", None)
+        }
+        assert rows_by_label["Create Fixture"] == 2
+        assert rows_by_label["Delete Fixture"] == 2
+        assert rows_by_label["Jump To Week"] == 2
+        assert rows_by_label["Enter Results"] == 3
+        assert rows_by_label["Calculate Scores"] == 3
+        assert rows_by_label["Correct Results"] == 3
+        assert rows_by_label["Re-post Results"] == 3
+        assert rows_by_label["Replace Prediction"] == 4
+        assert rows_by_label["Toggle Late Waiver"] == 4
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_hides_review_pending_button_without_pending_partials(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view._refresh_items()
+
+        assert _has_button(view, "Review Late") is False
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_shows_review_pending_button_when_pending_partials_exist(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            55, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+
+        assert _has_button(view, "Review Late") is True
+        assert _get_button(view, "Review Late").row == 4
+        assert _get_button(view, "Review Late").style == discord.ButtonStyle.primary
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_review_pending_button_jumps_to_pending_submission(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            56, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+
+        review_button = _get_button(view, "Review Late")
+        await review_button.callback(mock_interaction_admin)
+
+        assert view.selection.fixture_label == "Week 56 [OPEN]"
+        assert view.selection.user_id == "111"
+        assert _has_button(view, "Approve Late") is True
+        assert _get_button(view, "Approve Late").row == 4
+        assert _get_button(view, "Approve Late").style == discord.ButtonStyle.success
+        assert _get_button(view, "Reject Late").row == 4
+        assert _get_button(view, "Reject Late").style == discord.ButtonStyle.danger
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_review_pending_button_cycles_pending_submissions(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_a = await admin_cog.db.create_fixture(
+            57, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        fixture_b = await admin_cog.db.create_fixture(
+            58, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_a,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+        await admin_cog.db.save_prediction(
+            fixture_b,
+            "222",
+            "User Two",
+            ["2-1"],
+            True,
+            predicted_game_indexes=[0],
+            pending_partial_approval=True,
+        )
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view._refresh_items()
+
+        review_button = _get_button(view, "Review Late")
+        await review_button.callback(mock_interaction_admin)
+        first_selection = (view.selection.fixture_id, view.selection.user_id)
+
+        await review_button.callback(mock_interaction_admin)
+        second_selection = (view.selection.fixture_id, view.selection.user_id)
+
+        assert first_selection != second_selection
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_create_fixture_button_uses_parent_channel_from_thread(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        parent_channel = MagicMock(spec=discord.TextChannel)
+        parent_channel.id = 123456
+        thread = MagicMock(spec=discord.Thread)
+        thread.parent = parent_channel
+        mock_interaction_admin.channel = thread
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        create_button = _get_button(view, "Create Fixture")
+        await create_button.callback(mock_interaction_admin)
+
+        assert mock_interaction_admin.modal_sent["modal"].channel is parent_channel
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_create_fixture_button_rejects_invalid_context(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        mock_interaction_admin.channel = MagicMock()
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        create_button = _get_button(view, "Create Fixture")
+        await create_button.callback(mock_interaction_admin)
+
+        assert "text channel" in mock_interaction_admin.response_sent[-1]["content"].lower()
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_enter_results_button_opens_modal(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            44, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+
+        enter_button = _get_button(view, "Enter Results")
+        await enter_button.callback(mock_interaction_admin)
+
+        assert isinstance(mock_interaction_admin.modal_sent["modal"], EnterResultsModal)
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_enter_results_button_rejects_existing_results(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            46, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+
+        enter_button = _get_button(view, "Enter Results")
+        await enter_button.callback(mock_interaction_admin)
+
+        assert "Correct Results" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_calculate_scores_button_uses_admin_helpers(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            45, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        score_result = MagicMock()
+        admin_cog.service.calculate_fixture_scores = AsyncMock(return_value=score_result)
+        admin_cog._create_backup = AsyncMock()
+        admin_cog._post_calculation_to_channel = AsyncMock()
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+
+        calculate_button = _get_button(view, "Calculate Scores")
+        await calculate_button.callback(mock_interaction_admin)
+
+        assert admin_cog.get_calculate_cooldown(str(mock_interaction_admin.user.id)) is not None
+        admin_cog.service.calculate_fixture_scores.assert_awaited_once_with(fixture_id)
+        admin_cog._create_backup.assert_awaited_once()
+        admin_cog._post_calculation_to_channel.assert_awaited_once_with(
+            mock_interaction_admin, score_result
+        )
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_calculate_scores_button_rejects_active_cooldown(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            47, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        admin_cog.record_calculate_cooldown(
+            str(mock_interaction_admin.user.id), current_time=now().timestamp()
+        )
+        admin_cog.service.calculate_fixture_scores = AsyncMock()
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+
+        calculate_button = _get_button(view, "Calculate Scores")
+        await calculate_button.callback(mock_interaction_admin)
+
+        assert "Please wait" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_calculate_scores_button_handles_service_error(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            48, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        admin_cog.service.calculate_fixture_scores = AsyncMock(
+            side_effect=ValueError("No results entered")
+        )
+        admin_cog._create_backup = AsyncMock()
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+
+        calculate_button = _get_button(view, "Calculate Scores")
+        await calculate_button.callback(mock_interaction_admin)
+
+        assert mock_interaction_admin.response_sent[-1]["content"] == "No results entered"
+        admin_cog._create_backup.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_post_results_button_opens_confirmation(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = mock_interaction_admin.channel.id
+        mock_interaction_admin.channel = channel
+        admin_cog.db.get_last_fixture_scores = AsyncMock(
+            return_value={
+                "week_number": 1,
+                "games": ["A - B"],
+                "results": ["2-1"],
+                "scores": [
+                    {
+                        "user_id": "123",
+                        "user_name": "User1",
+                        "points": 3,
+                        "exact_scores": 1,
+                        "correct_results": 1,
+                    }
+                ],
+            }
+        )
+        admin_cog.db.get_standings = AsyncMock(
+            return_value=[
+                {
+                    "user_id": "123",
+                    "user_name": "User1",
+                    "total_points": 3,
+                    "total_exact": 1,
+                    "total_correct": 1,
+                }
+            ]
+        )
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        post_button = _get_button(view, "Re-post Results")
+        await post_button.callback(mock_interaction_admin)
+
+        assert isinstance(mock_interaction_admin.response_sent[-1]["view"], PostResultsConfirmView)
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_jump_to_week_reaches_older_open_fixture(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        for week in range(1, 28):
+            await admin_cog.db.create_fixture(week, sample_games, deadline)
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+
+        assert all(option.label != "Week 1 [OPEN]" for option in view.fixture_select.options)
+
+        jump_button = _get_button(view, "Jump To Week")
+        await jump_button.callback(mock_interaction_admin)
+        modal = mock_interaction_admin.modal_sent["modal"]
+        modal.week_input._value = "1"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert view.selection.fixture_label == "Week 1 [OPEN]"
+        assert "Fixture: Week 1 [OPEN]" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_jump_to_week_rejects_invalid_input(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        jump_button = _get_button(view, "Jump To Week")
+        await jump_button.callback(mock_interaction_admin)
+        modal = mock_interaction_admin.modal_sent["modal"]
+        modal.week_input._value = "abc"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert "whole number" in mock_interaction_admin.response_sent[-1]["content"]
+        assert view.selection.fixture_id is None
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_jump_to_week_rejects_duplicate_open_weeks(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        await admin_cog.db.create_fixture(5, sample_games, deadline)
+        await admin_cog.db.create_fixture(5, sample_games, deadline)
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        jump_button = _get_button(view, "Jump To Week")
+        await jump_button.callback(mock_interaction_admin)
+        modal = mock_interaction_admin.modal_sent["modal"]
+        modal.week_input._value = "5"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert "More than one open fixture" in mock_interaction_admin.response_sent[-1]["content"]
+        assert view.selection.fixture_id is None
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_post_results_button_rejects_non_text_channel(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        admin_cog.db.get_last_fixture_scores = AsyncMock(return_value={"scores": []})
+        admin_cog.db.get_standings = AsyncMock(return_value=[])
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        post_button = _get_button(view, "Re-post Results")
+        await post_button.callback(mock_interaction_admin)
+
+        assert "text channels" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_post_results_button_rejects_missing_scores(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = mock_interaction_admin.channel.id
+        mock_interaction_admin.channel = channel
+        admin_cog.db.get_last_fixture_scores = AsyncMock(return_value=None)
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        post_button = _get_button(view, "Re-post Results")
+        await post_button.callback(mock_interaction_admin)
+
+        assert "No completed fixtures found" in mock_interaction_admin.response_sent[-1]["content"]
 
     @pytest.mark.asyncio
     async def test_fixture_panel_delete_confirm_shows_error_on_db_failure(
@@ -1246,7 +1834,7 @@ class TestResultsPanelFlows:
         await correct_button.callback(mock_interaction_admin)
 
         assert (
-            "Use `/admin results enter` first"
+            "Enter Results button in `/admin panel`"
             in mock_interaction_admin.response_sent[-1]["content"]
         )
 
@@ -1345,7 +1933,11 @@ class TestResultsPanelFlows:
         admin_cog.bot.get_user.return_value = None
 
         view = UnifiedAdminPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -1387,7 +1979,11 @@ class TestResultsPanelFlows:
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
 
         view = UnifiedAdminPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -1403,6 +1999,506 @@ class TestResultsPanelFlows:
         assert view.selection.user_id is None
         assert view.user_select.disabled is True
         assert "Fixture no longer exists" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_shows_partial_approval_buttons_for_pending_prediction(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            50, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        assert _has_button(view, "Approve Late") is True
+        assert _has_button(view, "Reject Late") is True
+        assert _has_button(view, "Replace Prediction") is False
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_approve_partial_prediction(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            51, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = target_user
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        approve_button = _get_button(view, "Approve Late")
+        await approve_button.callback(mock_interaction_admin)
+
+        prediction = await admin_cog.db.get_prediction(fixture_id, "111")
+        assert prediction is not None
+        assert prediction["pending_partial_approval"] is False
+        assert prediction["is_late"] == 0
+        assert "approved" in target_user.dm_sent[-1].lower()
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_reject_partial_prediction(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            52, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = target_user
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        reject_button = _get_button(view, "Reject Late")
+        await reject_button.callback(mock_interaction_admin)
+
+        assert await admin_cog.db.get_prediction(fixture_id, "111") is None
+        assert "rejected" in target_user.dm_sent[-1].lower()
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_approve_partial_prediction_edits_public_bot_post(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            70, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.update_fixture_announcement(
+            fixture_id,
+            message_id="789012",
+            channel_id="123456",
+        )
+        thread = MockThread(thread_id="789012", guild=mock_interaction_admin.guild)
+        public_message = await thread.send(
+            "**Prediction from <@111> · Week 70**\n\n2. Team C - Team D **1-1**\n3. Team E - Team F **0-2**\n\n⏳ Late prediction awaiting admin review."
+        )
+        admin_cog.bot.get_channel.side_effect = lambda channel_id: (
+            thread if channel_id == 789012 else None
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+            public_message_id=str(public_message.id),
+            public_message_kind="bot_post",
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = target_user
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        approve_button = _get_button(view, "Approve Late")
+        await approve_button.callback(mock_interaction_admin)
+
+        assert "approved by an admin" in public_message.content
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_reject_partial_prediction_edits_public_bot_post(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            72, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.update_fixture_announcement(
+            fixture_id,
+            message_id="789012",
+            channel_id="123456",
+        )
+        thread = MockThread(thread_id="789012", guild=mock_interaction_admin.guild)
+        public_message = await thread.send(
+            "**Prediction from <@111> · Week 72**\n\n2. Team C - Team D **1-1**\n3. Team E - Team F **0-2**\n\n⏳ Late prediction awaiting admin review."
+        )
+        admin_cog.bot.get_channel.side_effect = lambda channel_id: (
+            thread if channel_id == 789012 else None
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+            public_message_id=str(public_message.id),
+            public_message_kind="bot_post",
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = target_user
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        reject_button = _get_button(view, "Reject Late")
+        await reject_button.callback(mock_interaction_admin)
+
+        assert "rejected by an admin" in public_message.content
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_reject_partial_prediction_updates_thread_reaction(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            71, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.update_fixture_announcement(
+            fixture_id,
+            message_id="789012",
+            channel_id="123456",
+        )
+        thread = MockThread(thread_id="789012", guild=mock_interaction_admin.guild)
+        user_message = MockMessage(
+            content="Team C - Team D 1-1\nTeam E - Team F 0-2",
+            message_id="555555",
+            author=MockUser("111", "User One"),
+            channel=thread,
+            guild=mock_interaction_admin.guild,
+        )
+        thread.register_message(user_message)
+        admin_cog.bot.get_channel.side_effect = lambda channel_id: (
+            thread if channel_id == 789012 else None
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+            public_message_id=str(user_message.id),
+            public_message_kind="thread_message",
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = target_user
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        reject_button = _get_button(view, "Reject Late")
+        await reject_button.callback(mock_interaction_admin)
+
+        assert ("⏳", admin_cog.bot.user.id) in user_message.reactions_removed
+        assert "❌" in user_message.reactions_added
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_approve_partial_prediction_updates_thread_reaction(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            73, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.update_fixture_announcement(
+            fixture_id,
+            message_id="789012",
+            channel_id="123456",
+        )
+        thread = MockThread(thread_id="789012", guild=mock_interaction_admin.guild)
+        user_message = MockMessage(
+            content="Team C - Team D 1-1\nTeam E - Team F 0-2",
+            message_id="555555",
+            author=MockUser("111", "User One"),
+            channel=thread,
+            guild=mock_interaction_admin.guild,
+        )
+        thread.register_message(user_message)
+        admin_cog.bot.get_channel.side_effect = lambda channel_id: (
+            thread if channel_id == 789012 else None
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+            public_message_id=str(user_message.id),
+            public_message_kind="thread_message",
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = target_user
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        approve_button = _get_button(view, "Approve Late")
+        await approve_button.callback(mock_interaction_admin)
+
+        assert ("⏳", admin_cog.bot.user.id) in user_message.reactions_removed
+        assert "✅" in user_message.reactions_added
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_approve_partial_prediction_ignores_bad_fixture_thread_id(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            74, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.update_fixture_announcement(
+            fixture_id,
+            message_id="not-a-thread-id",
+            channel_id="123456",
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+            public_message_id="555555",
+            public_message_kind="thread_message",
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = target_user
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        approve_button = _get_button(view, "Approve Late")
+        await approve_button.callback(mock_interaction_admin)
+
+        prediction = await admin_cog.db.get_prediction(fixture_id, "111")
+        assert prediction is not None
+        assert prediction["pending_partial_approval"] is False
+        assert "approved" in target_user.dm_sent[-1].lower()
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_approve_partial_prediction_recalculates_scores(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            53, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "999",
+            "Full User",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        await admin_cog.service.calculate_fixture_scores(fixture_id)
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = target_user
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        approve_button = _get_button(view, "Approve Late")
+        await approve_button.callback(mock_interaction_admin)
+
+        standings = await admin_cog.db.get_standings()
+        assert {row["user_id"] for row in standings} == {"999", "111"}
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_reject_partial_prediction_recalculates_scores(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            54, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "999",
+            "Full User",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        await admin_cog.service.calculate_fixture_scores(fixture_id)
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+        target_user = MockUser("111", "User One")
+        admin_cog.bot.get_user.return_value = target_user
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        view.user_select._values = ["111"]
+        await view.user_select.callback(mock_interaction_admin)
+
+        reject_button = _get_button(view, "Reject Late")
+        await reject_button.callback(mock_interaction_admin)
+
+        standings = await admin_cog.db.get_standings()
+        assert {row["user_id"] for row in standings} == {"999"}
 
 
 class TestAdminPanelModals:

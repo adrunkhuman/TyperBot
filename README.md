@@ -20,12 +20,17 @@ Discord bot for weekly football prediction leagues. Admins create fixtures and e
 - `/standings` - show the leaderboard and latest scored fixture
 
 ### Admin commands
-- `/admin panel` - open the admin panel for deletion, overrides, waivers, and result correction
-- `/admin fixture create` - create a fixture by modal and post its prediction thread
-- `/admin fixture delete [week]` - delete an open fixture
-- `/admin results enter [week]` - enter actual results by modal
-- `/admin results calculate [week]` - calculate scores and post results
-- `/admin results post` - repost results with optional mentions
+- `/admin panel` - open the main admin surface
+
+Inside the panel you can:
+- create fixtures
+- delete fixtures
+- jump to older open weeks not shown in the quick list
+- enter or correct results
+- calculate scores
+- re-post the latest completed results with optional mentions
+- replace predictions
+- toggle late waivers
 
 Admins need a Discord role named `Admin` or `typer-admin`.
 
@@ -44,6 +49,12 @@ Admins need a Discord role named `Admin` or `typer-admin`.
 - Reply in the fixture thread with one line per match.
 - Run `/predict` anywhere in the server to fill a modal, then have the bot post your prediction publicly into the fixture thread.
 - To replace a saved prediction, use `/predict` again; the bot posts a new public `Updated prediction` message in the thread.
+- Partial predictions are allowed, but before the deadline players should still try to fill the whole fixture. Each partial line must name the game it applies to.
+- Missing games count as no prediction.
+- Late predictions with missing games stay under admin review until an admin approves or rejects them.
+- If approved, the submitted lines count normally and any missing games still count as no prediction.
+- If rejected, that late submission is discarded and does not count.
+- Public review status stays visible in the fixture thread: `/predict` posts are edited after review, and thread replies switch from `⏳` to `✅` or `❌`.
 
 Example:
 
@@ -57,12 +68,13 @@ Team E - Team F 3:2
 - Exact score: 3 points
 - Correct outcome: 1 point
 - Wrong outcome: 0 points
-- Late predictions: 0 points unless an admin waives the penalty
+- Late full predictions: 0 points unless an admin waives the penalty
+- Late predictions with missing games: excluded from scoring until reviewed by an admin
 
 ## Operational constraints
 - Match data, predictions, results, and scores are stored in SQLite.
 - Short-lived cooldowns are kept in memory.
-- This includes the thread-post rate limiter and the `/admin results calculate` cooldown.
+- This includes the thread-post rate limiter and the score-calculation cooldown.
 - The bot is intentionally single-process for v1. If the process restarts, in-memory cooldowns reset.
 
 ## Configuration
@@ -161,7 +173,7 @@ uv run ty check typer_bot
 
 ## Backup and Restore
 
-- Automatic: the database is backed up after each successful `/admin results calculate`. The bot keeps the latest 10 backups in `BACKUP_DIR`.
+- Automatic: the database is backed up after each successful score calculation. The bot keeps the latest 10 backups in `BACKUP_DIR`.
 - Manual restore: run from the Railway shell.
 
 ```bash

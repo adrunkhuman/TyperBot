@@ -5,6 +5,7 @@ from typer_bot.utils.prediction_parser import (
     format_predictions_preview,
     format_standings,
     parse_line_predictions,
+    parse_prediction_lines,
     parse_predictions,
 )
 
@@ -118,6 +119,60 @@ class TestParseLinePredictions:
         predictions, errors = parse_line_predictions(input_text, games)
         assert predictions == ["2-1", "1-0"]
         assert not errors
+
+
+class TestParsePredictionLines:
+    def test_partial_mapping_by_game_name(self):
+        games = ["Team A - Team B", "Team C - Team D", "Team E - Team F"]
+        input_text = "Team C - Team D 1-1\nTeam E - Team F 0-2"
+
+        predictions, game_indexes, errors = parse_prediction_lines(
+            input_text, games, allow_partial=True
+        )
+
+        assert predictions == ["1-1", "0-2"]
+        assert game_indexes == [1, 2]
+        assert errors == []
+
+    def test_full_prediction_falls_back_to_positional_matching(self):
+        games = ["Team A - Team B", "Team C - Team D"]
+        predictions, game_indexes, errors = parse_prediction_lines(
+            "2-1\n1-0", games, allow_partial=False
+        )
+
+        assert predictions == ["2-1", "1-0"]
+        assert game_indexes == [0, 1]
+        assert errors == []
+
+    def test_partial_requires_game_names(self):
+        games = ["Team A - Team B", "Team C - Team D"]
+        predictions, game_indexes, errors = parse_prediction_lines("2-1", games, allow_partial=True)
+
+        assert predictions == []
+        assert game_indexes == []
+        assert "Could not match that line" in errors[0]
+
+    def test_partial_cancelled_games_map_by_name(self):
+        games = ["Team A - Team B", "Team C - Team D", "Team E - Team F"]
+        predictions, game_indexes, errors = parse_prediction_lines(
+            "Team E - Team F x", games, allow_partial=True
+        )
+
+        assert predictions == ["x"]
+        assert game_indexes == [2]
+        assert errors == []
+
+    def test_partial_mapping_preserves_team_names_starting_with_number(self):
+        games = ["1. FC Koln - Bayern", "Team C - Team D"]
+        predictions, game_indexes, errors = parse_prediction_lines(
+            "1. FC Koln - Bayern 2:1",
+            games,
+            allow_partial=True,
+        )
+
+        assert predictions == ["2-1"]
+        assert game_indexes == [0]
+        assert errors == []
 
     def test_mixed_separators_in_lines(self):
         """Lines with mixed separators."""

@@ -47,6 +47,7 @@ class MockThread(discord.Thread):
         self.reactions_added = []
         self.reactions_cleared = False
         self.messages_sent = []
+        self.message_objects = {}
 
     @property
     def id(self):
@@ -76,8 +77,24 @@ class MockThread(discord.Thread):
         self.messages_sent.append(msg)
         mock_msg = MagicMock()
         mock_msg.id = len(self.messages_sent)
+        mock_msg.content = content
         mock_msg.delete = AsyncMock()
+        mock_msg.edit = AsyncMock(
+            side_effect=lambda **edit_kwargs: setattr(
+                mock_msg, "content", edit_kwargs.get("content", mock_msg.content)
+            )
+        )
+        mock_msg.add_reaction = AsyncMock()
+        mock_msg.remove_reaction = AsyncMock()
+        self.message_objects[mock_msg.id] = mock_msg
         return mock_msg
+
+    async def fetch_message(self, message_id: int):
+        return self.message_objects[message_id]
+
+    def register_message(self, message):
+        self.message_objects[message.id] = message
+        return message
 
 
 class MockGuild:
@@ -85,6 +102,7 @@ class MockGuild:
         self.id = int(guild_id)
         self.name = "Test Guild"
         self._members = {}
+        self.roles = []
 
     def add_member(self, user_id: str, roles: list[str] = None):
         mock_member = MagicMock()
@@ -211,6 +229,7 @@ def handler(mock_bot, database):
 
 class MockRole:
     def __init__(self, name: str):
+        self.id = abs(hash(name)) % 1000000 or 1
         self.name = name
 
 

@@ -128,6 +128,55 @@ class TestOnMessage:
         assert "Late prediction" in mock_message.author.dm_sent[0]
 
     @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixture_with_thread")
+    async def test_accepts_pre_deadline_partial_thread_prediction(
+        self, handler, fixture_with_thread, mock_message
+    ):
+        mock_message.content = "Team C - Team D 1-1\nTeam E - Team F 0-2"
+        mock_message.channel.id = 789012
+
+        result = await handler.on_message(mock_message)
+
+        assert result is True
+        predictions = await handler.db.get_all_predictions(
+            fixture_with_thread["id"], include_pending=True
+        )
+        assert predictions[0]["predicted_game_indexes"] == [1, 2]
+        assert predictions[0]["pending_partial_approval"] is False
+        assert "Partial prediction saved" in mock_message.author.dm_sent[-1]
+        assert "fill the rest" in mock_message.author.dm_sent[-1]
+
+    @pytest.mark.asyncio
+    async def test_marks_late_partial_thread_prediction_pending(
+        self, handler, database, mock_message, sample_games
+    ):
+        deadline = datetime.now(UTC) - timedelta(hours=1)
+        fixture_id = await database.create_fixture(1, sample_games, deadline)
+        await database.update_fixture_announcement(
+            fixture_id, message_id="789012", channel_id="123456"
+        )
+        admin_role = MagicMock()
+        admin_role.name = "typer-admin"
+        admin_role.id = 4242
+        mock_message.guild.roles = [admin_role]
+        mock_message.content = "Team C - Team D 1-1\nTeam E - Team F 0-2"
+        mock_message.channel.id = 789012
+
+        result = await handler.on_message(mock_message)
+
+        assert result is True
+        assert "⏳" in mock_message.reactions_added
+        predictions = await handler.db.get_all_predictions(fixture_id, include_pending=True)
+        assert predictions[0]["pending_partial_approval"] is True
+        assert predictions[0]["predicted_game_indexes"] == [1, 2]
+        assert predictions[0]["public_message_id"] == str(mock_message.id)
+        assert predictions[0]["public_message_kind"] == "thread_message"
+        assert "awaiting admin review" in mock_message.author.dm_sent[-1]
+        assert "awaiting admin review" in mock_message.channel.messages_sent[-1]["content"]
+        assert "missing games" in mock_message.channel.messages_sent[-1]["content"]
+        assert "<@&4242>" in mock_message.channel.messages_sent[-1]["content"]
+
+    @pytest.mark.asyncio
     async def test_rejects_thread_resubmission_without_overwriting_prediction(
         self,
         handler,

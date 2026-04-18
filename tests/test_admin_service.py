@@ -8,6 +8,12 @@ import pytest
 import typer_bot.database.predictions as predictions_module
 import typer_bot.database.results as results_module
 from typer_bot.services import AdminService
+from typer_bot.services.errors import (
+    FixtureNotFoundError,
+    NoPredictionsSavedError,
+    PredictionDisappearedError,
+    PredictionNotFoundError,
+)
 
 
 class TestLatePenaltyWaiver:
@@ -84,6 +90,73 @@ class TestLatePenaltyWaiver:
         prediction = await database.get_prediction(fixture_id, "late-user")
         assert prediction is not None
         assert prediction["late_penalty_waived"] == 0
+
+
+class TestAdminFlowErrors:
+    @pytest.mark.asyncio
+    async def test_get_fixture_prediction_summary_raises_typed_fixture_not_found(self, database):
+        service = AdminService(database)
+
+        with pytest.raises(FixtureNotFoundError):
+            await service.get_fixture_prediction_summary(999)
+
+    @pytest.mark.asyncio
+    async def test_get_fixture_prediction_summary_raises_typed_no_predictions(
+        self, database, sample_games
+    ):
+        service = AdminService(database)
+        fixture_id = await database.create_fixture(
+            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+
+        with pytest.raises(NoPredictionsSavedError):
+            await service.get_fixture_prediction_summary(fixture_id)
+
+    @pytest.mark.asyncio
+    async def test_replace_prediction_raises_typed_prediction_not_found(
+        self, database, sample_games
+    ):
+        service = AdminService(database)
+        fixture_id = await database.create_fixture(
+            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+
+        with pytest.raises(PredictionNotFoundError):
+            await service.replace_prediction(
+                fixture_id,
+                "missing-user",
+                "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2",
+                "admin-1",
+            )
+
+    @pytest.mark.asyncio
+    async def test_toggle_waiver_raises_typed_prediction_disappeared(
+        self, database, sample_games, monkeypatch
+    ):
+        service = AdminService(database)
+        fixture_id = await database.create_fixture(
+            1, sample_games, datetime.now(UTC) - timedelta(hours=2)
+        )
+        await database.save_prediction(
+            fixture_id,
+            "late-user",
+            "Late User",
+            ["2-1", "1-1", "0-2"],
+            True,
+        )
+
+        original_get_prediction = database.get_prediction
+
+        async def disappear_after_toggle(request_fixture_id: int, user_id: str):
+            prediction = await original_get_prediction(request_fixture_id, user_id)
+            if prediction is not None and prediction["late_penalty_waived"]:
+                return None
+            return prediction
+
+        monkeypatch.setattr(database, "get_prediction", disappear_after_toggle)
+
+        with pytest.raises(PredictionDisappearedError, match="waiver update"):
+            await service.toggle_late_penalty_waiver(fixture_id, "late-user")
 
 
 class TestPredictionReplacement:
@@ -313,3 +386,150 @@ class TestResultCorrection:
             )
 
         assert await database.get_results(fixture_id) == ["1-0", "1-1", "0-0"]
+
+
+class TestPartialPredictionApproval:
+    @pytest.mark.asyncio
+    async def test_pending_partial_predictions_are_excluded_from_scoring(
+        self,
+        database,
+        sample_games,
+    ):
+        service = AdminService(database)
+        fixture_id = await database.create_fixture(
+            3, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await database.save_prediction(
+            fixture_id,
+            "111",
+            "Full User",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        await database.save_prediction(
+            fixture_id,
+            "222",
+            "Pending User",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+
+        result = await service.calculate_fixture_scores(fixture_id)
+
+        assert [score["user_id"] for score in result.scores] == ["111"]
+
+    @pytest.mark.asyncio
+    async def test_approved_partial_prediction_scores_only_selected_rows(
+        self,
+        database,
+        sample_games,
+    ):
+        service = AdminService(database)
+        fixture_id = await database.create_fixture(
+            4, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await database.save_prediction(
+            fixture_id,
+            "222",
+            "Partial User",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+
+        _fixture, approved_prediction, recalculation = await service.approve_partial_prediction(
+            fixture_id,
+            "222",
+            "admin-1",
+        )
+
+        assert approved_prediction["pending_partial_approval"] is False
+        assert recalculation is None
+
+        result = await service.calculate_fixture_scores(fixture_id)
+
+        assert result.scores[0]["user_id"] == "222"
+        assert result.scores[0]["points"] == 6
+
+    @pytest.mark.asyncio
+    async def test_approve_partial_prediction_recalculates_scored_fixture(
+        self,
+        database,
+        sample_games,
+    ):
+        service = AdminService(database)
+        fixture_id = await database.create_fixture(
+            5, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await database.save_prediction(
+            fixture_id,
+            "111",
+            "Full User",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        await service.calculate_fixture_scores(fixture_id)
+        await database.save_prediction(
+            fixture_id,
+            "222",
+            "Pending User",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+
+        _fixture, approved_prediction, recalculation = await service.approve_partial_prediction(
+            fixture_id,
+            "222",
+            "admin-1",
+        )
+
+        assert approved_prediction["pending_partial_approval"] is False
+        assert recalculation is not None
+        standings = await database.get_standings()
+        assert {row["user_id"] for row in standings} == {"111", "222"}
+
+    @pytest.mark.asyncio
+    async def test_reject_partial_prediction_recalculates_scored_fixture(
+        self,
+        database,
+        sample_games,
+    ):
+        service = AdminService(database)
+        fixture_id = await database.create_fixture(
+            6, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await database.save_prediction(
+            fixture_id,
+            "111",
+            "Full User",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        await service.calculate_fixture_scores(fixture_id)
+        await database.save_prediction(
+            fixture_id,
+            "222",
+            "Pending User",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+
+        _fixture, prediction, recalculation = await service.reject_partial_prediction(
+            fixture_id,
+            "222",
+        )
+
+        assert prediction["pending_partial_approval"] is True
+        assert recalculation is not None
+        assert await database.get_prediction(fixture_id, "222") is None
