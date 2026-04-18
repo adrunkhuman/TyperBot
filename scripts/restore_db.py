@@ -8,51 +8,14 @@ already present, it is copied to a timestamped backup file first.
 
 import argparse
 import os
-import re
 import shutil
 import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
 
+from typer_bot.utils.backup_sql import validate_backup_sql
 from typer_bot.utils.config import DB_PATH
-
-
-def validate_backup_sql(sql_content: str) -> bool:
-    """Reject obviously unsafe SQL before attempting a restore.
-
-    This is a best-effort blacklist, not a real SQL parser. Real restore safety
-    comes from loading the SQL into a temporary database and replacing the live
-    DB only if that restore completes successfully.
-    """
-    normalized = re.sub(r"--.*?$", "", sql_content, flags=re.MULTILINE)
-    normalized = re.sub(r"/\*.*?\*/", "", normalized, flags=re.DOTALL)
-    normalized = re.sub(r"^\s*$", "", normalized, flags=re.MULTILINE)
-    normalized = normalized.upper()
-
-    dangerous = [
-        "DROP",
-        "DELETE",
-        "UPDATE",
-        "ALTER",
-        "TRUNCATE",
-        "REPLACE",
-        "ATTACH",
-        "DETACH",
-        "PRAGMA",
-    ]
-
-    for keyword in dangerous:
-        if re.search(rf"\b{keyword}\b", normalized):
-            return False
-
-    lines = normalized.split("\n")
-    for line in lines:
-        line = line.strip()
-        if line.startswith("CREATE") and ("TABLE" not in line or "IF NOT EXISTS" not in line):
-            return False
-
-    return True
 
 
 def main():
@@ -71,7 +34,7 @@ def main():
     sql_content = backup_path.read_text(encoding="utf-8")
     if not validate_backup_sql(sql_content):
         print("Error: Backup file contains unsafe SQL")
-        print("Only CREATE TABLE IF NOT EXISTS and INSERT statements are allowed")
+        print("Only SQLite dump statements emitted by the bot backup flow are allowed")
         sys.exit(1)
 
     print("\nWarning: This will REPLACE the current database!")

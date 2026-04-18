@@ -2,11 +2,13 @@
 
 import sqlite3
 import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from scripts.restore_db import main, validate_backup_sql
+from typer_bot.utils.db_backup import create_backup
 
 VALID_SQL = """\
 CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, name TEXT);
@@ -29,7 +31,45 @@ class TestValidateBackupSql:
         assert validate_backup_sql("DELETE FROM users;") is False
 
     def test_rejects_bare_create_without_if_not_exists(self):
-        assert validate_backup_sql("CREATE TABLE users (id INTEGER);") is False
+        assert validate_backup_sql("DROP TABLE users;") is False
+
+    def test_accepts_real_sqlite_dump_output(self, tmp_path):
+        db_path = tmp_path / "source.db"
+        conn = sqlite3.connect(db_path)
+        conn.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT)")
+        conn.execute("CREATE UNIQUE INDEX idx_sample_note ON sample(note)")
+        conn.execute("INSERT INTO sample (note) VALUES ('contains DROP text')")
+        conn.commit()
+        conn.close()
+
+        backup_file = create_backup(str(db_path), str(tmp_path / "backups"))
+        sql_content = Path(backup_file).read_text(encoding="utf-8")
+
+        assert validate_backup_sql(sql_content) is True
+
+    def test_accepts_keywords_inside_string_literals(self):
+        sql_content = (
+            "BEGIN TRANSACTION;\n"
+            "CREATE TABLE sample (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT);\n"
+            "INSERT INTO sample VALUES(1, 'DELETE DROP UPDATE ALTER');\n"
+            'DELETE FROM "sqlite_sequence";\n'
+            "INSERT INTO sqlite_sequence VALUES('sample',1);\n"
+            "COMMIT;"
+        )
+
+        assert validate_backup_sql(sql_content) is True
+
+    def test_accepts_comment_tokens_inside_string_literals(self):
+        sql_content = (
+            "BEGIN TRANSACTION;\n"
+            "CREATE TABLE sample (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT);\n"
+            "INSERT INTO sample VALUES(1, 'alpha -- beta /* gamma */');\n"
+            'DELETE FROM "sqlite_sequence";\n'
+            "INSERT INTO sqlite_sequence VALUES('sample',1);\n"
+            "COMMIT;"
+        )
+
+        assert validate_backup_sql(sql_content) is True
 
 
 class TestRestoreAtomic:
@@ -151,3 +191,35 @@ class TestRestoreAtomic:
         old_rows = backup_conn.execute("SELECT x FROM old_table").fetchall()
         backup_conn.close()
         assert old_rows == [("before",)]
+
+    def test_restore_accepts_real_created_backup_output(self, tmp_path):
+        source_db = tmp_path / "source.db"
+        conn = sqlite3.connect(source_db)
+        conn.execute("CREATE TABLE sample (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT)")
+        conn.execute("CREATE UNIQUE INDEX idx_sample_note ON sample(note)")
+        conn.execute("INSERT INTO sample (note) VALUES (?)", ("alpha -- beta /* gamma */",))
+        conn.commit()
+        conn.close()
+
+        backup_file = create_backup(str(source_db), str(tmp_path / "backups"))
+        restore_target = tmp_path / "typer.db"
+
+        with (
+            patch("scripts.restore_db.DB_PATH", str(restore_target)),
+            patch("builtins.input", return_value="YES"),
+        ):
+            sys.argv = ["restore_db", backup_file]
+            main()
+
+        conn = sqlite3.connect(restore_target)
+        rows = conn.execute("SELECT id, note FROM sample").fetchall()
+        indexes = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='sample'"
+            ).fetchall()
+        }
+        conn.close()
+
+        assert rows == [(1, "alpha -- beta /* gamma */")]
+        assert "idx_sample_note" in indexes
