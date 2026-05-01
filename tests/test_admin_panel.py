@@ -1619,6 +1619,7 @@ class TestFixturePanelFlows:
         await calculate_button.callback(mock_interaction_admin)
 
         assert mock_interaction_admin.response_sent[-1]["content"] == "No results entered"
+        admin_cog.service.calculate_fixture_scores.assert_awaited_once_with(fixture_id, "111111")
         admin_cog._create_backup.assert_not_called()
 
     @pytest.mark.asyncio

@@ -186,7 +186,17 @@ class TestOpenFixturesQueries:
         assert await db.get_fixture_by_id(fixture_id, "guild-2") is not None
 
         assert await db.delete_fixture(fixture_id, "guild-2") is True
-        assert await db.get_fixture_by_id(fixture_id, "111111") is None
+        assert await db.get_fixture_by_id(fixture_id, "guild-2") is None
+
+    @pytest.mark.asyncio
+    async def test_get_prediction_requires_fixture_guild_ownership(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture("guild-2", 1, ["Team A - Team B"], datetime.now(UTC))
+        await db.save_prediction(fixture_id, "user-1", "User One", ["2-1"], False)
+
+        assert await db.get_prediction(fixture_id, "user-1", "111111") is None
+        assert await db.get_prediction(fixture_id, "user-1", "guild-2") is not None
 
     @pytest.mark.asyncio
     async def test_pending_partial_predictions_are_guild_scoped(self, temp_db_path):

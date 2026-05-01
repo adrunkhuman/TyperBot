@@ -274,7 +274,11 @@ class TestPredictCommand:
         assert fixture is not None
         fixture["deadline"] = datetime.now(UTC) - timedelta(minutes=1)
         user_commands.db.get_open_fixtures = AsyncMock(return_value=[fixture])
-        user_commands.db.get_fixture_by_id = AsyncMock(return_value=fixture)
+        user_commands.db.get_fixture_by_id = AsyncMock(
+            side_effect=lambda fixture_id, guild_id: (
+                fixture if (fixture_id, guild_id) == (1, "111111") else None
+            )
+        )
 
         await user_commands.predict.callback(user_commands, mock_interaction)
 
@@ -321,7 +325,11 @@ class TestPredictCommand:
         assert fixture is not None
         fixture["deadline"] = datetime.now(UTC) - timedelta(minutes=1)
         user_commands.db.get_open_fixtures = AsyncMock(return_value=[fixture])
-        user_commands.db.get_fixture_by_id = AsyncMock(return_value=fixture)
+        user_commands.db.get_fixture_by_id = AsyncMock(
+            side_effect=lambda fixture_id, guild_id: (
+                fixture if (fixture_id, guild_id) == (1, "111111") else None
+            )
+        )
 
         await user_commands.predict.callback(user_commands, mock_interaction)
         modal = mock_interaction.modal_sent["modal"]
@@ -363,7 +371,11 @@ class TestPredictCommand:
         fixture = await database.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
         user_commands.db.get_open_fixtures = AsyncMock(return_value=[fixture])
-        user_commands.db.get_fixture_by_id = AsyncMock(return_value=fixture)
+        user_commands.db.get_fixture_by_id = AsyncMock(
+            side_effect=lambda request_fixture_id, guild_id: (
+                fixture if (request_fixture_id, guild_id) == (fixture_id, "111111") else None
+            )
+        )
 
         await user_commands.predict.callback(user_commands, mock_interaction)
         modal = mock_interaction.modal_sent["modal"]
@@ -384,7 +396,11 @@ class TestPredictCommand:
         assert fixture is not None
         fixture["deadline"] = datetime.now(UTC) - timedelta(minutes=1)
         user_commands.db.get_open_fixtures = AsyncMock(return_value=[fixture])
-        user_commands.db.get_fixture_by_id = AsyncMock(return_value=fixture)
+        user_commands.db.get_fixture_by_id = AsyncMock(
+            side_effect=lambda fixture_id, guild_id: (
+                fixture if (fixture_id, guild_id) == (1, "111111") else None
+            )
+        )
 
         await user_commands.predict.callback(user_commands, mock_interaction)
         first_modal = mock_interaction.modal_sent["modal"]
