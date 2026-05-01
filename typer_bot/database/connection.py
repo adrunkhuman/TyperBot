@@ -113,6 +113,23 @@ async def _migrate_prediction_columns(db: aiosqlite.Connection) -> None:
         await db.execute("ALTER TABLE predictions ADD COLUMN public_message_kind TEXT")
 
 
+async def _validate_fixture_guild_ownership(db: aiosqlite.Connection) -> None:
+    columns = await _table_columns(db, "fixtures")
+    if "guild_id" not in columns:
+        raise RuntimeError(
+            "fixtures.guild_id is missing. Run the one-time v2.0.0 guild ownership migration before starting the bot."
+        )
+
+    async with db.execute(
+        "SELECT COUNT(*) FROM fixtures WHERE guild_id IS NULL OR TRIM(guild_id) = ''"
+    ) as cursor:
+        row = await cursor.fetchone()
+    if row and row[0] > 0:
+        raise RuntimeError(
+            "fixtures.guild_id has empty rows. Backfill every fixture with the owning Discord guild ID before starting the bot."
+        )
+
+
 class Database:
     """Composition root for SQLite setup and the bot's stable data facade.
 
@@ -214,11 +231,7 @@ class Database:
                 logger.info("Adding channel_id column to fixtures table")
                 await db.execute("ALTER TABLE fixtures ADD COLUMN channel_id TEXT")
 
-            column_names = await _table_columns(db, "fixtures")
-            if "guild_id" not in column_names:
-                raise RuntimeError(
-                    "fixtures.guild_id is missing. Run the one-time v2.0.0 guild ownership migration before starting the bot."
-                )
+            await _validate_fixture_guild_ownership(db)
 
             await _migrate_prediction_columns(db)
             await _migrate_results_table(db)

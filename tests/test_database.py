@@ -196,11 +196,27 @@ class TestOpenFixturesQueries:
             ["Team C - Team D"],
             datetime.now(UTC),
         )
+        guild_one_second_id = await db.create_fixture(
+            "111111",
+            2,
+            ["Team E - Team F"],
+            datetime.now(UTC),
+        )
+        await db.create_fixture(
+            "guild-2",
+            9,
+            ["Team G - Team H"],
+            datetime.now(UTC),
+        )
 
         assert guild_one_week == 1
         assert guild_two_week == 1
-        assert await db.get_max_week_number("111111") == 1
-        assert await db.get_max_week_number("guild-2") == 1
+        assert await db.get_max_week_number("111111") == 2
+        assert await db.get_max_week_number("guild-2") == 9
+
+        guild_one_second = await db.get_fixture_by_id(guild_one_second_id)
+        assert guild_one_second is not None
+        assert guild_one_second["guild_id"] == "111111"
 
 
 class TestSchemaMigration:
@@ -225,6 +241,33 @@ class TestSchemaMigration:
         db = Database(temp_db_path)
 
         with pytest.raises(RuntimeError, match="fixtures.guild_id is missing"):
+            await db.initialize()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("guild_id", [None, "", "   "])
+    async def test_initialize_rejects_blank_fixture_guild_ownership(self, temp_db_path, guild_id):
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute(
+                """
+                CREATE TABLE fixtures (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT,
+                    week_number INTEGER NOT NULL,
+                    games TEXT NOT NULL,
+                    deadline DATETIME NOT NULL,
+                    status TEXT DEFAULT 'open'
+                )
+                """
+            )
+            await conn.execute(
+                "INSERT INTO fixtures (guild_id, week_number, games, deadline, status) VALUES (?, 1, 'A - B', ?, 'open')",
+                (guild_id, datetime.now(UTC).isoformat()),
+            )
+            await conn.commit()
+
+        db = Database(temp_db_path)
+
+        with pytest.raises(RuntimeError, match="fixtures.guild_id has empty rows"):
             await db.initialize()
 
     @pytest.mark.asyncio
