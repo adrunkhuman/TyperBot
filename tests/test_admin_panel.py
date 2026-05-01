@@ -37,6 +37,10 @@ def _selected_option_labels(select: discord.ui.Select) -> list[str]:
     return [option.label for option in select.options if option.default]
 
 
+def _option_values(select: discord.ui.Select) -> set[str]:
+    return {option.value for option in select.options}
+
+
 class TestAdminPanelCommand:
     """The slash entrypoint should open the panel."""
 
@@ -1040,8 +1044,12 @@ class TestFixturePanelFlows:
         sample_games,
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        await admin_cog.db.create_fixture("111111", 1, sample_games, deadline)
-        await admin_cog.db.create_fixture("guild-2", 2, sample_games, deadline)
+        current_guild_fixture_id = await admin_cog.db.create_fixture(
+            "111111", 1, sample_games, deadline
+        )
+        other_guild_fixture_id = await admin_cog.db.create_fixture(
+            "guild-2", 2, sample_games, deadline
+        )
 
         view = view_cls(
             admin_cog.db,
@@ -1051,9 +1059,9 @@ class TestFixturePanelFlows:
         )
         await view.load_fixture_options()
 
-        option_labels = [option.label for option in view.fixture_select.options]
-        assert "Week 1 [OPEN]" in option_labels
-        assert "Week 2 [OPEN]" not in option_labels
+        option_values = _option_values(view.fixture_select)
+        assert str(current_guild_fixture_id) in option_values
+        assert str(other_guild_fixture_id) not in option_values
 
     @pytest.mark.asyncio
     async def test_fixture_panel_delete_button_enables_after_fixture_selection(
@@ -1244,6 +1252,7 @@ class TestFixturePanelFlows:
         )
         await view.load_fixture_options()
 
+        assert view.has_pending_partials is False
         assert _has_button(view, "Review Late") is False
 
     @pytest.mark.asyncio

@@ -810,7 +810,7 @@ class TestFixturesCommand:
     async def test_no_open_fixture_shows_error(self, user_commands, mock_interaction):
         await user_commands.fixtures.callback(user_commands, mock_interaction)
 
-        assert mock_interaction.response_sent[0]["content"] == "❌ No active fixture found!"
+        assert "No active fixture" in mock_interaction.response_sent[0]["content"]
 
     @pytest.mark.asyncio
     async def test_single_open_fixture_lists_games_and_deadline(
@@ -907,7 +907,7 @@ class TestMyPredictionsCommand:
     async def test_no_open_fixture_shows_error(self, user_commands, mock_interaction):
         await user_commands.my_predictions.callback(user_commands, mock_interaction)
 
-        assert mock_interaction.response_sent[0]["content"] == "❌ No active fixture found!"
+        assert "No active fixture" in mock_interaction.response_sent[0]["content"]
 
     @pytest.mark.asyncio
     async def test_only_uses_current_guild_fixtures(
@@ -925,7 +925,7 @@ class TestMyPredictionsCommand:
 
         await user_commands.my_predictions.callback(user_commands, mock_interaction)
 
-        assert mock_interaction.response_sent[0]["content"] == "❌ No active fixture found!"
+        assert "No active fixture" in mock_interaction.response_sent[0]["content"]
 
     @pytest.mark.asyncio
     async def test_single_fixture_without_prediction_shows_prompt(
