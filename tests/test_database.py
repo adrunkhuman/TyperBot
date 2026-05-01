@@ -9,6 +9,7 @@ import aiosqlite
 import pytest
 
 from typer_bot.database import Database, SaveResult
+from typer_bot.database import scores as scores_module
 
 
 @pytest.fixture
@@ -101,6 +102,158 @@ class TestGuildConfig:
         guild_two = await db.get_guild_config("222222")
         assert guild_one["admin_role_id"] == "role-1"
         assert guild_two["admin_role_id"] == "role-2"
+
+
+class TestScores:
+    @pytest.mark.asyncio
+    async def test_save_scores_does_not_mutate_when_write_lock_is_held(
+        self, temp_db_path, monkeypatch
+    ):
+        db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture("111111", 1, ["Team A - Team B"], datetime.now(UTC))
+        await db.save_scores(
+            fixture_id,
+            [
+                {
+                    "user_id": "user-1",
+                    "user_name": "User One",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+
+        real_connect = scores_module.aiosqlite.connect
+
+        def connect_with_short_timeout(*args, **kwargs):
+            kwargs.setdefault("timeout", 0.05)
+            return real_connect(*args, **kwargs)
+
+        monkeypatch.setattr(scores_module.aiosqlite, "connect", connect_with_short_timeout)
+        async with aiosqlite.connect(temp_db_path) as locked_conn:
+            await locked_conn.execute("BEGIN IMMEDIATE")
+
+            with pytest.raises(aiosqlite.OperationalError, match="locked"):
+                await db.save_scores(
+                    fixture_id,
+                    [
+                        {
+                            "user_id": "user-2",
+                            "user_name": "User Two",
+                            "points": 9,
+                            "exact_scores": 3,
+                            "correct_results": 3,
+                        }
+                    ],
+                )
+
+            await locked_conn.rollback()
+
+        scores = await db.get_scores_for_fixture(fixture_id)
+        assert [score["user_id"] for score in scores] == ["user-1"]
+
+    @pytest.mark.asyncio
+    async def test_save_scores_rolls_back_after_partial_write_failure(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture("111111", 1, ["Team A - Team B"], datetime.now(UTC))
+        await db.save_scores(
+            fixture_id,
+            [
+                {
+                    "user_id": "user-1",
+                    "user_name": "User One",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+
+        with pytest.raises(aiosqlite.IntegrityError):
+            await db.save_scores(
+                fixture_id,
+                [
+                    {
+                        "user_id": "user-2",
+                        "user_name": "User Two",
+                        "points": 9,
+                        "exact_scores": 3,
+                        "correct_results": 3,
+                    },
+                    {
+                        "user_id": "user-2",
+                        "user_name": "Duplicate User Two",
+                        "points": 0,
+                        "exact_scores": 0,
+                        "correct_results": 0,
+                    },
+                ],
+            )
+
+        scores = await db.get_scores_for_fixture(fixture_id)
+        assert len(scores) == 1
+        assert scores[0]["user_id"] == "user-1"
+        assert scores[0]["points"] == 3
+
+    @pytest.mark.asyncio
+    async def test_standings_order_by_points_tiebreakers_and_name(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture("111111", 1, ["Team A - Team B"], datetime.now(UTC))
+
+        await db.save_scores(
+            fixture_id,
+            [
+                {
+                    "user_id": "total",
+                    "user_name": "Total",
+                    "points": 10,
+                    "exact_scores": 0,
+                    "correct_results": 0,
+                },
+                {
+                    "user_id": "exact",
+                    "user_name": "Exact",
+                    "points": 9,
+                    "exact_scores": 2,
+                    "correct_results": 0,
+                },
+                {
+                    "user_id": "correct",
+                    "user_name": "Correct",
+                    "points": 9,
+                    "exact_scores": 1,
+                    "correct_results": 3,
+                },
+                {
+                    "user_id": "alpha",
+                    "user_name": "Alpha",
+                    "points": 9,
+                    "exact_scores": 1,
+                    "correct_results": 2,
+                },
+                {
+                    "user_id": "beta",
+                    "user_name": "Beta",
+                    "points": 9,
+                    "exact_scores": 1,
+                    "correct_results": 2,
+                },
+            ],
+        )
+
+        standings = await db.get_standings("111111")
+
+        assert [row["user_id"] for row in standings] == [
+            "total",
+            "exact",
+            "correct",
+            "alpha",
+            "beta",
+        ]
 
 
 class TestOpenFixturesQueries:
