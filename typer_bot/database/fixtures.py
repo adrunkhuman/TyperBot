@@ -125,72 +125,94 @@ class FixtureRepository:
             )
             return insert_cursor.lastrowid, next_week
 
-    async def get_current_fixture(self) -> dict | None:
-        """Get the most recently created open fixture.
-
-        Kept for backward compatibility with older call sites that assume a
-        single active fixture.
-        """
+    async def get_current_fixture(self, guild_id: str) -> dict | None:
+        """Get the most recently created open fixture for a guild."""
+        _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT * FROM fixtures WHERE status = 'open' ORDER BY id DESC LIMIT 1"
+                "SELECT * FROM fixtures WHERE guild_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1",
+                (guild_id,),
             ) as cursor:
                 row = await cursor.fetchone()
                 return self._row_to_fixture(row) if row else None
 
-    async def get_open_fixtures(self) -> list[dict]:
-        """Get all open fixtures ordered by week and creation order."""
+    async def get_open_fixtures(self, guild_id: str) -> list[dict]:
+        """Get open fixtures for a guild ordered by week and creation order."""
+        _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT * FROM fixtures WHERE status = 'open' ORDER BY week_number ASC, id ASC"
+                "SELECT * FROM fixtures WHERE guild_id = ? AND status = 'open' ORDER BY week_number ASC, id ASC",
+                (guild_id,),
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [self._row_to_fixture(row) for row in rows]
 
-    async def get_open_fixture_by_week(self, week_number: int) -> dict | None:
-        """Get an open fixture by week number."""
+    async def get_all_open_fixtures(self) -> list[dict]:
+        """Get all open fixtures for process-level background tasks."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT * FROM fixtures WHERE status = 'open' AND week_number = ? ORDER BY id DESC LIMIT 1",
-                (week_number,),
-            ) as cursor:
-                row = await cursor.fetchone()
-                return self._row_to_fixture(row) if row else None
-
-    async def get_fixture_by_id(self, fixture_id: int) -> dict | None:
-        """Get a specific fixture by ID."""
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute("SELECT * FROM fixtures WHERE id = ?", (fixture_id,)) as cursor:
-                row = await cursor.fetchone()
-                return self._row_to_fixture(row) if row else None
-
-    async def get_fixture_by_week(self, week_number: int) -> dict | None:
-        """Get the most recent fixture for a week, regardless of status."""
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM fixtures WHERE week_number = ? ORDER BY id DESC LIMIT 1",
-                (week_number,),
-            ) as cursor:
-                row = await cursor.fetchone()
-                return self._row_to_fixture(row) if row else None
-
-    async def get_recent_fixtures(self, limit: int = 25) -> list[dict]:
-        """Get recent fixtures ordered by newest first."""
-        async with aiosqlite.connect(self.db_path) as db:
-            db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM fixtures ORDER BY id DESC LIMIT ?",
-                (limit,),
+                "SELECT * FROM fixtures WHERE status = 'open' ORDER BY guild_id ASC, week_number ASC, id ASC"
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [self._row_to_fixture(row) for row in rows]
 
-    async def get_fixture_by_message_id(self, message_id: str) -> dict | None:
+    async def get_open_fixture_by_week(self, guild_id: str, week_number: int) -> dict | None:
+        """Get an open fixture by guild and week number."""
+        _validate_guild_id(guild_id)
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM fixtures WHERE guild_id = ? AND status = 'open' AND week_number = ? ORDER BY id DESC LIMIT 1",
+                (guild_id, week_number),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return self._row_to_fixture(row) if row else None
+
+    async def get_fixture_by_id(self, fixture_id: int, guild_id: str | None = None) -> dict | None:
+        """Get a fixture by ID, optionally requiring guild ownership."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            if guild_id is None:
+                query = "SELECT * FROM fixtures WHERE id = ?"
+                params = (fixture_id,)
+            else:
+                _validate_guild_id(guild_id)
+                query = "SELECT * FROM fixtures WHERE id = ? AND guild_id = ?"
+                params = (fixture_id, guild_id)
+            async with db.execute(query, params) as cursor:
+                row = await cursor.fetchone()
+                return self._row_to_fixture(row) if row else None
+
+    async def get_fixture_by_week(self, guild_id: str, week_number: int) -> dict | None:
+        """Get the most recent fixture for a guild week, regardless of status."""
+        _validate_guild_id(guild_id)
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM fixtures WHERE guild_id = ? AND week_number = ? ORDER BY id DESC LIMIT 1",
+                (guild_id, week_number),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return self._row_to_fixture(row) if row else None
+
+    async def get_recent_fixtures(self, guild_id: str, limit: int = 25) -> list[dict]:
+        """Get recent fixtures for a guild ordered by newest first."""
+        _validate_guild_id(guild_id)
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute(
+                "SELECT * FROM fixtures WHERE guild_id = ? ORDER BY id DESC LIMIT ?",
+                (guild_id, limit),
+            ) as cursor:
+                rows = await cursor.fetchall()
+                return [self._row_to_fixture(row) for row in rows]
+
+    async def get_fixture_by_message_id(
+        self, message_id: str, guild_id: str | None = None
+    ) -> dict | None:
         """Get a fixture by its Discord message ID.
 
         Args:
@@ -199,9 +221,14 @@ class FixtureRepository:
         """
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            async with db.execute(
-                "SELECT * FROM fixtures WHERE message_id = ? AND status = 'open'", (message_id,)
-            ) as cursor:
+            if guild_id is None:
+                query = "SELECT * FROM fixtures WHERE message_id = ? AND status = 'open'"
+                params = (message_id,)
+            else:
+                _validate_guild_id(guild_id)
+                query = "SELECT * FROM fixtures WHERE guild_id = ? AND message_id = ? AND status = 'open'"
+                params = (guild_id, message_id)
+            async with db.execute(query, params) as cursor:
                 row = await cursor.fetchone()
                 return self._row_to_fixture(row) if row else None
 
@@ -222,14 +249,23 @@ class FixtureRepository:
             row = await cursor.fetchone()
             return row[0] if row and row[0] is not None else 0
 
-    async def delete_fixture(self, fixture_id: int) -> None:
-        """Delete a fixture and all associated data."""
+    async def delete_fixture(self, fixture_id: int, guild_id: str | None = None) -> bool:
+        """Delete a fixture and all associated data, optionally requiring guild ownership."""
         async with aiosqlite.connect(self.db_path) as db:
+            if guild_id is not None:
+                _validate_guild_id(guild_id)
+                async with db.execute(
+                    "SELECT 1 FROM fixtures WHERE id = ? AND guild_id = ?",
+                    (fixture_id, guild_id),
+                ) as cursor:
+                    if await cursor.fetchone() is None:
+                        return False
             await db.execute("DELETE FROM scores WHERE fixture_id = ?", (fixture_id,))
             await db.execute("DELETE FROM results WHERE fixture_id = ?", (fixture_id,))
             await db.execute("DELETE FROM predictions WHERE fixture_id = ?", (fixture_id,))
-            await db.execute("DELETE FROM fixtures WHERE id = ?", (fixture_id,))
+            cursor = await db.execute("DELETE FROM fixtures WHERE id = ?", (fixture_id,))
             await db.commit()
+            return cursor.rowcount > 0
 
     async def update_fixture_announcement(
         self,

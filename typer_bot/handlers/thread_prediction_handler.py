@@ -89,7 +89,7 @@ class ThreadPredictionHandler:
             return False
 
         message_id = str(message.channel.id)
-        fixture = await self.db.get_fixture_by_message_id(message_id)
+        fixture = await self.db.get_fixture_by_message_id(message_id, str(message.guild.id))
         if not fixture:
             return False
 

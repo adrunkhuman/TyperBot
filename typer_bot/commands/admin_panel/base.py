@@ -133,6 +133,7 @@ class OwnerRestrictedView(discord.ui.View):
         db: Database,
         service: AdminService,
         owner_user_id: str,
+        guild_id: str,
         bot: discord.Client | None = None,
         timeout: float = 180,
     ):
@@ -140,6 +141,7 @@ class OwnerRestrictedView(discord.ui.View):
         self.db = db
         self.service = service
         self.owner_user_id = owner_user_id
+        self.guild_id = guild_id
         self.bot = bot
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -372,7 +374,7 @@ class FixtureSelect(discord.ui.Select):
         self.parent_view.selection.user_label = ""
         self.parent_view.selection.detail_lines = []
 
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
         if fixture is None:
             self.parent_view.selection.fixture_id = None
             self.parent_view.selection.fixture_label = ""

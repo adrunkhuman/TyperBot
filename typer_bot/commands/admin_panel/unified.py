@@ -55,6 +55,7 @@ class ApprovePartialButton(discord.ui.Button):
                 fixture_id,
                 user_id,
                 str(interaction.user.id),
+                self.parent_view.guild_id,
             )
         except ValueError as exc:
             await interaction.response.send_message(str(exc), ephemeral=True)
@@ -119,6 +120,7 @@ class RejectPartialButton(discord.ui.Button):
             ) = await self.parent_view.service.reject_partial_prediction(
                 fixture_id,
                 user_id,
+                self.parent_view.guild_id,
             )
         except ValueError as exc:
             await interaction.response.send_message(str(exc), ephemeral=True)
@@ -163,7 +165,11 @@ class ReviewPendingPartialsButton(discord.ui.Button):
         super().__init__(label="Review Late", style=discord.ButtonStyle.primary, row=4)
 
     async def callback(self, interaction: discord.Interaction):
-        pending_predictions = await self.parent_view.db.get_pending_partial_predictions()
+        pending_predictions = [
+            pending
+            for pending in await self.parent_view.db.get_pending_partial_predictions()
+            if pending.get("guild_id") == self.parent_view.guild_id
+        ]
         if not pending_predictions:
             await interaction.response.send_message(
                 "There are no late predictions awaiting review right now.", ephemeral=True
@@ -177,7 +183,9 @@ class ReviewPendingPartialsButton(discord.ui.Button):
                 next_prediction = pending_predictions[(index + 1) % len(pending_predictions)]
                 break
 
-        fixture = await self.parent_view.db.get_fixture_by_id(next_prediction["fixture_id"])
+        fixture = await self.parent_view.db.get_fixture_by_id(
+            next_prediction["fixture_id"], self.parent_view.guild_id
+        )
         if fixture is None:
             await interaction.response.send_message(
                 "That fixture no longer exists. Try again after refreshing the panel.",
@@ -264,7 +272,7 @@ class JumpToWeekModal(discord.ui.Modal):
             )
             return
 
-        open_fixtures = await self.parent_view.db.get_open_fixtures()
+        open_fixtures = await self.parent_view.db.get_open_fixtures(self.parent_view.guild_id)
         matching = [fixture for fixture in open_fixtures if fixture["week_number"] == week_number]
         if not matching:
             await interaction.response.send_message(
@@ -321,7 +329,7 @@ class EnterResultsButton(discord.ui.Button):
         if fixture_id is None:
             await interaction.response.send_message("Select a fixture first.", ephemeral=True)
             return
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
         if fixture is None or fixture["status"] != "open":
             await interaction.response.send_message(
                 "That fixture is no longer open.", ephemeral=True
@@ -352,7 +360,7 @@ class CalculateScoresButton(discord.ui.Button):
         if fixture_id is None:
             await interaction.response.send_message("Select a fixture first.", ephemeral=True)
             return
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
         if fixture is None or fixture["status"] != "open":
             await interaction.response.send_message(
                 "That fixture is no longer open.", ephemeral=True
@@ -379,7 +387,9 @@ class CalculateScoresButton(discord.ui.Button):
             return
 
         try:
-            score_result = await self.parent_view.service.calculate_fixture_scores(fixture_id)
+            score_result = await self.parent_view.service.calculate_fixture_scores(
+                fixture_id, self.parent_view.guild_id
+            )
         except ValueError as exc:
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
@@ -474,10 +484,11 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         db: Database,
         service: AdminService,
         owner_user_id: str,
+        guild_id: str,
         admin_commands: AdminCommands | None = None,
         bot: discord.Client | None = None,
     ):
-        super().__init__(db, service, owner_user_id, bot=bot)
+        super().__init__(db, service, owner_user_id, guild_id, bot=bot)
         self.admin_commands = admin_commands
         self.selection = PanelSelectionState()
         self.has_user_overflow = False
@@ -525,9 +536,12 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
             )
 
     async def load_fixture_options(self) -> None:
-        fixtures = await self.db.get_recent_fixtures(MAX_SELECT_OPTIONS)
+        fixtures = await self.db.get_recent_fixtures(self.guild_id, MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
-        self.has_pending_partials = bool(await self.db.get_pending_partial_predictions())
+        self.has_pending_partials = any(
+            pending.get("guild_id") == self.guild_id
+            for pending in await self.db.get_pending_partial_predictions()
+        )
         self._refresh_items()
 
     async def load_user_options(self) -> None:
@@ -545,6 +559,9 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
     async def set_selected_prediction(self) -> None:
         self.current_prediction = None
         if self.selection.fixture_id is None or self.selection.user_id is None:
+            return
+        fixture = await self.db.get_fixture_by_id(self.selection.fixture_id, self.guild_id)
+        if fixture is None:
             return
         self.current_prediction = await self.db.get_prediction(
             self.selection.fixture_id, self.selection.user_id

@@ -35,8 +35,8 @@ if TYPE_CHECKING:
 class PredictionsPanelView(OwnerRestrictedView):
     """Panel for prediction lookup and override actions."""
 
-    def __init__(self, db: Database, service: AdminService, owner_user_id: str):
-        super().__init__(db, service, owner_user_id)
+    def __init__(self, db: Database, service: AdminService, owner_user_id: str, guild_id: str):
+        super().__init__(db, service, owner_user_id, guild_id)
         self.selection = PanelSelectionState()
         self.has_user_overflow = False
         self.fixture_select = FixtureSelect(self)
@@ -64,7 +64,7 @@ class PredictionsPanelView(OwnerRestrictedView):
         )
 
     async def load_fixture_options(self) -> None:
-        fixtures = await self.db.get_recent_fixtures(MAX_SELECT_OPTIONS)
+        fixtures = await self.db.get_recent_fixtures(self.guild_id, MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
 
     async def load_user_options(self) -> None:
@@ -161,7 +161,7 @@ class PredictionUserSelect(discord.ui.Select):
             await interaction.response.send_message("Select a fixture first.", ephemeral=True)
             return
 
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
         if fixture is None:
             self.parent_view.selection.fixture_id = None
             self.parent_view.selection.fixture_label = ""
@@ -235,7 +235,7 @@ class ReplacePredictionButton(discord.ui.Button):
             )
             return
 
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
         prediction = await self.parent_view.db.get_prediction(fixture_id, user_id)
         if fixture is None:
             self.parent_view.selection.fixture_id = None
@@ -292,7 +292,7 @@ class ViewPredictionsButton(discord.ui.Button):
 
         try:
             fixture, predictions = await self.parent_view.service.get_fixture_prediction_summary(
-                fixture_id
+                fixture_id, self.parent_view.guild_id
             )
         except FixtureNotFoundError as exc:
             self.parent_view.selection.fixture_id = None
@@ -360,7 +360,7 @@ class ToggleWaiverButton(discord.ui.Button):
             )
             return
 
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
         if fixture is None:
             self.parent_view.selection.fixture_id = None
             self.parent_view.selection.fixture_label = ""
@@ -399,6 +399,7 @@ class ToggleWaiverButton(discord.ui.Button):
             ) = await self.parent_view.service.toggle_late_penalty_waiver(
                 fixture_id,
                 user_id,
+                self.parent_view.guild_id,
             )
         except FixtureNotFoundError as exc:
             self.parent_view.selection.fixture_id = None

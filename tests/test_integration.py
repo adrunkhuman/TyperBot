@@ -202,7 +202,7 @@ class TestEdgeCases:
 
         fixture_one = await database.get_fixture_by_id(fixture_one_id)
         fixture_two = await database.get_fixture_by_id(fixture_two_id)
-        open_fixtures = await database.get_open_fixtures()
+        open_fixtures = await database.get_open_fixtures("111111")
 
         assert fixture_one is not None
         assert fixture_one["status"] == "closed"

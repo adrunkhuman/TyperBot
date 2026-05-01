@@ -26,8 +26,8 @@ if TYPE_CHECKING:
 class ResultsPanelView(OwnerRestrictedView):
     """Panel for result correction workflows."""
 
-    def __init__(self, db: Database, service: AdminService, owner_user_id: str):
-        super().__init__(db, service, owner_user_id)
+    def __init__(self, db: Database, service: AdminService, owner_user_id: str, guild_id: str):
+        super().__init__(db, service, owner_user_id, guild_id)
         self.selection = PanelSelectionState()
         self.fixture_select = FixtureSelect(self)
         self._refresh_items()
@@ -38,7 +38,7 @@ class ResultsPanelView(OwnerRestrictedView):
         self.add_item(CorrectResultsButton(self, disabled=self.selection.fixture_id is None))
 
     async def load_fixture_options(self) -> None:
-        fixtures = await self.db.get_recent_fixtures(MAX_SELECT_OPTIONS)
+        fixtures = await self.db.get_recent_fixtures(self.guild_id, MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
 
     async def populate_fixture_details(self, fixture: dict | None) -> None:
@@ -93,7 +93,7 @@ class CorrectResultsButton(discord.ui.Button):
             await interaction.response.send_message("Select a fixture first.", ephemeral=True)
             return
 
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
         if fixture is None:
             self.parent_view.selection.fixture_id = None
             self.parent_view.selection.fixture_label = ""

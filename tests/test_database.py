@@ -93,7 +93,9 @@ class TestOpenFixturesQueries:
         # Close week 3 fixture so only weeks 1 and 2 remain open
         await db.save_scores(fixture_week_3, [])
 
-        open_fixtures = await db.get_open_fixtures()
+        await db.create_fixture("guild-2", 1, ["Other A - Other B"], datetime.now(UTC))
+
+        open_fixtures = await db.get_open_fixtures("111111")
         open_ids = [fixture["id"] for fixture in open_fixtures]
         open_weeks = [fixture["week_number"] for fixture in open_fixtures]
 
@@ -115,12 +117,44 @@ class TestOpenFixturesQueries:
         )
         await db.save_scores(closed_fixture_id, [])
 
-        open_fixture = await db.get_open_fixture_by_week(7)
-        closed_fixture = await db.get_open_fixture_by_week(8)
+        open_fixture = await db.get_open_fixture_by_week("111111", 7)
+        closed_fixture = await db.get_open_fixture_by_week("111111", 8)
 
         assert open_fixture is not None
         assert open_fixture["id"] == open_fixture_id
         assert closed_fixture is None
+
+    @pytest.mark.asyncio
+    async def test_week_and_recent_fixture_queries_are_guild_scoped(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+
+        guild_one_week = await db.create_fixture(
+            "111111", 1, ["Team A - Team B"], datetime.now(UTC)
+        )
+        guild_two_week = await db.create_fixture(
+            "guild-2", 1, ["Team C - Team D"], datetime.now(UTC)
+        )
+
+        assert (await db.get_fixture_by_week("111111", 1))["id"] == guild_one_week
+        assert (await db.get_fixture_by_week("guild-2", 1))["id"] == guild_two_week
+        assert [fixture["id"] for fixture in await db.get_recent_fixtures("111111")] == [
+            guild_one_week
+        ]
+        assert await db.get_fixture_by_id(guild_two_week, "111111") is None
+
+    @pytest.mark.asyncio
+    async def test_delete_fixture_can_require_guild_ownership(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+
+        fixture_id = await db.create_fixture("guild-2", 1, ["Team A - Team B"], datetime.now(UTC))
+
+        assert await db.delete_fixture(fixture_id, "111111") is False
+        assert await db.get_fixture_by_id(fixture_id) is not None
+
+        assert await db.delete_fixture(fixture_id, "guild-2") is True
+        assert await db.get_fixture_by_id(fixture_id) is None
 
     @pytest.mark.asyncio
     async def test_create_next_fixture_allocates_incrementing_weeks(self, temp_db_path):
@@ -292,7 +326,7 @@ class TestSchemaMigration:
         await db.initialize()
 
         await db.create_fixture("111111", 1, ["Team A - Team B"], datetime.now(UTC))
-        fixture = await db.get_current_fixture()
+        fixture = await db.get_current_fixture("111111")
         assert fixture is not None
         assert "message_id" in fixture
 
@@ -629,6 +663,6 @@ class TestRowToFixture:
             )
             await conn.commit()
 
-        fixture = await db.get_current_fixture()
+        fixture = await db.get_current_fixture("111111")
         assert fixture is not None
         assert fixture["games"] == []

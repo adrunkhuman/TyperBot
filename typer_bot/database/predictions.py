@@ -589,6 +589,7 @@ class PredictionRepository:
                     p.pending_partial_approval,
                     p.public_message_id,
                     p.public_message_kind,
+                    f.guild_id,
                     f.week_number,
                     f.games,
                     f.status
@@ -614,6 +615,7 @@ class PredictionRepository:
                         "pending_partial_approval": bool(row["pending_partial_approval"]),
                         "public_message_id": row["public_message_id"],
                         "public_message_kind": row["public_message_kind"],
+                        "guild_id": row["guild_id"],
                         "week_number": row["week_number"],
                         "games": row["games"].split("\n"),
                         "status": row["status"],
