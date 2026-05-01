@@ -31,7 +31,7 @@ The panel handles:
 - review late partial predictions
 - toggle late waivers
 
-After setup, admins need the configured TyperBot admin role. Only Discord-native server managers/admins can complete first-time setup from `/admin panel`.
+After setup, admins need the configured TyperBot admin role. Only Discord-native server managers/admins can complete or update setup from `/admin panel`.
 
 ## Permissions
 - `Send Messages`
@@ -89,7 +89,7 @@ Team E - Team F 3:2
 - `TZ` - timezone for admin deadline input; default `UTC`
 - `LOG_LEVEL` - logging level; default `INFO`
 
-Run `/admin panel` in each server to store the admin role and league channel. Fixture announcements and deadline reminders both use that league channel.
+Run `/admin panel` in each server to store or update the admin role and league channel. Fixture announcements and deadline reminders both use that league channel.
 
 ## Deployment
 
