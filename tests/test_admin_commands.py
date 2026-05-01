@@ -144,43 +144,8 @@ class TestAdminPanelEntry:
 
         assert isinstance(mock_interaction_admin.response_sent[-1]["view"], GuildSetupStartView)
 
-    @pytest.mark.asyncio
-    async def test_panel_check_prompts_server_manager_to_setup_inline(
-        self,
-        mock_bot,
-        mock_interaction_admin,
-        temp_db_path,
-    ):
-        db = Database(temp_db_path)
-        await db.initialize()
-        mock_bot.db = db
-        admin_cog = AdminCommands(mock_bot)
-        mock_interaction_admin.client = mock_bot
-        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
-        member.guild_permissions.manage_guild = True
-
-        can_run = await admin_cog.panel.checks[0](mock_interaction_admin)
-
-        assert can_run is False
-        assert isinstance(mock_interaction_admin.response_sent[-1]["view"], GuildSetupStartView)
-
-    @pytest.mark.asyncio
-    async def test_panel_check_blocks_non_manager_without_setup(
-        self,
-        mock_bot,
-        mock_interaction_admin,
-        temp_db_path,
-    ):
-        db = Database(temp_db_path)
-        await db.initialize()
-        mock_bot.db = db
-        admin_cog = AdminCommands(mock_bot)
-        mock_interaction_admin.client = mock_bot
-
-        can_run = await admin_cog.panel.checks[0](mock_interaction_admin)
-
-        assert can_run is False
-        assert mock_interaction_admin.response_sent[-1].get("view") is None
+    def test_panel_has_no_app_command_check(self, admin_cog):
+        assert admin_cog.panel.checks == []
 
     @pytest.mark.asyncio
     async def test_inline_setup_button_opens_selector_view(
@@ -530,10 +495,12 @@ class TestCooldownLogic:
         import time
 
         user_id = "user123"
+        guild_id = "guild123"
         current_time = time.time()
-        admin_cog.record_calculate_cooldown(user_id, current_time=current_time)
+        admin_cog.record_calculate_cooldown(guild_id, user_id, current_time=current_time)
 
         remaining = admin_cog.get_calculate_cooldown_remaining(
+            guild_id,
             user_id,
             current_time=current_time,
             cooldown_seconds=CALCULATE_COOLDOWN,
@@ -545,18 +512,37 @@ class TestCooldownLogic:
         import time
 
         user_id = "user123"
+        guild_id = "guild123"
         current_time = time.time()
-        admin_cog.record_calculate_cooldown(user_id, current_time=current_time - 31)
+        admin_cog.record_calculate_cooldown(guild_id, user_id, current_time=current_time - 31)
 
         remaining = admin_cog.get_calculate_cooldown_remaining(
+            guild_id,
             user_id,
             current_time=current_time,
             cooldown_seconds=CALCULATE_COOLDOWN,
         )
         assert remaining == 0.0
 
+    def test_cooldown_is_scoped_by_guild(self, admin_cog):
+        import time
+
+        user_id = "user123"
+        current_time = time.time()
+        admin_cog.record_calculate_cooldown("guild-a", user_id, current_time=current_time)
+
+        remaining = admin_cog.get_calculate_cooldown_remaining(
+            "guild-b",
+            user_id,
+            current_time=current_time,
+            cooldown_seconds=CALCULATE_COOLDOWN,
+        )
+
+        assert remaining == 0.0
+
     def test_cleanup_expired_state_removes_stale_entries(self, admin_cog):
         admin_cog.record_calculate_cooldown(
+            "guild123",
             "user123",
             current_time=now().timestamp() - timedelta(hours=2).total_seconds(),
         )

@@ -74,7 +74,7 @@ class TestOnMessage:
         assert result is False
         assert len(mock_message.reactions_added) == 0
         assert len(mock_message.author.dm_sent) == 0
-        assert handler.get_thread_prediction_cooldown("123456") is None
+        assert handler.get_thread_prediction_cooldown("111111", "123456") is None
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_thread")
@@ -89,7 +89,7 @@ class TestOnMessage:
         assert "❌" in mock_message.reactions_added
         assert len(mock_message.author.dm_sent) == 1
         assert "Invalid predictions" in mock_message.author.dm_sent[0]
-        assert handler.get_thread_prediction_cooldown("123456") is not None
+        assert handler.get_thread_prediction_cooldown("111111", "123456") is not None
 
     @pytest.mark.asyncio
     async def test_saves_valid_predictions(self, handler, fixture_with_thread, mock_message):
@@ -231,6 +231,25 @@ class TestOnMessage:
         assert second_message.author.dm_sent == []
 
     @pytest.mark.asyncio
+    async def test_thread_prediction_cooldown_is_scoped_by_guild(
+        self, handler, database, mock_message, sample_games
+    ):
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        fixture_id = await database.create_fixture("222222", 1, sample_games, deadline)
+        await database.update_fixture_announcement(
+            fixture_id, message_id="888888", channel_id="456789"
+        )
+        handler.record_thread_prediction_attempt("111111", "123456", datetime.now(UTC))
+        mock_message.guild.id = 222222
+        mock_message.channel.id = 888888
+        mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
+
+        result = await handler.on_message(mock_message)
+
+        assert result is True
+        assert "✅" in mock_message.reactions_added
+
+    @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_thread")
     async def test_chatty_message_does_not_consume_next_prediction_cooldown(
         self, handler, mock_message
@@ -299,7 +318,9 @@ class TestOnMessage:
         assert retry_message.reactions_added == []
 
     def test_cleanup_expired_state_removes_stale_cooldowns(self, handler):
-        handler.record_thread_prediction_attempt("user-1", datetime.now(UTC) - timedelta(hours=2))
+        handler.record_thread_prediction_attempt(
+            "guild-1", "user-1", datetime.now(UTC) - timedelta(hours=2)
+        )
 
         removed = handler.cleanup_expired_state()
 

@@ -400,6 +400,7 @@ class CalculateScoresButton(discord.ui.Button):
         user_id = str(interaction.user.id)
         current_time = now().timestamp()
         remaining = admin_commands.get_calculate_cooldown_remaining(
+            self.parent_view.guild_id,
             user_id,
             current_time=current_time,
             cooldown_seconds=30.0,
@@ -418,7 +419,9 @@ class CalculateScoresButton(discord.ui.Button):
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
 
-        admin_commands.record_calculate_cooldown(user_id, current_time=current_time)
+        admin_commands.record_calculate_cooldown(
+            self.parent_view.guild_id, user_id, current_time=current_time
+        )
         await admin_commands._create_backup()
         await admin_commands._post_calculation_to_channel(interaction, score_result)
 

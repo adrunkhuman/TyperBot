@@ -249,8 +249,8 @@ class TyperBot(commands.Bot):
         """Verify fixture announcement exists on startup.
 
         Checks that each open fixture's announcement message is accessible.
-        Stored channel/message IDs are used directly when available; the slower
-        guild-wide scan only exists for legacy fixtures missing ``channel_id``.
+        Stored channel/message IDs are used directly when available; legacy
+        fixtures missing ``channel_id`` are scanned only inside their owning guild.
         The stored message_id doubles as the thread_id since Discord public
         threads inherit their parent message's snowflake ID.
         """
@@ -302,10 +302,10 @@ class TyperBot(commands.Bot):
             return None
 
         logger.info(
-            "Fixture %s has no channel_id, scanning guild text channels for legacy verification",
+            "Fixture %s has no channel_id, scanning owning guild text channels for legacy verification",
             fixture["id"],
         )
-        return await self._scan_fixture_message_across_guilds(message_id)
+        return await self._scan_fixture_message_in_guild(fixture["guild_id"], message_id)
 
     async def _fetch_fixture_message_from_channel(
         self,
@@ -375,24 +375,31 @@ class TyperBot(commands.Bot):
             )
             return None
 
-    async def _scan_fixture_message_across_guilds(self, message_id: str):
+    async def _scan_fixture_message_in_guild(self, guild_id: str, message_id: str):
         try:
+            discord_guild_id = int(guild_id)
             discord_message_id = int(message_id)
         except (TypeError, ValueError):
             return None
 
-        for guild in self.guilds:
-            for channel in guild.text_channels:
-                try:
-                    return await channel.fetch_message(discord_message_id)
-                except discord.NotFound:
-                    continue
-                except discord.Forbidden:
-                    logger.warning(f"No permission to read channel {channel.id}")
-                    continue
-                except Exception as exc:
-                    logger.warning(f"Could not verify fixture in {channel.id}: {exc}")
-                    continue
+        guild = self.get_guild(discord_guild_id)
+        if guild is None:
+            logger.warning(
+                "Could not resolve owning guild %s for fixture announcement verification", guild_id
+            )
+            return None
+
+        for channel in guild.text_channels:
+            try:
+                return await channel.fetch_message(discord_message_id)
+            except discord.NotFound:
+                continue
+            except discord.Forbidden:
+                logger.warning(f"No permission to read channel {channel.id}")
+                continue
+            except Exception as exc:
+                logger.warning(f"Could not verify fixture in {channel.id}: {exc}")
+                continue
 
         return None
 

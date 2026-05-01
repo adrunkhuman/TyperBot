@@ -283,10 +283,11 @@ class AdminCommands(commands.Cog):
         self.bot = bot
         self.db: Database = bot.db  # type: ignore
         self.service = AdminService(self.db)
-        self._calculate_cooldowns: dict[str, float] = {}
+        self._calculate_cooldowns: dict[tuple[str, str], float] = {}
 
     def get_calculate_cooldown_remaining(
         self,
+        guild_id: str,
         user_id: str,
         *,
         current_time: float,
@@ -299,30 +300,32 @@ class AdminCommands(commands.Cog):
         """
         cutoff = current_time - COOLDOWN_ENTRY_EXPIRY.total_seconds()
         expired_users = [
-            stored_user_id
-            for stored_user_id, timestamp in self._calculate_cooldowns.items()
+            stored_key
+            for stored_key, timestamp in self._calculate_cooldowns.items()
             if timestamp < cutoff
         ]
-        for stored_user_id in expired_users:
-            self._calculate_cooldowns.pop(stored_user_id, None)
+        for stored_key in expired_users:
+            self._calculate_cooldowns.pop(stored_key, None)
 
-        last_used = self._calculate_cooldowns.get(user_id)
+        last_used = self._calculate_cooldowns.get((guild_id, user_id))
         if last_used is None:
             return 0.0
 
         return max(0.0, cooldown_seconds - (current_time - last_used))
 
-    def record_calculate_cooldown(self, user_id: str, *, current_time: float) -> None:
-        self._calculate_cooldowns[user_id] = current_time
+    def record_calculate_cooldown(
+        self, guild_id: str, user_id: str, *, current_time: float
+    ) -> None:
+        self._calculate_cooldowns[(guild_id, user_id)] = current_time
 
-    def get_calculate_cooldown(self, user_id: str) -> float | None:
-        return self._calculate_cooldowns.get(user_id)
+    def get_calculate_cooldown(self, guild_id: str, user_id: str) -> float | None:
+        return self._calculate_cooldowns.get((guild_id, user_id))
 
     def cleanup_expired_state(self) -> int:
         cutoff = now().timestamp() - COOLDOWN_ENTRY_EXPIRY.total_seconds()
-        expired = [uid for uid, ts in self._calculate_cooldowns.items() if ts < cutoff]
-        for uid in expired:
-            self._calculate_cooldowns.pop(uid, None)
+        expired = [key for key, ts in self._calculate_cooldowns.items() if ts < cutoff]
+        for key in expired:
+            self._calculate_cooldowns.pop(key, None)
         return len(expired)
 
     async def _create_backup(self) -> None:
@@ -376,7 +379,6 @@ class AdminCommands(commands.Cog):
     )
 
     @admin.command(name="panel", description="Open the admin management panel")
-    @admin_only()
     async def panel(self, interaction: discord.Interaction):
         permission_error = await get_admin_permission_error(interaction, self.db)
         if permission_error is not None:
