@@ -9,6 +9,7 @@ import aiosqlite
 import pytest
 
 from typer_bot.database import Database, SaveResult
+from typer_bot.database import scores as scores_module
 from typer_bot.database.predictions import PredictionRepository
 
 
@@ -104,6 +105,158 @@ class TestGuildConfig:
         assert guild_two["admin_role_id"] == "role-2"
 
 
+class TestScores:
+    @pytest.mark.asyncio
+    async def test_save_scores_does_not_mutate_when_write_lock_is_held(
+        self, temp_db_path, monkeypatch
+    ):
+        db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture("111111", 1, ["Team A - Team B"], datetime.now(UTC))
+        await db.save_scores(
+            fixture_id,
+            [
+                {
+                    "user_id": "user-1",
+                    "user_name": "User One",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+
+        real_connect = scores_module.aiosqlite.connect
+
+        def connect_with_short_timeout(*args, **kwargs):
+            kwargs.setdefault("timeout", 0.05)
+            return real_connect(*args, **kwargs)
+
+        monkeypatch.setattr(scores_module.aiosqlite, "connect", connect_with_short_timeout)
+        async with aiosqlite.connect(temp_db_path) as locked_conn:
+            await locked_conn.execute("BEGIN IMMEDIATE")
+
+            with pytest.raises(aiosqlite.OperationalError, match="locked"):
+                await db.save_scores(
+                    fixture_id,
+                    [
+                        {
+                            "user_id": "user-2",
+                            "user_name": "User Two",
+                            "points": 9,
+                            "exact_scores": 3,
+                            "correct_results": 3,
+                        }
+                    ],
+                )
+
+            await locked_conn.rollback()
+
+        scores = await db.get_scores_for_fixture(fixture_id)
+        assert [score["user_id"] for score in scores] == ["user-1"]
+
+    @pytest.mark.asyncio
+    async def test_save_scores_rolls_back_after_partial_write_failure(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture("111111", 1, ["Team A - Team B"], datetime.now(UTC))
+        await db.save_scores(
+            fixture_id,
+            [
+                {
+                    "user_id": "user-1",
+                    "user_name": "User One",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+
+        with pytest.raises(aiosqlite.IntegrityError):
+            await db.save_scores(
+                fixture_id,
+                [
+                    {
+                        "user_id": "user-2",
+                        "user_name": "User Two",
+                        "points": 9,
+                        "exact_scores": 3,
+                        "correct_results": 3,
+                    },
+                    {
+                        "user_id": "user-2",
+                        "user_name": "Duplicate User Two",
+                        "points": 0,
+                        "exact_scores": 0,
+                        "correct_results": 0,
+                    },
+                ],
+            )
+
+        scores = await db.get_scores_for_fixture(fixture_id)
+        assert len(scores) == 1
+        assert scores[0]["user_id"] == "user-1"
+        assert scores[0]["points"] == 3
+
+    @pytest.mark.asyncio
+    async def test_standings_order_by_points_tiebreakers_and_name(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture("111111", 1, ["Team A - Team B"], datetime.now(UTC))
+
+        await db.save_scores(
+            fixture_id,
+            [
+                {
+                    "user_id": "total",
+                    "user_name": "Total",
+                    "points": 10,
+                    "exact_scores": 0,
+                    "correct_results": 0,
+                },
+                {
+                    "user_id": "exact",
+                    "user_name": "Exact",
+                    "points": 9,
+                    "exact_scores": 2,
+                    "correct_results": 0,
+                },
+                {
+                    "user_id": "correct",
+                    "user_name": "Correct",
+                    "points": 9,
+                    "exact_scores": 1,
+                    "correct_results": 3,
+                },
+                {
+                    "user_id": "alpha",
+                    "user_name": "Alpha",
+                    "points": 9,
+                    "exact_scores": 1,
+                    "correct_results": 2,
+                },
+                {
+                    "user_id": "beta",
+                    "user_name": "Beta",
+                    "points": 9,
+                    "exact_scores": 1,
+                    "correct_results": 2,
+                },
+            ],
+        )
+
+        standings = await db.get_standings("111111")
+
+        assert [row["user_id"] for row in standings] == [
+            "total",
+            "exact",
+            "correct",
+            "alpha",
+            "beta",
+        ]
+
+
 class TestOpenFixturesQueries:
     """Test suite for multi-open fixture query helpers."""
 
@@ -184,10 +337,20 @@ class TestOpenFixturesQueries:
         fixture_id = await db.create_fixture("guild-2", 1, ["Team A - Team B"], datetime.now(UTC))
 
         assert await db.delete_fixture(fixture_id, "111111") is False
-        assert await db.get_fixture_by_id(fixture_id) is not None
+        assert await db.get_fixture_by_id(fixture_id, "guild-2") is not None
 
         assert await db.delete_fixture(fixture_id, "guild-2") is True
-        assert await db.get_fixture_by_id(fixture_id) is None
+        assert await db.get_fixture_by_id(fixture_id, "guild-2") is None
+
+    @pytest.mark.asyncio
+    async def test_get_prediction_requires_fixture_guild_ownership(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture("guild-2", 1, ["Team A - Team B"], datetime.now(UTC))
+        await db.save_prediction(fixture_id, "user-1", "User One", ["2-1"], False)
+
+        assert await db.get_prediction(fixture_id, "user-1", "111111") is None
+        assert await db.get_prediction(fixture_id, "user-1", "guild-2") is not None
 
     @pytest.mark.asyncio
     async def test_pending_partial_predictions_are_guild_scoped(self, temp_db_path):
@@ -242,8 +405,8 @@ class TestOpenFixturesQueries:
             datetime.now(UTC),
         )
 
-        fixture_one = await db.get_fixture_by_id(fixture_one_id)
-        fixture_two = await db.get_fixture_by_id(fixture_two_id)
+        fixture_one = await db.get_fixture_by_id(fixture_one_id, "111111")
+        fixture_two = await db.get_fixture_by_id(fixture_two_id, "111111")
 
         assert week_one == 1
         assert week_two == 2
@@ -264,7 +427,7 @@ class TestOpenFixturesQueries:
             datetime.now(UTC),
         )
 
-        fixture = await db.get_fixture_by_id(fixture_id)
+        fixture = await db.get_fixture_by_id(fixture_id, "guild-2")
         assert fixture is not None
         assert fixture["guild_id"] == "guild-2"
 
@@ -317,7 +480,7 @@ class TestOpenFixturesQueries:
         assert await db.get_max_week_number("111111") == 2
         assert await db.get_max_week_number("guild-2") == 9
 
-        guild_one_second = await db.get_fixture_by_id(guild_one_second_id)
+        guild_one_second = await db.get_fixture_by_id(guild_one_second_id, "111111")
         assert guild_one_second is not None
         assert guild_one_second["guild_id"] == "111111"
 
@@ -434,7 +597,7 @@ class TestSchemaMigration:
 
         fixture = await db.get_fixture_by_id(1, "111111")
         other_guild_fixture = await db.get_fixture_by_id(1, "222222")
-        prediction = await db.get_prediction(1, "user-1")
+        prediction = await db.get_prediction(1, "user-1", "111111")
         results = await db.get_results(1)
         standings = await db.get_standings("111111")
         other_guild_standings = await db.get_standings("222222")
@@ -605,7 +768,7 @@ class TestSchemaMigration:
         db = Database(temp_db_path)
         await db.initialize()
 
-        prediction = await db.get_prediction(1, "user-1")
+        prediction = await db.get_prediction(1, "user-1", "111111")
         assert prediction is not None
         assert prediction["is_late"] == 1
         assert prediction["late_penalty_waived"] == 0
@@ -648,7 +811,7 @@ class TestTrySavePrediction:
             open_fixture_id, "u1", "User", ["2-1", "0-0"]
         )
         assert result == SaveResult.SAVED
-        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
         assert prediction is not None
         assert prediction["predictions"] == ["2-1", "0-0"]
 
@@ -659,7 +822,7 @@ class TestTrySavePrediction:
             open_fixture_id, "u1", "User", ["3-0", "1-1"]
         )
         assert result == SaveResult.DUPLICATE
-        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
         assert prediction["predictions"] == ["2-1", "0-0"]
 
     @pytest.mark.asyncio
@@ -672,7 +835,7 @@ class TestTrySavePrediction:
     @pytest.mark.asyncio
     async def test_no_row_written_on_fixture_closed(self, prediction_db, closed_fixture_id):
         await prediction_db.try_save_prediction(closed_fixture_id, "u1", "User", ["2-1", "0-0"])
-        prediction = await prediction_db.get_prediction(closed_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(closed_fixture_id, "u1", "111111")
         assert prediction is None
 
     @pytest.mark.asyncio
@@ -747,7 +910,7 @@ class TestPredictionSaveMetadata:
 
         if method_name != "save_prediction":
             assert result == SaveResult.SAVED
-        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
         assert prediction is not None
         assert prediction["user_name"] == "User"
         assert prediction["predictions"] == ["1-1"]
@@ -767,7 +930,7 @@ class TestSavePredictionGuarded:
             open_fixture_id, "u1", "User", ["2-1", "0-0"]
         )
         assert result == SaveResult.SAVED
-        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
         assert prediction["predictions"] == ["2-1", "0-0"]
 
     @pytest.mark.asyncio
@@ -776,7 +939,7 @@ class TestSavePredictionGuarded:
             closed_fixture_id, "u1", "User", ["2-1", "0-0"]
         )
         assert result == SaveResult.FIXTURE_CLOSED
-        prediction = await prediction_db.get_prediction(closed_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(closed_fixture_id, "u1", "111111")
         assert prediction is None
 
     @pytest.mark.asyncio
@@ -786,7 +949,7 @@ class TestSavePredictionGuarded:
             open_fixture_id, "u1", "User", ["3-0", "1-1"]
         )
         assert result == SaveResult.SAVED
-        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
         assert prediction["predictions"] == ["3-0", "1-1"]
 
     @pytest.mark.asyncio
@@ -797,7 +960,7 @@ class TestSavePredictionGuarded:
         await prediction_db.save_prediction_guarded(
             open_fixture_id, "u1", "NewName", ["3-0", "1-1"]
         )
-        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
         assert prediction["user_name"] == "NewName"
 
     @pytest.mark.asyncio
@@ -823,7 +986,7 @@ class TestSavePredictionGuarded:
         )
 
         assert result == SaveResult.SAVED
-        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
         assert prediction is not None
         assert prediction["late_penalty_waived"] == 0
         assert prediction["admin_edited_at"] is None
@@ -847,7 +1010,7 @@ class TestPartialApprovalPending:
 
         predictions = PredictionRepository(prediction_db.db_path)
         updated = await predictions.set_partial_approval_pending(open_fixture_id, "u1", False)
-        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
 
         assert updated is True
         assert prediction is not None
@@ -867,7 +1030,7 @@ class TestPartialApprovalPending:
 
         predictions = PredictionRepository(prediction_db.db_path)
         updated = await predictions.set_partial_approval_pending(open_fixture_id, "u1", True)
-        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
 
         assert updated is True
         assert prediction is not None
@@ -891,7 +1054,7 @@ class TestCreateNextFixtureConcurrency:
 
         assert weeks == [1, 2]
 
-        fixtures = [await db.get_fixture_by_id(fixture_id) for fixture_id in fixture_ids]
+        fixtures = [await db.get_fixture_by_id(fixture_id, "111111") for fixture_id in fixture_ids]
         assert all(fixture is not None for fixture in fixtures)
         assert sorted(fixture["week_number"] for fixture in fixtures if fixture is not None) == [
             1,

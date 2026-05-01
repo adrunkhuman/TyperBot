@@ -82,7 +82,7 @@ class TestPredictCommand:
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture("guild-2", 1, sample_games, deadline)
-        fixture = await database.get_fixture_by_id(fixture_id)
+        fixture = await database.get_fixture_by_id(fixture_id, "guild-2")
 
         view = FixtureSelectView(
             database,
@@ -104,7 +104,7 @@ class TestPredictCommand:
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_id = await database.create_fixture("guild-2", 1, sample_games, deadline)
-        fixture = await database.get_fixture_by_id(fixture_id)
+        fixture = await database.get_fixture_by_id(fixture_id, "guild-2")
 
         view = ContinuePredictView(
             database,
@@ -217,7 +217,7 @@ class TestPredictCommand:
         )
         await modal.on_submit(mock_interaction)
 
-        assert await database.get_prediction(1, str(mock_interaction.user.id)) is not None
+        assert await database.get_prediction(1, str(mock_interaction.user.id), "111111") is not None
         assert isinstance(mock_interaction.response_sent[-1]["view"], ContinuePredictView)
 
     @pytest.mark.asyncio
@@ -234,7 +234,7 @@ class TestPredictCommand:
         )
         await modal.on_submit(mock_interaction)
 
-        assert await database.get_prediction(1, str(mock_interaction.user.id)) is not None
+        assert await database.get_prediction(1, str(mock_interaction.user.id), "111111") is not None
         assert "You're done for now." in mock_interaction.response_sent[-1]["content"]
         assert "view" not in mock_interaction.response_sent[-1]
 
@@ -260,7 +260,7 @@ class TestPredictCommand:
         )
         await modal.on_submit(mock_interaction)
 
-        prediction = await database.get_prediction(1, str(mock_interaction.user.id))
+        prediction = await database.get_prediction(1, str(mock_interaction.user.id), "111111")
         assert prediction is not None
         assert prediction["predictions"] == ["3-0", "0-0", "1-1"]
 
@@ -270,11 +270,15 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database
     ):
         await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
-        fixture = await database.get_fixture_by_id(1)
+        fixture = await database.get_fixture_by_id(1, "111111")
         assert fixture is not None
         fixture["deadline"] = datetime.now(UTC) - timedelta(minutes=1)
         user_commands.db.get_open_fixtures = AsyncMock(return_value=[fixture])
-        user_commands.db.get_fixture_by_id = AsyncMock(return_value=fixture)
+        user_commands.db.get_fixture_by_id = AsyncMock(
+            side_effect=lambda fixture_id, guild_id: (
+                fixture if (fixture_id, guild_id) == (1, "111111") else None
+            )
+        )
 
         await user_commands.predict.callback(user_commands, mock_interaction)
 
@@ -284,7 +288,7 @@ class TestPredictCommand:
         )
         await modal.on_submit(mock_interaction)
 
-        prediction = await database.get_prediction(1, str(mock_interaction.user.id))
+        prediction = await database.get_prediction(1, str(mock_interaction.user.id), "111111")
         assert prediction is not None
         assert prediction["is_late"] == 1
         assert "Late prediction" in mock_interaction.response_sent[-1]["content"]
@@ -301,7 +305,7 @@ class TestPredictCommand:
         modal.predictions_input._value = "Team C - Team D 1-1\nTeam E - Team F 0-2"
         await modal.on_submit(mock_interaction)
 
-        prediction = await database.get_prediction(1, str(mock_interaction.user.id))
+        prediction = await database.get_prediction(1, str(mock_interaction.user.id), "111111")
         assert prediction is not None
         assert prediction["predictions"] == ["1-1", "0-2"]
         assert prediction["predicted_game_indexes"] == [1, 2]
@@ -317,18 +321,22 @@ class TestPredictCommand:
         await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
         admin_role = MockRole("League Admin", role_id=4242)
         await database.upsert_guild_config("111111", str(admin_role.id), "123456")
-        fixture = await database.get_fixture_by_id(1)
+        fixture = await database.get_fixture_by_id(1, "111111")
         assert fixture is not None
         fixture["deadline"] = datetime.now(UTC) - timedelta(minutes=1)
         user_commands.db.get_open_fixtures = AsyncMock(return_value=[fixture])
-        user_commands.db.get_fixture_by_id = AsyncMock(return_value=fixture)
+        user_commands.db.get_fixture_by_id = AsyncMock(
+            side_effect=lambda fixture_id, guild_id: (
+                fixture if (fixture_id, guild_id) == (1, "111111") else None
+            )
+        )
 
         await user_commands.predict.callback(user_commands, mock_interaction)
         modal = mock_interaction.modal_sent["modal"]
         modal.predictions_input._value = "Team C - Team D 1-1\nTeam E - Team F 0-2"
         await modal.on_submit(mock_interaction)
 
-        prediction = await database.get_prediction(1, str(mock_interaction.user.id))
+        prediction = await database.get_prediction(1, str(mock_interaction.user.id), "111111")
         assert prediction is not None
         assert prediction["pending_partial_approval"] is True
         assert prediction["predicted_game_indexes"] == [1, 2]
@@ -360,10 +368,14 @@ class TestPredictCommand:
         )
         mock_interaction.guild.roles = [MockRole("typer-admin", role_id=4242)]
 
-        fixture = await database.get_fixture_by_id(fixture_id)
+        fixture = await database.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
         user_commands.db.get_open_fixtures = AsyncMock(return_value=[fixture])
-        user_commands.db.get_fixture_by_id = AsyncMock(return_value=fixture)
+        user_commands.db.get_fixture_by_id = AsyncMock(
+            side_effect=lambda request_fixture_id, guild_id: (
+                fixture if (request_fixture_id, guild_id) == (fixture_id, "111111") else None
+            )
+        )
 
         await user_commands.predict.callback(user_commands, mock_interaction)
         modal = mock_interaction.modal_sent["modal"]
@@ -380,11 +392,15 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database
     ):
         await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
-        fixture = await database.get_fixture_by_id(1)
+        fixture = await database.get_fixture_by_id(1, "111111")
         assert fixture is not None
         fixture["deadline"] = datetime.now(UTC) - timedelta(minutes=1)
         user_commands.db.get_open_fixtures = AsyncMock(return_value=[fixture])
-        user_commands.db.get_fixture_by_id = AsyncMock(return_value=fixture)
+        user_commands.db.get_fixture_by_id = AsyncMock(
+            side_effect=lambda fixture_id, guild_id: (
+                fixture if (fixture_id, guild_id) == (1, "111111") else None
+            )
+        )
 
         await user_commands.predict.callback(user_commands, mock_interaction)
         first_modal = mock_interaction.modal_sent["modal"]
@@ -399,7 +415,7 @@ class TestPredictCommand:
         second_modal.predictions_input._value = "Team A - Team B 2-0\nTeam C - Team D 1-1"
         await second_modal.on_submit(mock_interaction)
 
-        prediction = await database.get_prediction(1, str(mock_interaction.user.id))
+        prediction = await database.get_prediction(1, str(mock_interaction.user.id), "111111")
         assert prediction is not None
         assert prediction["public_message_id"] == "2"
         first_public_message.delete.assert_awaited_once()
@@ -498,7 +514,10 @@ class TestPredictCommand:
             "does not have a usable prediction thread"
             in mock_interaction.response_sent[-1]["content"]
         )
-        assert await user_commands.db.get_prediction(1, str(mock_interaction.user.id)) is None
+        assert (
+            await user_commands.db.get_prediction(1, str(mock_interaction.user.id), "111111")
+            is None
+        )
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")
@@ -518,7 +537,7 @@ class TestPredictCommand:
         )
         await modal.on_submit(mock_interaction)
 
-        assert await database.get_prediction(1, str(mock_interaction.user.id)) is not None
+        assert await database.get_prediction(1, str(mock_interaction.user.id), "111111") is not None
         user_commands.bot.fetch_channel.assert_awaited_once_with(700001)
 
     @pytest.mark.asyncio
@@ -547,7 +566,7 @@ class TestPredictCommand:
             "does not have a usable prediction thread"
             in mock_interaction.response_sent[-1]["content"]
         )
-        assert await database.get_prediction(1, str(mock_interaction.user.id)) is None
+        assert await database.get_prediction(1, str(mock_interaction.user.id), "111111") is None
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")
@@ -594,7 +613,7 @@ class TestPredictCommand:
             "Please enter at least one prediction before submitting."
             in mock_interaction.response_sent[-1]["content"]
         )
-        assert await database.get_prediction(1, str(mock_interaction.user.id)) is None
+        assert await database.get_prediction(1, str(mock_interaction.user.id), "111111") is None
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")
@@ -658,8 +677,8 @@ class TestPredictCommand:
         )
         await second_modal.on_submit(mock_interaction)
 
-        assert await database.get_prediction(1, str(mock_interaction.user.id)) is not None
-        assert await database.get_prediction(2, str(mock_interaction.user.id)) is not None
+        assert await database.get_prediction(1, str(mock_interaction.user.id), "111111") is not None
+        assert await database.get_prediction(2, str(mock_interaction.user.id), "111111") is not None
         assert "You're done for now." in mock_interaction.response_sent[-1]["content"]
         assert "view" not in mock_interaction.response_sent[-1]
 

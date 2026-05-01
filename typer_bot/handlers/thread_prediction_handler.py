@@ -68,13 +68,6 @@ class ThreadPredictionHandler:
     def clear_thread_prediction_cooldowns(self) -> None:
         self._thread_prediction_cooldowns.clear()
 
-    def cleanup_expired_state(self) -> int:
-        cutoff = now() - COOLDOWN_ENTRY_EXPIRY
-        expired = [key for key, ts in self._thread_prediction_cooldowns.items() if ts < cutoff]
-        for key in expired:
-            self._thread_prediction_cooldowns.pop(key, None)
-        return len(expired)
-
     async def on_message(self, message: discord.Message):
         """Handle a possible prediction posted inside a fixture thread.
 

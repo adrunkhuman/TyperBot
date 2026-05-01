@@ -200,9 +200,10 @@ class TyperBot(commands.Bot):
     @tasks.loop(minutes=5)
     async def _cleanup_sessions_task(self) -> None:
         admin_cog = self.cogs.get("AdminCommands")
-        removed = self.thread_handler.cleanup_expired_state()
-        if admin_cog is not None:
-            removed += admin_cog.cleanup_expired_state()  # type: ignore[attr-defined]
+        if admin_cog is None:
+            return
+
+        removed = admin_cog.cleanup_expired_state()  # type: ignore[attr-defined]
         if removed:
             logger.debug(f"Cooldown cleanup removed {removed} expired entr(y/ies)")
 

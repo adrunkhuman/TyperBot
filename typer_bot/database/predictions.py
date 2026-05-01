@@ -8,6 +8,7 @@ import aiosqlite
 
 from typer_bot.utils import parse_iso
 
+from .fixtures import _validate_guild_id
 from .scores import _fixture_has_scores_in_connection, _recalculate_scores_in_connection
 
 logger = logging.getLogger(__name__)
@@ -322,13 +323,19 @@ class PredictionRepository:
         )
         return SaveResult.SAVED
 
-    async def get_prediction(self, fixture_id: int, user_id: str) -> dict | None:
+    async def get_prediction(self, fixture_id: int, user_id: str, guild_id: str) -> dict | None:
         """Get a user's predictions for a fixture."""
+        _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT * FROM predictions WHERE fixture_id = ? AND user_id = ?",
-                (fixture_id, user_id),
+                """
+                SELECT p.*
+                FROM predictions p
+                JOIN fixtures f ON f.id = p.fixture_id
+                WHERE p.fixture_id = ? AND p.user_id = ? AND f.guild_id = ?
+                """,
+                (fixture_id, user_id, guild_id),
             ) as cursor:
                 row = await cursor.fetchone()
                 if row:

@@ -18,7 +18,7 @@ class TestFullWorkflow:
             fixture_id, message_id="789012", channel_id="123456"
         )
 
-        fixture = await database.get_fixture_by_id(fixture_id)
+        fixture = await database.get_fixture_by_id(fixture_id, "111111")
         assert fixture["week_number"] == 1
         assert len(fixture["games"]) == 3
 
@@ -119,7 +119,7 @@ class TestEdgeCases:
 
         await database.delete_fixture(fixture_id)
 
-        assert await database.get_fixture_by_id(fixture_id) is None
+        assert await database.get_fixture_by_id(fixture_id, "111111") is None
         assert len(await database.get_all_predictions(fixture_id)) == 0
 
     @pytest.mark.asyncio
@@ -285,8 +285,8 @@ class TestEdgeCases:
             ],
         )
 
-        fixture_one = await database.get_fixture_by_id(fixture_one_id)
-        fixture_two = await database.get_fixture_by_id(fixture_two_id)
+        fixture_one = await database.get_fixture_by_id(fixture_one_id, "111111")
+        fixture_two = await database.get_fixture_by_id(fixture_two_id, "111111")
         open_fixtures = await database.get_open_fixtures("111111")
 
         assert fixture_one is not None
