@@ -1605,7 +1605,65 @@ class TestFixturePanelFlows:
         post_button = _get_button(view, "Re-post Results")
         await post_button.callback(mock_interaction_admin)
 
+        admin_cog.db.get_last_fixture_scores.assert_awaited_once_with("111111")
+        admin_cog.db.get_standings.assert_awaited_once_with("111111")
         assert isinstance(mock_interaction_admin.response_sent[-1]["view"], PostResultsConfirmView)
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_post_results_only_previews_current_guild_scores(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.id = mock_interaction_admin.channel.id
+        mock_interaction_admin.channel = channel
+        deadline = datetime.now(UTC) - timedelta(days=1)
+        current_fixture_id = await admin_cog.db.create_fixture(
+            "111111", 1, ["Team A - Team B"], deadline
+        )
+        other_fixture_id = await admin_cog.db.create_fixture(
+            "guild-2", 2, ["Team C - Team D"], deadline
+        )
+        await admin_cog.db.save_scores(
+            current_fixture_id,
+            [
+                {
+                    "user_id": "current-user",
+                    "user_name": "Current Guild",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+        await admin_cog.db.save_scores(
+            other_fixture_id,
+            [
+                {
+                    "user_id": "other-user",
+                    "user_name": "Other Guild",
+                    "points": 9,
+                    "exact_scores": 3,
+                    "correct_results": 3,
+                }
+            ],
+        )
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        post_button = _get_button(view, "Re-post Results")
+        await post_button.callback(mock_interaction_admin)
+
+        content = mock_interaction_admin.response_sent[-1]["content"]
+        assert "Current Guild" in content
+        assert "Other Guild" not in content
 
     @pytest.mark.asyncio
     async def test_unified_panel_jump_to_week_reaches_older_open_fixture(
@@ -1713,6 +1771,8 @@ class TestFixturePanelFlows:
         post_button = _get_button(view, "Re-post Results")
         await post_button.callback(mock_interaction_admin)
 
+        admin_cog.db.get_last_fixture_scores.assert_awaited_once_with("111111")
+        admin_cog.db.get_standings.assert_awaited_once_with("111111")
         assert "text channels" in mock_interaction_admin.response_sent[-1]["content"]
 
     @pytest.mark.asyncio
@@ -1737,6 +1797,7 @@ class TestFixturePanelFlows:
         post_button = _get_button(view, "Re-post Results")
         await post_button.callback(mock_interaction_admin)
 
+        admin_cog.db.get_last_fixture_scores.assert_awaited_once_with("111111")
         assert "No completed fixtures found" in mock_interaction_admin.response_sent[-1]["content"]
 
     @pytest.mark.asyncio
@@ -2529,7 +2590,7 @@ class TestResultsPanelFlows:
         approve_button = _get_button(view, "Approve Late")
         await approve_button.callback(mock_interaction_admin)
 
-        standings = await admin_cog.db.get_standings()
+        standings = await admin_cog.db.get_standings("111111")
         assert {row["user_id"] for row in standings} == {"999", "111"}
 
     @pytest.mark.asyncio
@@ -2580,7 +2641,7 @@ class TestResultsPanelFlows:
         reject_button = _get_button(view, "Reject Late")
         await reject_button.callback(mock_interaction_admin)
 
-        standings = await admin_cog.db.get_standings()
+        standings = await admin_cog.db.get_standings("111111")
         assert {row["user_id"] for row in standings} == {"999"}
 
 

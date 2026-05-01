@@ -33,7 +33,7 @@ async def test_seed_mixed_data_creates_expected_fixture_states(temp_db_path, tmp
 
     db = Database(temp_db_path)
     open_fixtures = await db.get_open_fixtures(DEFAULT_MANUAL_GUILD_ID)
-    standings = await db.get_standings()
+    standings = await db.get_standings(DEFAULT_MANUAL_GUILD_ID)
     week_one = await db.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 1)
     week_two = await db.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 2)
     week_three = await db.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 3)

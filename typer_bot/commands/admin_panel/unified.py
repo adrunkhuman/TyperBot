@@ -165,11 +165,9 @@ class ReviewPendingPartialsButton(discord.ui.Button):
         super().__init__(label="Review Late", style=discord.ButtonStyle.primary, row=4)
 
     async def callback(self, interaction: discord.Interaction):
-        pending_predictions = [
-            pending
-            for pending in await self.parent_view.db.get_pending_partial_predictions()
-            if pending.get("guild_id") == self.parent_view.guild_id
-        ]
+        pending_predictions = await self.parent_view.db.get_pending_partial_predictions(
+            self.parent_view.guild_id
+        )
         if not pending_predictions:
             await interaction.response.send_message(
                 "There are no late predictions awaiting review right now.", ephemeral=True
@@ -448,8 +446,8 @@ class PostResultsButton(discord.ui.Button):
         super().__init__(label="Re-post Results", style=discord.ButtonStyle.secondary, row=3)
 
     async def callback(self, interaction: discord.Interaction):
-        fixture_data = await self.parent_view.db.get_last_fixture_scores()
-        standings = await self.parent_view.db.get_standings()
+        fixture_data = await self.parent_view.db.get_last_fixture_scores(self.parent_view.guild_id)
+        standings = await self.parent_view.db.get_standings(self.parent_view.guild_id)
         if not fixture_data:
             await interaction.response.send_message(
                 "No completed fixtures found with scores!", ephemeral=True
@@ -538,9 +536,8 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
     async def load_fixture_options(self) -> None:
         fixtures = await self.db.get_recent_fixtures(self.guild_id, MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
-        self.has_pending_partials = any(
-            pending.get("guild_id") == self.guild_id
-            for pending in await self.db.get_pending_partial_predictions()
+        self.has_pending_partials = bool(
+            await self.db.get_pending_partial_predictions(self.guild_id)
         )
         self._refresh_items()
 

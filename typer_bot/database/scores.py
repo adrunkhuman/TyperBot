@@ -224,23 +224,28 @@ class ScoreRepository:
                     )
                 raise
 
-    async def get_standings(self) -> list[dict]:
-        """Get overall standings across all fixtures."""
+    async def get_standings(self, guild_id: str) -> list[dict]:
+        """Get standings for one guild."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 """SELECT
                           s.user_id,
                           (SELECT user_name FROM scores s2
+                           JOIN fixtures f2 ON f2.id = s2.fixture_id
                            WHERE s2.user_id = s.user_id
+                             AND f2.guild_id = ?
                            ORDER BY fixture_id DESC LIMIT 1) as user_name,
                           SUM(s.points) as total_points,
                           SUM(s.exact_scores) as total_exact,
                           SUM(s.correct_results) as total_correct,
                           COUNT(DISTINCT s.fixture_id) as weeks_played
-                   FROM scores s
-                   GROUP BY s.user_id
-                   ORDER BY total_points DESC, total_exact DESC, total_correct DESC, user_name ASC"""
+                    FROM scores s
+                    JOIN fixtures f ON f.id = s.fixture_id
+                    WHERE f.guild_id = ?
+                    GROUP BY s.user_id
+                    ORDER BY total_points DESC, total_exact DESC, total_correct DESC, user_name ASC""",
+                (guild_id, guild_id),
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [
@@ -255,28 +260,31 @@ class ScoreRepository:
                     for row in rows
                 ]
 
-    async def get_last_fixture_scores(self) -> dict | None:
-        """Get scores from the most recently closed fixture."""
+    async def get_last_fixture_scores(self, guild_id: str) -> dict | None:
+        """Get scores from the most recently closed fixture in one guild."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
                 """SELECT s.*, f.week_number
                    FROM scores s
                    JOIN fixtures f ON s.fixture_id = f.id
-                   WHERE f.status = 'closed'
+                   WHERE f.status = 'closed' AND f.guild_id = ?
                    ORDER BY f.id DESC
-                   LIMIT 1"""
+                   LIMIT 1""",
+                (guild_id,),
             ) as cursor:
                 row = await cursor.fetchone()
                 if row:
                     fixture_id = row["fixture_id"]
                     async with db.execute(
                         """
-                        SELECT * FROM scores
-                        WHERE fixture_id = ?
-                        ORDER BY points DESC, exact_scores DESC, correct_results DESC, user_name ASC
-                        """,
-                        (fixture_id,),
+                         SELECT s.*
+                         FROM scores s
+                         JOIN fixtures f ON f.id = s.fixture_id
+                         WHERE s.fixture_id = ? AND f.guild_id = ?
+                         ORDER BY points DESC, exact_scores DESC, correct_results DESC, user_name ASC
+                         """,
+                        (fixture_id, guild_id),
                     ) as cursor2:
                         scores = await cursor2.fetchall()
                         return {

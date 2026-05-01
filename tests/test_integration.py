@@ -160,9 +160,94 @@ class TestEdgeCases:
             ],
         )
 
-        standings = await database.get_standings()
+        standings = await database.get_standings("111111")
         assert len(standings) == 1
         assert standings[0]["total_points"] == 6
+
+    @pytest.mark.asyncio
+    async def test_standings_are_guild_scoped_for_same_user(self, database):
+        games = ["Team A - Team B"]
+        deadline = datetime.now(UTC) - timedelta(days=1)
+        guild_one_fixture_id = await database.create_fixture("111111", 1, games, deadline)
+        guild_two_fixture_id = await database.create_fixture("guild-2", 1, games, deadline)
+
+        await database.save_scores(
+            guild_one_fixture_id,
+            [
+                {
+                    "user_id": "shared-user",
+                    "user_name": "Guild One",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+        await database.save_scores(
+            guild_two_fixture_id,
+            [
+                {
+                    "user_id": "shared-user",
+                    "user_name": "Guild Two",
+                    "points": 9,
+                    "exact_scores": 3,
+                    "correct_results": 3,
+                }
+            ],
+        )
+
+        guild_one_standings = await database.get_standings("111111")
+        guild_two_standings = await database.get_standings("guild-2")
+
+        assert [row["user_id"] for row in guild_one_standings] == ["shared-user"]
+        assert guild_one_standings[0]["user_name"] == "Guild One"
+        assert guild_one_standings[0]["total_points"] == 3
+        assert guild_one_standings[0]["weeks_played"] == 1
+        assert [row["user_id"] for row in guild_two_standings] == ["shared-user"]
+        assert guild_two_standings[0]["user_name"] == "Guild Two"
+        assert guild_two_standings[0]["total_points"] == 9
+        assert guild_two_standings[0]["weeks_played"] == 1
+
+    @pytest.mark.asyncio
+    async def test_last_fixture_scores_are_guild_scoped(self, database):
+        games = ["Team A - Team B"]
+        deadline = datetime.now(UTC) - timedelta(days=1)
+        guild_one_fixture_id = await database.create_fixture("111111", 1, games, deadline)
+        guild_two_fixture_id = await database.create_fixture("guild-2", 2, games, deadline)
+
+        await database.save_scores(
+            guild_one_fixture_id,
+            [
+                {
+                    "user_id": "guild-one-user",
+                    "user_name": "Guild One",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+        await database.save_scores(
+            guild_two_fixture_id,
+            [
+                {
+                    "user_id": "guild-two-user",
+                    "user_name": "Guild Two",
+                    "points": 9,
+                    "exact_scores": 3,
+                    "correct_results": 3,
+                }
+            ],
+        )
+
+        guild_one_last = await database.get_last_fixture_scores("111111")
+        guild_two_last = await database.get_last_fixture_scores("guild-2")
+
+        assert guild_one_last is not None
+        assert guild_one_last["fixture_id"] == guild_one_fixture_id
+        assert [score["user_id"] for score in guild_one_last["scores"]] == ["guild-one-user"]
+        assert guild_two_last is not None
+        assert guild_two_last["fixture_id"] == guild_two_fixture_id
 
     @pytest.mark.asyncio
     async def test_max_week_number_increment(self, database):
@@ -271,7 +356,7 @@ class TestUsernameChangeHandling:
             ],
         )
 
-        standings = await database.get_standings()
+        standings = await database.get_standings("111111")
         assert len(standings) == 1
         assert standings[0]["total_points"] == 6
         assert standings[0]["weeks_played"] == 2
@@ -333,7 +418,7 @@ class TestUsernameChangeHandling:
             ],
         )
 
-        standings = await database.get_standings()
+        standings = await database.get_standings("111111")
         assert len(standings) == 1
         assert standings[0]["user_name"] == "NewName"
         assert standings[0]["total_points"] == 3

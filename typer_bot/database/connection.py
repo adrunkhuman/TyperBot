@@ -395,8 +395,8 @@ class Database:
             fixture_id, include_pending=include_pending
         )
 
-    async def get_pending_partial_predictions(self):
-        return await self._predictions.get_pending_partial_predictions()
+    async def get_pending_partial_predictions(self, guild_id):
+        return await self._predictions.get_pending_partial_predictions(guild_id)
 
     async def approve_partial_prediction(self, fixture_id, user_id, admin_user_id):
         return await self._predictions.approve_partial_prediction_with_recalc(
@@ -425,8 +425,8 @@ class Database:
     async def save_scores(self, fixture_id, scores):
         return await self._scores.save_scores(fixture_id, scores)
 
-    async def get_standings(self):
-        return await self._scores.get_standings()
+    async def get_standings(self, guild_id):
+        return await self._scores.get_standings(guild_id)
 
-    async def get_last_fixture_scores(self):
-        return await self._scores.get_last_fixture_scores()
+    async def get_last_fixture_scores(self, guild_id):
+        return await self._scores.get_last_fixture_scores(guild_id)
