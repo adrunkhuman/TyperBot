@@ -31,7 +31,7 @@ import logging
 import os
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any, ParamSpec, TypeVar
 
@@ -139,7 +139,9 @@ class LogContextManager:
         _log_context.set(self.old_context)
 
 
-def log_context(**context_fields: Any) -> Callable[[Callable[P, T]], Callable[P, T]]:
+def log_context(
+    **context_fields: Any,
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
     """Decorator that automatically manages log context for async functions.
 
     Sets context fields at function entry and restores previous context on exit.
@@ -151,25 +153,14 @@ def log_context(**context_fields: Any) -> Callable[[Callable[P, T]], Callable[P,
             logger.info("Prediction saved")  # Will include event_type field
     """
 
-    def decorator(func: Callable[P, T]) -> Callable[P, T]:
+    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @functools.wraps(func)
         async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             operation = getattr(func, "__qualname__", getattr(func, "__name__", "unknown"))
             with LogContextManager(**context_fields, operation=operation):
-                return await func(*args, **kwargs)  # type: ignore[return-value]
+                return await func(*args, **kwargs)
 
-        @functools.wraps(func)
-        def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            operation = getattr(func, "__qualname__", getattr(func, "__name__", "unknown"))
-            with LogContextManager(**context_fields, operation=operation):
-                return func(*args, **kwargs)
-
-        # Return appropriate wrapper based on whether function is async
-        import inspect
-
-        if inspect.iscoroutinefunction(func):
-            return async_wrapper  # type: ignore[return-value]
-        return sync_wrapper
+        return async_wrapper
 
     return decorator
 

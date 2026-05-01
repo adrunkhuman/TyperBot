@@ -203,7 +203,11 @@ class TyperBot(commands.Bot):
         if admin_cog is None:
             return
 
-        removed = admin_cog.cleanup_expired_state()  # type: ignore[attr-defined]
+        cleanup_expired_state = getattr(admin_cog, "cleanup_expired_state", None)
+        if not callable(cleanup_expired_state):
+            return
+
+        removed = cleanup_expired_state()
         if removed:
             logger.debug(f"Cooldown cleanup removed {removed} expired entr(y/ies)")
 
