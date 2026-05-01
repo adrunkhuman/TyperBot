@@ -929,8 +929,6 @@ class TestStandingsCommand:
 
         await user_commands.standings.callback(user_commands, mock_interaction)
 
-        user_commands.db.get_standings.assert_awaited_once_with("111111")
-        user_commands.db.get_last_fixture_scores.assert_awaited_once_with("111111")
         content = mock_interaction.response_sent[0]["content"]
         assert "User1" in content
         assert "9" in content

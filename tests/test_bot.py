@@ -408,17 +408,18 @@ class TestReminderSystem:
     @pytest.mark.asyncio
     @patch("typer_bot.bot.now")
     async def test_reminder_checks_all_open_fixtures(self, mock_now, bot_instance):
-        """Reminder loop should evaluate all concurrently open fixtures."""
+        """Reminder loop evaluates every concurrently open fixture."""
         deadline = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
         mock_now.return_value = deadline - timedelta(hours=24)
-
         fixture_a = {"id": 1, "guild_id": "111111", "deadline": deadline, "week_number": 1}
         fixture_b = {"id": 2, "guild_id": "222222", "deadline": deadline, "week_number": 2}
         bot_instance.db.get_all_open_fixtures = AsyncMock(return_value=[fixture_a, fixture_b])
 
         await bot_instance.reminder_task()
 
-        assert bot_instance.send_reminder.call_count == 2
+        assert bot_instance.send_reminder.await_count == 2
+        bot_instance.send_reminder.assert_any_await(fixture_a, "24 hours remaining")
+        bot_instance.send_reminder.assert_any_await(fixture_b, "24 hours remaining")
 
 
 class TestSendReminder:
@@ -454,6 +455,33 @@ class TestSendReminder:
         call_args = mock_channel.send.call_args[0][0]
         assert "24 hours remaining" in call_args
         assert "/predict" in call_args
+
+    @pytest.mark.asyncio
+    async def test_send_reminder_routes_each_guild_to_its_configured_channel(self, bot_instance):
+        channel_one = MagicMock()
+        channel_one.send = AsyncMock()
+        channel_two = MagicMock()
+        channel_two.send = AsyncMock()
+        configs = {
+            "111111": {"league_channel_id": "123456"},
+            "222222": {"league_channel_id": "234567"},
+        }
+        channels = {123456: channel_one, 234567: channel_two}
+        bot_instance.db.get_guild_config = AsyncMock(side_effect=lambda guild_id: configs[guild_id])
+        bot_instance.get_channel.side_effect = lambda channel_id: channels[channel_id]
+        deadline = datetime.now(UTC) + timedelta(days=1)
+
+        await bot_instance.send_reminder(
+            {"id": 1, "guild_id": "111111", "deadline": deadline, "week_number": 1},
+            "24 hours remaining",
+        )
+        await bot_instance.send_reminder(
+            {"id": 2, "guild_id": "222222", "deadline": deadline, "week_number": 1},
+            "24 hours remaining",
+        )
+
+        channel_one.send.assert_awaited_once()
+        channel_two.send.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_send_reminder_missing_guild_config(self, bot_instance):
