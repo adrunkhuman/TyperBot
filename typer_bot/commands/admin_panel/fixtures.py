@@ -9,7 +9,7 @@ import discord
 
 from typer_bot.database import Database
 from typer_bot.services import AdminService
-from typer_bot.utils import is_admin
+from typer_bot.utils import get_admin_permission_error
 
 from .base import (
     FixtureSelect,
@@ -176,10 +176,9 @@ class DeleteConfirmView(discord.ui.View):
                 "You don't have permission to do this!", ephemeral=True
             )
             return
-        if not is_admin(interaction):
-            await interaction.response.send_message(
-                "You no longer have permission to use admin commands.", ephemeral=True
-            )
+        permission_error = await get_admin_permission_error(interaction, self.db)
+        if permission_error is not None:
+            await interaction.response.send_message(permission_error, ephemeral=True)
             return
 
         try:
@@ -217,10 +216,9 @@ class DeleteConfirmView(discord.ui.View):
                 "You don't have permission to do this!", ephemeral=True
             )
             return
-        if not is_admin(interaction):
-            await interaction.response.send_message(
-                "You no longer have permission to use admin commands.", ephemeral=True
-            )
+        permission_error = await get_admin_permission_error(interaction, self.db)
+        if permission_error is not None:
+            await interaction.response.send_message(permission_error, ephemeral=True)
             return
 
         await interaction.response.edit_message(

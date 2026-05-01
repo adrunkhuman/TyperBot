@@ -357,6 +357,90 @@ class TestAdminPanelCommand:
         assert "Week number changed" in mock_interaction_admin.response_sent[-1]["content"]
 
     @pytest.mark.asyncio
+    async def test_create_fixture_confirm_posts_to_configured_league_channel(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        await admin_cog.db.upsert_guild_config(
+            "111111",
+            str(
+                mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id).roles[0].id
+            ),
+            "654321",
+        )
+        announcement = MagicMock()
+        announcement.id = 999999
+        announcement.create_thread = AsyncMock(return_value=AsyncMock())
+        configured_channel = MagicMock()
+        configured_channel.id = 654321
+        configured_channel.send = AsyncMock(return_value=announcement)
+        admin_cog.bot.get_channel.return_value = configured_channel
+        mock_interaction_admin.channel.send = AsyncMock()
+
+        modal = CreateFixtureModal(
+            admin_cog.db,
+            mock_interaction_admin.channel,
+            str(mock_interaction_admin.user.id),
+            admin_cog.bot,
+        )
+        modal.games_input._value = "\n".join(sample_games)
+        modal.deadline_input._value = "2026-04-20 18:00"
+
+        await modal.on_submit(mock_interaction_admin)
+        confirm_view = mock_interaction_admin.response_sent[-1]["view"]
+        confirm_button = next(
+            child
+            for child in confirm_view.children
+            if getattr(child, "label", None) == "Create Fixture"
+        )
+        await confirm_button.callback(mock_interaction_admin)
+
+        configured_channel.send.assert_awaited_once()
+        mock_interaction_admin.channel.send.assert_not_awaited()
+        fixture = await admin_cog.db.get_current_fixture("111111")
+        assert fixture["channel_id"] == "654321"
+
+    @pytest.mark.asyncio
+    async def test_create_fixture_confirm_rejects_unavailable_configured_channel(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        await admin_cog.db.upsert_guild_config(
+            "111111",
+            str(
+                mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id).roles[0].id
+            ),
+            "654321",
+        )
+        admin_cog.bot.get_channel.return_value = None
+        admin_cog.bot.fetch_channel.side_effect = discord.NotFound(MagicMock(), "missing")
+
+        modal = CreateFixtureModal(
+            admin_cog.db,
+            mock_interaction_admin.channel,
+            str(mock_interaction_admin.user.id),
+            admin_cog.bot,
+        )
+        modal.games_input._value = "\n".join(sample_games)
+        modal.deadline_input._value = "2026-04-20 18:00"
+
+        await modal.on_submit(mock_interaction_admin)
+        confirm_view = mock_interaction_admin.response_sent[-1]["view"]
+        confirm_button = next(
+            child
+            for child in confirm_view.children
+            if getattr(child, "label", None) == "Create Fixture"
+        )
+        await confirm_button.callback(mock_interaction_admin)
+
+        assert "league channel" in mock_interaction_admin.response_sent[-1]["content"]
+        assert await admin_cog.db.get_current_fixture("111111") is None
+
+    @pytest.mark.asyncio
     async def test_create_fixture_confirm_cancel_leaves_database_unchanged(
         self,
         admin_cog,
@@ -417,6 +501,7 @@ class TestAdminPanelCommand:
         assert "Admin Panel" in response["content"]
         assert response["ephemeral"] is True
         assert response["view"] is not None
+        assert _has_button(response["view"], "Setup TyperBot") is True
 
 
 class TestPredictionPanelFlows:
@@ -1813,6 +1898,12 @@ class TestFixturePanelFlows:
         )
 
         db_mock = AsyncMock(spec=Database)
+        db_mock.get_guild_config.return_value = {
+            "admin_role_id": str(
+                mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id).roles[0].id
+            ),
+            "league_channel_id": "123456",
+        }
         db_mock.delete_fixture.side_effect = RuntimeError("DB locked")
 
         confirm_view = DeleteConfirmView(

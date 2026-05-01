@@ -13,7 +13,13 @@ from typer_bot.services import (
     PredictionDisappearedError,
     PredictionNotFoundError,
 )
-from typer_bot.utils import APP_TZ, format_for_discord, is_admin, now, parse_line_predictions
+from typer_bot.utils import (
+    APP_TZ,
+    format_for_discord,
+    get_admin_permission_error,
+    now,
+    parse_line_predictions,
+)
 
 from .base import (
     _build_detail_lines,
@@ -95,6 +101,7 @@ class CreateFixtureConfirmView(discord.ui.View):
         preview_week_number: int,
         games: list[str],
         deadline: datetime,
+        bot: discord.Client | None = None,
     ):
         super().__init__(timeout=120)
         self.db = db
@@ -103,6 +110,29 @@ class CreateFixtureConfirmView(discord.ui.View):
         self.preview_week_number = preview_week_number
         self.games = games
         self.deadline = deadline
+        self.bot = bot
+
+    async def _get_league_channel(self, guild_id: str):
+        config = await self.db.get_guild_config(guild_id)
+        if config is None:
+            return None
+
+        league_channel_id = int(config["league_channel_id"])
+        if getattr(self.channel, "id", None) == league_channel_id:
+            return self.channel
+
+        if self.bot is None:
+            return None
+
+        channel = self.bot.get_channel(league_channel_id)
+        if channel is None:
+            fetch_channel = getattr(self.bot, "fetch_channel", None)
+            if fetch_channel is not None:
+                try:
+                    channel = await fetch_channel(league_channel_id)
+                except discord.HTTPException:
+                    return None
+        return channel if getattr(channel, "send", None) is not None else None
 
     @discord.ui.button(label="Create Fixture", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, _button: discord.ui.Button):
@@ -111,9 +141,16 @@ class CreateFixtureConfirmView(discord.ui.View):
                 "You don't have permission to do this!", ephemeral=True
             )
             return
-        if not is_admin(interaction):
+        permission_error = await get_admin_permission_error(interaction, self.db)
+        if permission_error is not None:
+            await interaction.response.send_message(permission_error, ephemeral=True)
+            return
+
+        league_channel = await self._get_league_channel(str(interaction.guild_id))
+        if league_channel is None:
             await interaction.response.send_message(
-                "You no longer have permission to use admin commands.", ephemeral=True
+                "Configured league channel is unavailable. Run `/admin panel` again to update setup.",
+                ephemeral=True,
             )
             return
 
@@ -135,7 +172,7 @@ class CreateFixtureConfirmView(discord.ui.View):
         await interaction.response.edit_message(content=created_text, view=None)
 
         try:
-            announcement = await self.channel.send(
+            announcement = await league_channel.send(
                 f"**Week {allocated_week} Fixture is now open!**\n\n"
                 f"{final_preview}\n\n"
                 f"💬 **How to predict:**\n"
@@ -146,7 +183,7 @@ class CreateFixtureConfirmView(discord.ui.View):
             await self.db.update_fixture_announcement(
                 fixture_id,
                 message_id=str(announcement.id),
-                channel_id=str(self.channel.id),
+                channel_id=str(league_channel.id),
             )
 
             try:
@@ -193,11 +230,14 @@ class CreateFixtureModal(discord.ui.Modal):
     block creation. Nothing is persisted until the confirm view succeeds.
     """
 
-    def __init__(self, db: Database, channel, owner_user_id: str):
+    def __init__(
+        self, db: Database, channel, owner_user_id: str, bot: discord.Client | None = None
+    ):
         super().__init__(title="Create Fixture")
         self.db = db
         self.channel = channel
         self.owner_user_id = owner_user_id
+        self.bot = bot
         self.games_input = discord.ui.TextInput(
             label="Games",
             style=discord.TextStyle.paragraph,
@@ -216,10 +256,9 @@ class CreateFixtureModal(discord.ui.Modal):
         self.add_item(self.deadline_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        if not is_admin(interaction):
-            await interaction.response.send_message(
-                "You no longer have permission to use admin commands.", ephemeral=True
-            )
+        permission_error = await get_admin_permission_error(interaction, self.db)
+        if permission_error is not None:
+            await interaction.response.send_message(permission_error, ephemeral=True)
             return
 
         try:
@@ -246,6 +285,7 @@ class CreateFixtureModal(discord.ui.Modal):
             preview_week_number,
             games,
             deadline,
+            self.bot,
         )
         await interaction.response.send_message(
             f"{preview}\n\nCreate this fixture?",
@@ -292,10 +332,9 @@ class EnterResultsConfirmView(discord.ui.View):
                 "You don't have permission to do this!", ephemeral=True
             )
             return
-        if not is_admin(interaction):
-            await interaction.response.send_message(
-                "You no longer have permission to use admin commands.", ephemeral=True
-            )
+        permission_error = await get_admin_permission_error(interaction, self.db)
+        if permission_error is not None:
+            await interaction.response.send_message(permission_error, ephemeral=True)
             return
 
         try:
@@ -347,10 +386,9 @@ class EnterResultsModal(discord.ui.Modal):
         self.add_item(self.results_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        if not is_admin(interaction):
-            await interaction.response.send_message(
-                "You no longer have permission to use admin commands.", ephemeral=True
-            )
+        permission_error = await get_admin_permission_error(interaction, self.db)
+        if permission_error is not None:
+            await interaction.response.send_message(permission_error, ephemeral=True)
             return
 
         results, errors = parse_line_predictions(self.results_input.value, self.fixture["games"])
@@ -408,10 +446,9 @@ class ReplacePredictionModal(discord.ui.Modal):
         self.add_item(self.predictions_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        if not is_admin(interaction):
-            await interaction.response.send_message(
-                "You no longer have permission to use admin commands.", ephemeral=True
-            )
+        permission_error = await get_admin_permission_error(interaction, self.parent_view.db)
+        if permission_error is not None:
+            await interaction.response.send_message(permission_error, ephemeral=True)
             return
 
         try:
@@ -520,10 +557,9 @@ class CorrectResultsModal(discord.ui.Modal):
         self.add_item(self.results_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        if not is_admin(interaction):
-            await interaction.response.send_message(
-                "You no longer have permission to use admin commands.", ephemeral=True
-            )
+        permission_error = await get_admin_permission_error(interaction, self.parent_view.db)
+        if permission_error is not None:
+            await interaction.response.send_message(permission_error, ephemeral=True)
             return
 
         try:

@@ -1,6 +1,15 @@
 """Utility functions and helpers."""
 
-from .permissions import get_admin_role_mention, is_admin, is_admin_member
+from .permissions import (
+    SETUP_REQUIRED_MESSAGE,
+    get_admin_permission_error,
+    get_admin_role_mention,
+    get_configured_admin_role_mention,
+    has_setup_permission,
+    is_admin,
+    is_admin_member,
+    is_configured_admin,
+)
 from .prediction_parser import (
     ascii_username,
     format_fixture_results,
@@ -16,8 +25,12 @@ from .timezone import APP_TZ, format_for_discord, now, parse_deadline, parse_iso
 __all__ = [
     "ascii_username",
     "get_admin_role_mention",
+    "get_configured_admin_role_mention",
+    "get_admin_permission_error",
+    "has_setup_permission",
     "is_admin",
     "is_admin_member",
+    "is_configured_admin",
     "parse_predictions",
     "parse_prediction_lines",
     "parse_line_predictions",
@@ -31,4 +44,5 @@ __all__ = [
     "format_for_discord",
     "parse_iso",
     "APP_TZ",
+    "SETUP_REQUIRED_MESSAGE",
 ]

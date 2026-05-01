@@ -157,10 +157,7 @@ class TestOnMessage:
         await database.update_fixture_announcement(
             fixture_id, message_id="789012", channel_id="123456"
         )
-        admin_role = MagicMock()
-        admin_role.name = "typer-admin"
-        admin_role.id = 4242
-        mock_message.guild.roles = [admin_role]
+        await database.upsert_guild_config("111111", "4242", "123456")
         mock_message.content = "Team C - Team D 1-1\nTeam E - Team F 0-2"
         mock_message.channel.id = 789012
 

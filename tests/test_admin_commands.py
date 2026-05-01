@@ -5,12 +5,18 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from tests.conftest import MockRole, MockTextChannel
 from typer_bot.commands.admin_commands import (
     CALCULATE_COOLDOWN,
     AdminCommands,
+    EveryoneRoleConfirmView,
+    GuildSetupPromptView,
+    GuildSetupStartView,
 )
 from typer_bot.commands.admin_panel import PostResultsConfirmView, UnifiedAdminPanelView
-from typer_bot.utils import now
+from typer_bot.commands.admin_panel.unified import SetupBotButton
+from typer_bot.database import Database
+from typer_bot.utils import get_admin_permission_error, has_setup_permission, now
 from typer_bot.utils.permissions import is_admin
 
 
@@ -46,6 +52,50 @@ class TestAdminOnlyDecorator:
         result = is_admin(mock_interaction_admin)
         assert result is True
 
+    @pytest.mark.asyncio
+    async def test_configured_admin_role_grants_access(self, database, mock_interaction_admin):
+        await database.upsert_guild_config("111111", "987654", "123456")
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.roles = [MockRole("League Admin", role_id=987654)]
+
+        assert await get_admin_permission_error(mock_interaction_admin, database) is None
+
+    @pytest.mark.asyncio
+    async def test_configured_admin_role_rejects_name_only_admin(
+        self, database, mock_interaction_admin
+    ):
+        await database.upsert_guild_config("111111", "987654", "123456")
+
+        permission_error = await get_admin_permission_error(mock_interaction_admin, database)
+        assert permission_error is not None
+        assert "permission" in permission_error
+
+    @pytest.mark.asyncio
+    async def test_configured_admin_check_uses_interaction_member_when_cache_misses(
+        self,
+        database,
+        mock_interaction_admin,
+    ):
+        await database.upsert_guild_config("111111", "987654", "123456")
+        mock_interaction_admin.guild._members.clear()
+        mock_interaction_admin.user.roles = [MockRole("League Admin", role_id=987654)]
+
+        assert await get_admin_permission_error(mock_interaction_admin, database) is None
+
+    @pytest.mark.asyncio
+    async def test_setup_permission_uses_interaction_member_when_cache_misses(
+        self,
+        mock_interaction_admin,
+    ):
+        mock_interaction_admin.guild._members.clear()
+        mock_interaction_admin.user.roles = []
+        mock_interaction_admin.user.guild_permissions = MagicMock(
+            administrator=False,
+            manage_guild=True,
+        )
+
+        assert has_setup_permission(mock_interaction_admin) is True
+
 
 class TestAdminPanelEntry:
     @pytest.fixture
@@ -61,6 +111,195 @@ class TestAdminPanelEntry:
 
     def test_admin_group_exposes_panel_command(self, admin_cog):
         assert any(command.name == "panel" for command in admin_cog.admin.commands)
+
+    def test_admin_group_does_not_expose_setup_command(self, admin_cog):
+        assert all(command.name != "setup" for command in admin_cog.admin.commands)
+
+    @pytest.mark.asyncio
+    async def test_panel_requires_guild_setup(self, mock_bot, mock_interaction_admin, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        mock_bot.db = db
+        admin_cog = AdminCommands(mock_bot)
+
+        await admin_cog.panel.callback(admin_cog, mock_interaction_admin)
+
+        assert "not set up" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_panel_prompts_server_manager_to_setup_inline(
+        self,
+        mock_bot,
+        mock_interaction_admin,
+        temp_db_path,
+    ):
+        db = Database(temp_db_path)
+        await db.initialize()
+        mock_bot.db = db
+        admin_cog = AdminCommands(mock_bot)
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.guild_permissions.manage_guild = True
+
+        await admin_cog.panel.callback(admin_cog, mock_interaction_admin)
+
+        assert isinstance(mock_interaction_admin.response_sent[-1]["view"], GuildSetupStartView)
+
+    @pytest.mark.asyncio
+    async def test_panel_check_prompts_server_manager_to_setup_inline(
+        self,
+        mock_bot,
+        mock_interaction_admin,
+        temp_db_path,
+    ):
+        db = Database(temp_db_path)
+        await db.initialize()
+        mock_bot.db = db
+        admin_cog = AdminCommands(mock_bot)
+        mock_interaction_admin.client = mock_bot
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.guild_permissions.manage_guild = True
+
+        can_run = await admin_cog.panel.checks[0](mock_interaction_admin)
+
+        assert can_run is False
+        assert isinstance(mock_interaction_admin.response_sent[-1]["view"], GuildSetupStartView)
+
+    @pytest.mark.asyncio
+    async def test_panel_check_blocks_non_manager_without_setup(
+        self,
+        mock_bot,
+        mock_interaction_admin,
+        temp_db_path,
+    ):
+        db = Database(temp_db_path)
+        await db.initialize()
+        mock_bot.db = db
+        admin_cog = AdminCommands(mock_bot)
+        mock_interaction_admin.client = mock_bot
+
+        can_run = await admin_cog.panel.checks[0](mock_interaction_admin)
+
+        assert can_run is False
+        assert mock_interaction_admin.response_sent[-1].get("view") is None
+
+    @pytest.mark.asyncio
+    async def test_inline_setup_button_opens_selector_view(
+        self,
+        database,
+        mock_interaction_admin,
+    ):
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.guild_permissions.manage_guild = True
+        start_view = GuildSetupStartView(database, str(mock_interaction_admin.user.id))
+        setup_button = next(
+            child
+            for child in start_view.children
+            if getattr(child, "label", None) == "Setup TyperBot"
+        )
+
+        await setup_button.callback(mock_interaction_admin)
+
+        assert isinstance(mock_interaction_admin.response_sent[-1]["view"], GuildSetupPromptView)
+
+    @pytest.mark.asyncio
+    async def test_configured_panel_setup_button_opens_reconfigure_flow(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.guild_permissions.manage_guild = True
+        await admin_cog.panel.callback(admin_cog, mock_interaction_admin)
+        panel_view = mock_interaction_admin.response_sent[-1]["view"]
+        setup_button = next(
+            child for child in panel_view.children if isinstance(child, SetupBotButton)
+        )
+
+        await setup_button.callback(mock_interaction_admin)
+
+        assert isinstance(mock_interaction_admin.response_sent[-1]["view"], GuildSetupPromptView)
+
+    @pytest.mark.asyncio
+    async def test_inline_setup_button_blocks_owner_without_setup_permission(
+        self,
+        database,
+        mock_interaction_admin,
+    ):
+        start_view = GuildSetupStartView(database, str(mock_interaction_admin.user.id))
+        setup_button = next(
+            child
+            for child in start_view.children
+            if getattr(child, "label", None) == "Setup TyperBot"
+        )
+
+        await setup_button.callback(mock_interaction_admin)
+
+        assert mock_interaction_admin.response_sent[-1].get("view") is None
+
+    @pytest.mark.asyncio
+    async def test_inline_setup_selector_rechecks_setup_permission(
+        self,
+        temp_db_path,
+        mock_interaction_admin,
+    ):
+        database = Database(temp_db_path)
+        await database.initialize()
+        view = GuildSetupPromptView(database, str(mock_interaction_admin.user.id))
+
+        assert await view.interaction_check(mock_interaction_admin) is False
+        assert await database.get_guild_config("111111") is None
+
+    @pytest.mark.asyncio
+    async def test_inline_setup_prompt_saves_config(
+        self,
+        temp_db_path,
+        mock_interaction_admin,
+    ):
+        database = Database(temp_db_path)
+        await database.initialize()
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.guild_permissions.manage_guild = True
+        view = GuildSetupPromptView(database, str(mock_interaction_admin.user.id))
+        view.admin_role = MockRole("League Admin", role_id=987654)
+        view.league_channel = MockTextChannel("765432", guild=mock_interaction_admin.guild)
+        view.refresh_save_button()
+
+        await view.save_button.callback(mock_interaction_admin)
+
+        config = await database.get_guild_config("111111")
+        assert config["admin_role_id"] == "987654"
+        assert config["league_channel_id"] == "765432"
+
+    @pytest.mark.asyncio
+    async def test_inline_setup_prompt_requires_confirmation_for_everyone_role(
+        self,
+        temp_db_path,
+        mock_interaction_admin,
+    ):
+        database = Database(temp_db_path)
+        await database.initialize()
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.guild_permissions.manage_guild = True
+        view = GuildSetupPromptView(database, str(mock_interaction_admin.user.id))
+        view.admin_role = MockRole("@everyone", role_id=mock_interaction_admin.guild.id)
+        view.league_channel = MockTextChannel("765432", guild=mock_interaction_admin.guild)
+        view.refresh_save_button()
+
+        await view.save_button.callback(mock_interaction_admin)
+
+        assert isinstance(mock_interaction_admin.response_sent[-1]["view"], EveryoneRoleConfirmView)
+        assert await database.get_guild_config("111111") is None
+
+        confirm_view = mock_interaction_admin.response_sent[-1]["view"]
+        confirm_button = next(
+            child
+            for child in confirm_view.children
+            if getattr(child, "label", None) == "Confirm @everyone"
+        )
+        await confirm_button.callback(mock_interaction_admin)
+
+        config = await database.get_guild_config("111111")
+        assert config["admin_role_id"] == str(mock_interaction_admin.guild.id)
 
 
 class TestResultsPostFlow:

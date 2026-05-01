@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import discord
 
 from typer_bot.database import Database, SaveResult
-from typer_bot.utils import get_admin_role_mention, now, parse_prediction_lines
+from typer_bot.utils import get_configured_admin_role_mention, now, parse_prediction_lines
 from typer_bot.utils.logger import LogContextManager, log_event
 
 logger = logging.getLogger(__name__)
@@ -239,7 +239,11 @@ class ThreadPredictionHandler:
             if is_late:
                 with suppress(discord.Forbidden):
                     if pending_partial_approval:
-                        admin_role_mention = get_admin_role_mention(message.guild)
+                        admin_role_mention = (
+                            await get_configured_admin_role_mention(str(message.guild.id), self.db)
+                            if message.guild
+                            else None
+                        )
                         await message.author.send(
                             "⏳ **Late prediction received.** It was saved and is now awaiting admin review because it arrived late with missing games."
                         )

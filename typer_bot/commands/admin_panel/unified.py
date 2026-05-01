@@ -8,7 +8,7 @@ import discord
 
 from typer_bot.database import Database
 from typer_bot.services import AdminService
-from typer_bot.utils import format_standings, now
+from typer_bot.utils import format_standings, has_setup_permission, now
 
 from .base import (
     MAX_SELECT_OPTIONS,
@@ -31,6 +31,27 @@ from .predictions import (
     _prediction_status_text,
 )
 from .results import CorrectResultsButton
+
+
+class SetupBotButton(discord.ui.Button):
+    def __init__(self, parent_view: UnifiedAdminPanelView):
+        self.parent_view = parent_view
+        super().__init__(label="Setup TyperBot", style=discord.ButtonStyle.secondary, row=2)
+
+    async def callback(self, interaction: discord.Interaction):
+        from typer_bot.commands.admin_commands import GuildSetupPromptView
+
+        if not has_setup_permission(interaction):
+            await interaction.response.send_message(
+                "Only a server manager can configure TyperBot for this server.", ephemeral=True
+            )
+            return
+
+        await interaction.response.send_message(
+            "Update TyperBot setup for this server.",
+            view=GuildSetupPromptView(self.parent_view.db, str(interaction.user.id)),
+            ephemeral=True,
+        )
 
 
 class ApprovePartialButton(discord.ui.Button):
@@ -245,7 +266,12 @@ class CreateFixtureButton(discord.ui.Button):
             )
             return
 
-        modal = CreateFixtureModal(self.parent_view.db, channel, str(interaction.user.id))
+        modal = CreateFixtureModal(
+            self.parent_view.db,
+            channel,
+            str(interaction.user.id),
+            self.parent_view.bot,
+        )
         await interaction.response.send_modal(modal)
 
 
@@ -503,6 +529,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.add_item(self.user_select)
         self.add_item(CreateFixtureButton(self))
         self.add_item(FixturesDeleteButton(self, disabled=self.selection.fixture_id is None, row=2))
+        self.add_item(SetupBotButton(self))
         self.add_item(JumpToWeekButton(self))
         if self.has_pending_partials:
             self.add_item(ReviewPendingPartialsButton(self))
