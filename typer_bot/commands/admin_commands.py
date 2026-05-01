@@ -201,6 +201,40 @@ class GuildSetupPromptView(discord.ui.View):
         self.save_button.disabled = self.admin_role is None or self.league_channel is None
 
 
+class StartSetupButton(discord.ui.Button):
+    def __init__(self, parent_view: GuildSetupStartView):
+        self.parent_view = parent_view
+        super().__init__(label="Setup TyperBot", style=discord.ButtonStyle.primary)
+
+    async def callback(self, interaction: discord.Interaction):
+        if not has_setup_permission(interaction):
+            await interaction.response.send_message(
+                "Only a server manager can configure TyperBot for this server.", ephemeral=True
+            )
+            return
+
+        await interaction.response.edit_message(
+            content="Choose the TyperBot admin role and league channel below.",
+            view=GuildSetupPromptView(self.parent_view.db, str(interaction.user.id)),
+        )
+
+
+class GuildSetupStartView(discord.ui.View):
+    def __init__(self, db: Database, owner_user_id: str):
+        super().__init__(timeout=180)
+        self.db = db
+        self.owner_user_id = owner_user_id
+        self.add_item(StartSetupButton(self))
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if str(interaction.user.id) != self.owner_user_id:
+            await interaction.response.send_message(
+                "You don't have permission to do this!", ephemeral=True
+            )
+            return False
+        return True
+
+
 async def send_setup_prompt_if_allowed(interaction: discord.Interaction, db: Database) -> None:
     if not interaction.guild or interaction.guild_id is None:
         await interaction.response.send_message(
@@ -212,8 +246,8 @@ async def send_setup_prompt_if_allowed(interaction: discord.Interaction, db: Dat
         return
 
     await interaction.response.send_message(
-        "TyperBot needs setup before league admin commands can be used. Choose the admin role and league channel below.",
-        view=GuildSetupPromptView(db, str(interaction.user.id)),
+        "TyperBot needs setup before league admin commands can be used.",
+        view=GuildSetupStartView(db, str(interaction.user.id)),
         ephemeral=True,
     )
 
@@ -364,49 +398,6 @@ class AdminCommands(commands.Cog):
         await interaction.response.send_message(
             view.render_content(),
             view=view,
-            ephemeral=True,
-        )
-
-    @admin.command(name="setup", description="Configure TyperBot for this server")
-    @app_commands.describe(
-        admin_role="Role allowed to use TyperBot admin actions",
-        channel="League channel for fixture announcements and reminders",
-    )
-    async def setup_config(
-        self,
-        interaction: discord.Interaction,
-        admin_role: discord.Role,
-        channel: discord.TextChannel,
-    ):
-        if not interaction.guild or interaction.guild_id is None:
-            await interaction.response.send_message(
-                "This command can only be used in a server.", ephemeral=True
-            )
-            return
-
-        if not has_setup_permission(interaction):
-            await interaction.response.send_message(
-                "Only a server manager can configure TyperBot for this server.", ephemeral=True
-            )
-            return
-
-        if channel.guild.id != interaction.guild_id:
-            await interaction.response.send_message(
-                "Setup channel must belong to this server.", ephemeral=True
-            )
-            return
-
-        if _is_everyone_role(admin_role, interaction.guild_id):
-            await interaction.response.send_message(
-                "You selected @everyone as the TyperBot admin role. This gives every server member access to admin actions. Confirm this intentionally?",
-                view=_everyone_warning_view(self.db, interaction, admin_role, channel),
-                ephemeral=True,
-            )
-            return
-
-        await _save_guild_config(self.db, interaction, admin_role, channel)
-        await interaction.response.send_message(
-            _setup_saved_message(admin_role, channel),
             ephemeral=True,
         )
 

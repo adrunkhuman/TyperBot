@@ -149,7 +149,7 @@ class CreateFixtureConfirmView(discord.ui.View):
         league_channel = await self._get_league_channel(str(interaction.guild_id))
         if league_channel is None:
             await interaction.response.send_message(
-                "Configured league channel is unavailable. Run `/admin setup` again.",
+                "Configured league channel is unavailable. Run `/admin panel` again to update setup.",
                 ephemeral=True,
             )
             return
