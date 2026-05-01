@@ -373,6 +373,79 @@ class TestSchemaMigration:
             await db.initialize()
 
     @pytest.mark.asyncio
+    async def test_initialize_preserves_manually_backfilled_legacy_fixture_graph(
+        self, temp_db_path
+    ):
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.executescript(
+                """
+                CREATE TABLE fixtures (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    week_number INTEGER NOT NULL,
+                    games TEXT NOT NULL,
+                    deadline DATETIME NOT NULL,
+                    status TEXT DEFAULT 'open',
+                    message_id TEXT
+                );
+                CREATE TABLE predictions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id INTEGER NOT NULL,
+                    user_id TEXT NOT NULL,
+                    user_name TEXT NOT NULL,
+                    predictions TEXT NOT NULL,
+                    submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    is_late BOOLEAN DEFAULT FALSE
+                );
+                CREATE TABLE results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id INTEGER NOT NULL,
+                    results TEXT NOT NULL
+                );
+                CREATE TABLE scores (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id INTEGER NOT NULL,
+                    user_id TEXT NOT NULL,
+                    user_name TEXT NOT NULL,
+                    points INTEGER NOT NULL,
+                    exact_scores INTEGER DEFAULT 0,
+                    correct_results INTEGER DEFAULT 0
+                );
+                """
+            )
+            await conn.execute(
+                "INSERT INTO fixtures (id, week_number, games, deadline, status, message_id) VALUES (1, 1, 'A - B', ?, 'closed', '789012')",
+                (datetime.now(UTC).isoformat(),),
+            )
+            await conn.execute(
+                "INSERT INTO predictions (fixture_id, user_id, user_name, predictions, submitted_at, is_late) VALUES (1, 'user-1', 'User One', '2-1', ?, 0)",
+                (datetime.now(UTC).isoformat(),),
+            )
+            await conn.execute("INSERT INTO results (fixture_id, results) VALUES (1, '2-1')")
+            await conn.execute(
+                "INSERT INTO scores (fixture_id, user_id, user_name, points, exact_scores, correct_results) VALUES (1, 'user-1', 'User One', 3, 1, 0)"
+            )
+            await conn.execute("ALTER TABLE fixtures ADD COLUMN guild_id TEXT")
+            await conn.execute("UPDATE fixtures SET guild_id = '111111'")
+            await conn.commit()
+
+        db = Database(temp_db_path)
+        await db.initialize()
+
+        fixture = await db.get_fixture_by_id(1, "111111")
+        other_guild_fixture = await db.get_fixture_by_id(1, "222222")
+        prediction = await db.get_prediction(1, "user-1")
+        results = await db.get_results(1)
+        standings = await db.get_standings("111111")
+        other_guild_standings = await db.get_standings("222222")
+
+        assert fixture is not None
+        assert other_guild_fixture is None
+        assert prediction["predictions"] == ["2-1"]
+        assert results == ["2-1"]
+        assert [row["user_id"] for row in standings] == ["user-1"]
+        assert other_guild_standings == []
+
+    @pytest.mark.asyncio
     async def test_initialize_adds_missing_columns(self, temp_db_path):
         """Should automatically add missing columns during initialization."""
         async with aiosqlite.connect(temp_db_path) as conn:

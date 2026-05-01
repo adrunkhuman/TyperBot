@@ -38,6 +38,12 @@ async def _migrate_results_table(db: aiosqlite.Connection) -> None:
     if unique_index_exists:
         return
 
+    timestamp_expr = (
+        "COALESCE(calculated_at, CURRENT_TIMESTAMP)"
+        if "calculated_at" in columns
+        else "CURRENT_TIMESTAMP"
+    )
+
     logger.info("Migrating results table for deterministic result updates")
     await db.execute("BEGIN IMMEDIATE")
     try:
@@ -55,12 +61,12 @@ async def _migrate_results_table(db: aiosqlite.Connection) -> None:
             """
         )
         await db.execute(
-            """
+            f"""
             INSERT INTO results_migrated (fixture_id, results, calculated_at, updated_at)
             SELECT fixture_id,
                    results,
-                   COALESCE(calculated_at, CURRENT_TIMESTAMP),
-                   COALESCE(calculated_at, CURRENT_TIMESTAMP)
+                   {timestamp_expr},
+                   {timestamp_expr}
             FROM results old
             WHERE old.id IN (
                 SELECT MAX(id)
