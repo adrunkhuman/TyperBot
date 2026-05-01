@@ -80,9 +80,15 @@ async def test_seed_mixed_data_includes_real_tester_when_user_id_provided(temp_d
     assert week_one is not None
     assert week_two is not None
 
-    tester_scored_prediction = await db.get_prediction(week_one["id"], tester_user_id)
-    tester_prediction = await db.get_prediction(week_two["id"], tester_user_id)
-    synthetic_prediction = await db.get_prediction(week_two["id"], "seed-user-1")
+    tester_scored_prediction = await db.get_prediction(
+        week_one["id"], tester_user_id, DEFAULT_MANUAL_GUILD_ID
+    )
+    tester_prediction = await db.get_prediction(
+        week_two["id"], tester_user_id, DEFAULT_MANUAL_GUILD_ID
+    )
+    synthetic_prediction = await db.get_prediction(
+        week_two["id"], "seed-user-1", DEFAULT_MANUAL_GUILD_ID
+    )
 
     assert tester_scored_prediction is None
     assert tester_prediction is not None

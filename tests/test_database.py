@@ -183,10 +183,10 @@ class TestOpenFixturesQueries:
         fixture_id = await db.create_fixture("guild-2", 1, ["Team A - Team B"], datetime.now(UTC))
 
         assert await db.delete_fixture(fixture_id, "111111") is False
-        assert await db.get_fixture_by_id(fixture_id) is not None
+        assert await db.get_fixture_by_id(fixture_id, "guild-2") is not None
 
         assert await db.delete_fixture(fixture_id, "guild-2") is True
-        assert await db.get_fixture_by_id(fixture_id) is None
+        assert await db.get_fixture_by_id(fixture_id, "111111") is None
 
     @pytest.mark.asyncio
     async def test_pending_partial_predictions_are_guild_scoped(self, temp_db_path):
@@ -241,8 +241,8 @@ class TestOpenFixturesQueries:
             datetime.now(UTC),
         )
 
-        fixture_one = await db.get_fixture_by_id(fixture_one_id)
-        fixture_two = await db.get_fixture_by_id(fixture_two_id)
+        fixture_one = await db.get_fixture_by_id(fixture_one_id, "111111")
+        fixture_two = await db.get_fixture_by_id(fixture_two_id, "111111")
 
         assert week_one == 1
         assert week_two == 2
@@ -263,7 +263,7 @@ class TestOpenFixturesQueries:
             datetime.now(UTC),
         )
 
-        fixture = await db.get_fixture_by_id(fixture_id)
+        fixture = await db.get_fixture_by_id(fixture_id, "guild-2")
         assert fixture is not None
         assert fixture["guild_id"] == "guild-2"
 
@@ -316,7 +316,7 @@ class TestOpenFixturesQueries:
         assert await db.get_max_week_number("111111") == 2
         assert await db.get_max_week_number("guild-2") == 9
 
-        guild_one_second = await db.get_fixture_by_id(guild_one_second_id)
+        guild_one_second = await db.get_fixture_by_id(guild_one_second_id, "111111")
         assert guild_one_second is not None
         assert guild_one_second["guild_id"] == "111111"
 
@@ -433,7 +433,7 @@ class TestSchemaMigration:
 
         fixture = await db.get_fixture_by_id(1, "111111")
         other_guild_fixture = await db.get_fixture_by_id(1, "222222")
-        prediction = await db.get_prediction(1, "user-1")
+        prediction = await db.get_prediction(1, "user-1", "111111")
         results = await db.get_results(1)
         standings = await db.get_standings("111111")
         other_guild_standings = await db.get_standings("222222")
@@ -604,7 +604,7 @@ class TestSchemaMigration:
         db = Database(temp_db_path)
         await db.initialize()
 
-        prediction = await db.get_prediction(1, "user-1")
+        prediction = await db.get_prediction(1, "user-1", "111111")
         assert prediction is not None
         assert prediction["is_late"] == 1
         assert prediction["late_penalty_waived"] == 0
@@ -647,7 +647,7 @@ class TestTrySavePrediction:
             open_fixture_id, "u1", "User", ["2-1", "0-0"]
         )
         assert result == SaveResult.SAVED
-        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
         assert prediction is not None
         assert prediction["predictions"] == ["2-1", "0-0"]
 
@@ -658,7 +658,7 @@ class TestTrySavePrediction:
             open_fixture_id, "u1", "User", ["3-0", "1-1"]
         )
         assert result == SaveResult.DUPLICATE
-        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
         assert prediction["predictions"] == ["2-1", "0-0"]
 
     @pytest.mark.asyncio
@@ -671,7 +671,7 @@ class TestTrySavePrediction:
     @pytest.mark.asyncio
     async def test_no_row_written_on_fixture_closed(self, prediction_db, closed_fixture_id):
         await prediction_db.try_save_prediction(closed_fixture_id, "u1", "User", ["2-1", "0-0"])
-        prediction = await prediction_db.get_prediction(closed_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(closed_fixture_id, "u1", "111111")
         assert prediction is None
 
     @pytest.mark.asyncio
@@ -730,7 +730,7 @@ class TestSavePredictionGuarded:
             open_fixture_id, "u1", "User", ["2-1", "0-0"]
         )
         assert result == SaveResult.SAVED
-        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
         assert prediction["predictions"] == ["2-1", "0-0"]
 
     @pytest.mark.asyncio
@@ -739,7 +739,7 @@ class TestSavePredictionGuarded:
             closed_fixture_id, "u1", "User", ["2-1", "0-0"]
         )
         assert result == SaveResult.FIXTURE_CLOSED
-        prediction = await prediction_db.get_prediction(closed_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(closed_fixture_id, "u1", "111111")
         assert prediction is None
 
     @pytest.mark.asyncio
@@ -749,7 +749,7 @@ class TestSavePredictionGuarded:
             open_fixture_id, "u1", "User", ["3-0", "1-1"]
         )
         assert result == SaveResult.SAVED
-        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
         assert prediction["predictions"] == ["3-0", "1-1"]
 
     @pytest.mark.asyncio
@@ -760,7 +760,7 @@ class TestSavePredictionGuarded:
         await prediction_db.save_prediction_guarded(
             open_fixture_id, "u1", "NewName", ["3-0", "1-1"]
         )
-        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
         assert prediction["user_name"] == "NewName"
 
 
@@ -780,7 +780,7 @@ class TestCreateNextFixtureConcurrency:
 
         assert weeks == [1, 2]
 
-        fixtures = [await db.get_fixture_by_id(fixture_id) for fixture_id in fixture_ids]
+        fixtures = [await db.get_fixture_by_id(fixture_id, "111111") for fixture_id in fixture_ids]
         assert all(fixture is not None for fixture in fixtures)
         assert sorted(fixture["week_number"] for fixture in fixtures if fixture is not None) == [
             1,

@@ -32,9 +32,7 @@ class AdminService:
     def __init__(self, db: Database):
         self.db = db
 
-    async def _build_score_result(
-        self, fixture_id: int, guild_id: str | None = None
-    ) -> FixtureScoreResult:
+    async def _build_score_result(self, fixture_id: int, guild_id: str) -> FixtureScoreResult:
         fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
@@ -47,10 +45,9 @@ class AdminService:
         if not predictions:
             raise ValueError("No predictions found for this fixture")
 
-        effective_guild_id = guild_id or fixture["guild_id"]
         scores = await self.db.get_scores_for_fixture(fixture_id)
-        standings = await self.db.get_standings(effective_guild_id)
-        last_fixture = await self.db.get_last_fixture_scores(effective_guild_id)
+        standings = await self.db.get_standings(guild_id)
+        last_fixture = await self.db.get_last_fixture_scores(guild_id)
         return FixtureScoreResult(
             fixture=fixture,
             results=results,
@@ -60,9 +57,7 @@ class AdminService:
             last_fixture=last_fixture,
         )
 
-    async def calculate_fixture_scores(
-        self, fixture_id: int, guild_id: str | None = None
-    ) -> FixtureScoreResult:
+    async def calculate_fixture_scores(self, fixture_id: int, guild_id: str) -> FixtureScoreResult:
         """Recalculate one fixture and refresh standings."""
         fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
@@ -112,7 +107,7 @@ class AdminService:
         return await self._build_score_result(fixture_id, guild_id)
 
     async def maybe_recalculate_fixture(
-        self, fixture_id: int, guild_id: str | None = None
+        self, fixture_id: int, guild_id: str
     ) -> FixtureScoreResult | None:
         """Recalculate a fixture only when it has already been scored."""
         if not await self.db.fixture_has_scores(fixture_id):
@@ -120,7 +115,7 @@ class AdminService:
         return await self.calculate_fixture_scores(fixture_id, guild_id)
 
     async def get_fixture_prediction_summary(
-        self, fixture_id: int, guild_id: str | None = None
+        self, fixture_id: int, guild_id: str
     ) -> tuple[dict, list[dict]]:
         """Return fixture and its predictions for panel display.
 
@@ -144,13 +139,13 @@ class AdminService:
         fixture_id: int,
         user_id: str,
         admin_user_id: str,
-        guild_id: str | None = None,
+        guild_id: str,
     ) -> tuple[dict, dict, FixtureScoreResult | None]:
         fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
-        prediction = await self.db.get_prediction(fixture_id, user_id)
+        prediction = await self.db.get_prediction(fixture_id, user_id, guild_id)
         if prediction is None or not prediction["pending_partial_approval"]:
             raise ValueError("No late prediction awaiting review for that user")
 
@@ -158,7 +153,7 @@ class AdminService:
         if not approved:
             raise ValueError("Partial approval failed")
 
-        refreshed_prediction = await self.db.get_prediction(fixture_id, user_id)
+        refreshed_prediction = await self.db.get_prediction(fixture_id, user_id, guild_id)
         if refreshed_prediction is None:
             raise ValueError("Prediction disappeared after approval")
 
@@ -171,13 +166,13 @@ class AdminService:
         self,
         fixture_id: int,
         user_id: str,
-        guild_id: str | None = None,
+        guild_id: str,
     ) -> tuple[dict, dict, FixtureScoreResult | None]:
         fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
-        prediction = await self.db.get_prediction(fixture_id, user_id)
+        prediction = await self.db.get_prediction(fixture_id, user_id, guild_id)
         if prediction is None or not prediction["pending_partial_approval"]:
             raise ValueError("No late prediction awaiting review for that user")
 
@@ -196,7 +191,7 @@ class AdminService:
         user_id: str,
         prediction_lines: str,
         admin_user_id: str,
-        guild_id: str | None = None,
+        guild_id: str,
     ) -> tuple[dict, dict, FixtureScoreResult | None]:
         """Replace a stored prediction through an explicit admin action.
 
@@ -210,7 +205,7 @@ class AdminService:
         if fixture is None:
             raise FixtureNotFoundError
 
-        existing_prediction = await self.db.get_prediction(fixture_id, user_id)
+        existing_prediction = await self.db.get_prediction(fixture_id, user_id, guild_id)
         if existing_prediction is None:
             raise PredictionNotFoundError
 
@@ -227,7 +222,7 @@ class AdminService:
         if not updated:
             raise ValueError("Prediction update failed")
 
-        refreshed_prediction = await self.db.get_prediction(fixture_id, user_id)
+        refreshed_prediction = await self.db.get_prediction(fixture_id, user_id, guild_id)
         if refreshed_prediction is None:
             raise PredictionDisappearedError("update")
 
@@ -240,7 +235,7 @@ class AdminService:
         self,
         fixture_id: int,
         user_id: str,
-        guild_id: str | None = None,
+        guild_id: str,
     ) -> tuple[dict, dict, FixtureScoreResult | None]:
         """Toggle the waiver flag for a stored late prediction.
 
@@ -254,7 +249,7 @@ class AdminService:
         if fixture is None:
             raise FixtureNotFoundError
 
-        prediction = await self.db.get_prediction(fixture_id, user_id)
+        prediction = await self.db.get_prediction(fixture_id, user_id, guild_id)
         if prediction is None:
             raise PredictionNotFoundError
         if not prediction["is_late"]:
@@ -264,7 +259,7 @@ class AdminService:
         if waived is None:
             raise ValueError("Late waiver update failed")
 
-        refreshed_prediction = await self.db.get_prediction(fixture_id, user_id)
+        refreshed_prediction = await self.db.get_prediction(fixture_id, user_id, guild_id)
         if refreshed_prediction is None:
             raise PredictionDisappearedError("waiver update")
 
@@ -277,7 +272,7 @@ class AdminService:
         self,
         fixture_id: int,
         results_lines: str,
-        guild_id: str | None = None,
+        guild_id: str,
     ) -> tuple[dict, list[str], FixtureScoreResult | None]:
         """Replace stored results and recalculate scored fixtures."""
         fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)

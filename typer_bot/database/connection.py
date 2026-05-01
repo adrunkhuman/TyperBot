@@ -293,8 +293,11 @@ class Database:
     async def get_open_fixture_by_week(self, guild_id, week_number):
         return await self._fixtures.get_open_fixture_by_week(guild_id, week_number)
 
-    async def get_fixture_by_id(self, fixture_id, guild_id=None):
+    async def get_fixture_by_id(self, fixture_id, guild_id):
         return await self._fixtures.get_fixture_by_id(fixture_id, guild_id)
+
+    async def _get_fixture_by_id_unchecked(self, fixture_id):
+        return await self._fixtures._get_fixture_by_id_unchecked(fixture_id)
 
     async def get_fixture_by_week(self, guild_id, week_number):
         return await self._fixtures.get_fixture_by_week(guild_id, week_number)
@@ -391,8 +394,8 @@ class Database:
             public_message_kind=public_message_kind,
         )
 
-    async def get_prediction(self, fixture_id, user_id):
-        return await self._predictions.get_prediction(fixture_id, user_id)
+    async def get_prediction(self, fixture_id, user_id, guild_id):
+        return await self._predictions.get_prediction(fixture_id, user_id, guild_id)
 
     async def admin_update_prediction(self, fixture_id, user_id, predictions, admin_user_id):
         return await self._predictions.admin_update_prediction(

@@ -213,7 +213,9 @@ class ContinuePredictButton(discord.ui.Button):
             )
             return
 
-        existing_prediction = await view.db.get_prediction(self.fixture["id"], view.owner_user_id)
+        existing_prediction = await view.db.get_prediction(
+            self.fixture["id"], view.owner_user_id, view.guild_id
+        )
         modal = PredictModal(
             view.bot,
             view.db,
@@ -285,7 +287,9 @@ class FixtureSelect(discord.ui.Select):
             )
             return
 
-        existing_prediction = await view.db.get_prediction(fixture_id, view.owner_user_id)
+        existing_prediction = await view.db.get_prediction(
+            fixture_id, view.owner_user_id, view.guild_id
+        )
         modal = PredictModal(
             view.bot,
             view.db,
@@ -401,7 +405,9 @@ class PredictModal(discord.ui.Modal):
             return
 
         is_late = now() > fixture["deadline"]
-        existing_prediction = await self.db.get_prediction(fixture["id"], str(interaction.user.id))
+        existing_prediction = await self.db.get_prediction(
+            fixture["id"], str(interaction.user.id), fixture["guild_id"]
+        )
         is_partial = len(predicted_game_indexes) < len(fixture["games"])
         pending_partial_approval = is_late and is_partial
         admin_role_mention = (
@@ -588,7 +594,7 @@ class UserCommands(commands.Cog):
         if len(open_fixtures) == 1:
             fixture = open_fixtures[0]
             existing_prediction = await self.db.get_prediction(
-                fixture["id"], str(interaction.user.id)
+                fixture["id"], str(interaction.user.id), guild_id
             )
             modal = PredictModal(
                 self.bot,
@@ -751,7 +757,9 @@ Use these directly in Discord."""
 
         if len(open_fixtures) == 1:
             fixture = open_fixtures[0]
-            prediction = await self.db.get_prediction(fixture["id"], str(interaction.user.id))
+            prediction = await self.db.get_prediction(
+                fixture["id"], str(interaction.user.id), guild_id
+            )
 
             if not prediction:
                 await interaction.response.send_message(
@@ -794,7 +802,7 @@ Use these directly in Discord."""
         has_any_prediction = False
 
         for fixture in open_fixtures:
-            prediction = await self.db.get_prediction(fixture["id"], user_id)
+            prediction = await self.db.get_prediction(fixture["id"], user_id, guild_id)
             deadline_str = format_for_discord(fixture["deadline"], "F")
             relative_str = format_for_discord(fixture["deadline"], "R")
 

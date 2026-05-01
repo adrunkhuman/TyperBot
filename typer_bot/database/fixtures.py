@@ -171,18 +171,23 @@ class FixtureRepository:
                 row = await cursor.fetchone()
                 return self._row_to_fixture(row) if row else None
 
-    async def get_fixture_by_id(self, fixture_id: int, guild_id: str | None = None) -> dict | None:
-        """Get a fixture by ID, optionally requiring guild ownership."""
+    async def get_fixture_by_id(self, fixture_id: int, guild_id: str) -> dict | None:
+        """Get a fixture by ID, requiring guild ownership."""
+        _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
-            if guild_id is None:
-                query = "SELECT * FROM fixtures WHERE id = ?"
-                params = (fixture_id,)
-            else:
-                _validate_guild_id(guild_id)
-                query = "SELECT * FROM fixtures WHERE id = ? AND guild_id = ?"
-                params = (fixture_id, guild_id)
-            async with db.execute(query, params) as cursor:
+            async with db.execute(
+                "SELECT * FROM fixtures WHERE id = ? AND guild_id = ?",
+                (fixture_id, guild_id),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return self._row_to_fixture(row) if row else None
+
+    async def _get_fixture_by_id_unchecked(self, fixture_id: int) -> dict | None:
+        """Get a fixture by ID for process-level/internal paths that have no guild context."""
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            async with db.execute("SELECT * FROM fixtures WHERE id = ?", (fixture_id,)) as cursor:
                 row = await cursor.fetchone()
                 return self._row_to_fixture(row) if row else None
 
