@@ -8,6 +8,7 @@ import aiosqlite
 from typer_bot.utils.config import DB_PATH
 
 from .fixtures import FixtureRepository
+from .guild_config import GuildConfigRepository
 from .predictions import PredictionRepository, SaveResult
 from .results import ResultsRepository
 from .scores import ScoreRepository
@@ -146,6 +147,7 @@ class Database:
             db_dir.mkdir(parents=True, exist_ok=True)
 
         self._fixtures = FixtureRepository(self.db_path)
+        self._guild_config = GuildConfigRepository(self.db_path)
         self._predictions = PredictionRepository(self.db_path)
         self._results = ResultsRepository(self.db_path)
         self._scores = ScoreRepository(self.db_path)
@@ -221,6 +223,16 @@ class Database:
                 )
             """)
 
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS guild_config (
+                    guild_id TEXT PRIMARY KEY,
+                    admin_role_id TEXT NOT NULL,
+                    league_channel_id TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             column_names = await _table_columns(db, "fixtures")
 
             if "message_id" not in column_names:
@@ -248,6 +260,14 @@ class Database:
             )
 
             await db.commit()
+
+    async def upsert_guild_config(self, guild_id, admin_role_id, league_channel_id):
+        return await self._guild_config.upsert_guild_config(
+            guild_id, admin_role_id, league_channel_id
+        )
+
+    async def get_guild_config(self, guild_id):
+        return await self._guild_config.get_guild_config(guild_id)
 
     async def create_fixture(self, guild_id, week_number, games, deadline):
         return await self._fixtures.create_fixture(guild_id, week_number, games, deadline)

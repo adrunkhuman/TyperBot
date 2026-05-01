@@ -12,7 +12,7 @@ from typer_bot.commands.user_commands import (
     PredictModal,
     UserCommands,
 )
-from typer_bot.database import SaveResult
+from typer_bot.database import Database, SaveResult
 
 
 @pytest.fixture
@@ -315,8 +315,8 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database
     ):
         await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
-        admin_role = MockRole("typer-admin")
-        mock_interaction.guild.roles = [admin_role]
+        admin_role = MockRole("League Admin", role_id=4242)
+        await database.upsert_guild_config("111111", str(admin_role.id), "123456")
         fixture = await database.get_fixture_by_id(1)
         assert fixture is not None
         fixture["deadline"] = datetime.now(UTC) - timedelta(minutes=1)
@@ -340,6 +340,39 @@ class TestPredictCommand:
         assert "0 points" not in mock_interaction.response_sent[-1]["content"]
         thread = user_commands.bot.get_channel(700001)
         assert f"<@&{admin_role.id}>" in thread.messages_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_predict_modal_without_setup_does_not_ping_legacy_admin_role(
+        self,
+        mock_bot,
+        mock_interaction,
+        temp_db_path,
+        sample_games,
+    ):
+        database = Database(temp_db_path)
+        await database.initialize()
+        mock_bot.db = database
+        user_commands = UserCommands(mock_bot)
+        deadline = datetime.now(UTC) - timedelta(minutes=1)
+        fixture_id = await database.create_fixture("111111", 1, sample_games, deadline)
+        await _attach_prediction_threads(
+            user_commands, database, [fixture_id], mock_interaction.guild
+        )
+        mock_interaction.guild.roles = [MockRole("typer-admin", role_id=4242)]
+
+        fixture = await database.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+        user_commands.db.get_open_fixtures = AsyncMock(return_value=[fixture])
+        user_commands.db.get_fixture_by_id = AsyncMock(return_value=fixture)
+
+        await user_commands.predict.callback(user_commands, mock_interaction)
+        modal = mock_interaction.modal_sent["modal"]
+        modal.predictions_input._value = "Team C - Team D 1-1\nTeam E - Team F 0-2"
+        await modal.on_submit(mock_interaction)
+
+        thread = user_commands.bot.get_channel(700001)
+        assert "awaiting admin review" in thread.messages_sent[-1]["content"]
+        assert "<@&4242>" not in thread.messages_sent[-1]["content"]
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")

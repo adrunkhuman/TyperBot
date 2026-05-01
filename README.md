@@ -18,6 +18,7 @@ Discord bot for weekly football prediction leagues. Admins create fixtures and e
 - `/standings` - show the leaderboard and latest scored fixture
 
 ### Admin commands
+- `/admin setup admin_role:<role> channel:<text channel>` - configure the TyperBot admin role and league channel for this server
 - `/admin panel` - open the main admin surface
 
 The panel handles:
@@ -31,7 +32,7 @@ The panel handles:
 - review late partial predictions
 - toggle late waivers
 
-Admins need a Discord role named `Admin` or `typer-admin`.
+After setup, admins need the configured TyperBot admin role. Only Discord-native server managers/admins can run `/admin setup`.
 
 ## Permissions
 - `Send Messages`
@@ -87,8 +88,9 @@ Team E - Team F 3:2
 - `DB_PATH` - database path; default `{DATA_DIR}/typer.db`
 - `BACKUP_DIR` - backup directory; default `{DATA_DIR}/backups`
 - `TZ` - timezone for admin deadline input; default `UTC`
-- `REMINDER_CHANNEL_ID` - reminder channel ID
 - `LOG_LEVEL` - logging level; default `INFO`
+
+Run `/admin setup` in each server to store the admin role and league channel. Fixture announcements and deadline reminders both use that league channel.
 
 ## Deployment
 

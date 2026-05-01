@@ -14,8 +14,8 @@ from typer_bot.utils import (
     format_for_discord,
     format_predictions_preview,
     format_standings,
-    get_admin_role_mention,
-    is_admin,
+    get_configured_admin_role_mention,
+    is_configured_admin,
     now,
     parse_prediction_lines,
 )
@@ -46,7 +46,6 @@ def _remaining_open_fixtures(
 
 def _format_thread_prediction_message(
     fixture: dict,
-    guild: discord.Guild | None,
     user_id: int,
     predictions: list[str],
     predicted_game_indexes: list[int],
@@ -54,6 +53,7 @@ def _format_thread_prediction_message(
     is_update: bool,
     is_late: bool,
     pending_partial_approval: bool,
+    admin_role_mention: str | None = None,
 ) -> str:
     heading = "Updated prediction" if is_update else "Prediction"
     content = [f"**{heading} from <@{user_id}> · Week {fixture['week_number']}**", ""]
@@ -63,7 +63,6 @@ def _format_thread_prediction_message(
 
     status: str | None = None
     if pending_partial_approval:
-        admin_role_mention = get_admin_role_mention(guild)
         status = "⏳ Late prediction awaiting admin review."
         if admin_role_mention:
             status += f" {admin_role_mention}"
@@ -405,18 +404,23 @@ class PredictModal(discord.ui.Modal):
         existing_prediction = await self.db.get_prediction(fixture["id"], str(interaction.user.id))
         is_partial = len(predicted_game_indexes) < len(fixture["games"])
         pending_partial_approval = is_late and is_partial
+        admin_role_mention = (
+            await get_configured_admin_role_mention(str(interaction.guild_id), self.db)
+            if pending_partial_approval
+            else None
+        )
         public_message = None
         try:
             public_message = await thread.send(
                 _format_thread_prediction_message(
                     fixture,
-                    interaction.guild,
                     interaction.user.id,
                     predictions,
                     predicted_game_indexes,
                     is_update=existing_prediction is not None,
                     is_late=is_late,
                     pending_partial_approval=pending_partial_approval,
+                    admin_role_mention=admin_role_mention,
                 )
             )
         except discord.HTTPException:
@@ -608,7 +612,7 @@ class UserCommands(commands.Cog):
     @app_commands.command(name="help", description="Show help information")
     async def help(self, interaction: discord.Interaction):
         """Display help for users and admins."""
-        is_admin_user = is_admin(interaction)
+        is_admin_user = await is_configured_admin(interaction, self.db)
 
         user_help = """## 📖 User Commands
 

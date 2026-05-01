@@ -33,6 +33,7 @@ def mock_bot():
 async def database(temp_db_path):
     db = Database(temp_db_path)
     await db.initialize()
+    await db.upsert_guild_config("111111", str(MockRole("admin").id), "123456")
     yield db
 
 
@@ -108,6 +109,7 @@ class MockGuild:
         mock_member = MagicMock()
         mock_member.id = int(user_id)
         mock_member.roles = [MockRole(role) for role in (roles or [])]
+        mock_member.guild_permissions = MagicMock(administrator=False, manage_guild=False)
         self._members[int(user_id)] = mock_member
         return mock_member
 
@@ -228,9 +230,10 @@ def handler(mock_bot, database):
 
 
 class MockRole:
-    def __init__(self, name: str):
-        self.id = abs(hash(name)) % 1000000 or 1
+    def __init__(self, name: str, role_id: int | None = None):
+        self.id = role_id or abs(hash(name)) % 1000000 or 1
         self.name = name
+        self.mention = f"<@&{self.id}>"
 
 
 class MockAdminUser(MockUser):
@@ -244,6 +247,7 @@ class MockTextChannel:
         self.id = int(channel_id)
         self.name = name
         self._guild = guild
+        self.mention = f"<#{self.id}>"
         self.messages_sent = []
         self.threads_created = []
 
@@ -274,6 +278,7 @@ class MockGuildWithMembers(MockGuild):
         mock_member = MagicMock()
         mock_member.id = int(user_id)
         mock_member.roles = [MockRole(role) for role in (roles or [])]
+        mock_member.guild_permissions = MagicMock(administrator=False, manage_guild=False)
         self._members[int(user_id)] = mock_member
         return mock_member
 

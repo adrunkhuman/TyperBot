@@ -245,7 +245,12 @@ class CreateFixtureButton(discord.ui.Button):
             )
             return
 
-        modal = CreateFixtureModal(self.parent_view.db, channel, str(interaction.user.id))
+        modal = CreateFixtureModal(
+            self.parent_view.db,
+            channel,
+            str(interaction.user.id),
+            self.parent_view.bot,
+        )
         await interaction.response.send_modal(modal)
 
 

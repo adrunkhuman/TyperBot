@@ -15,7 +15,13 @@ from typer_bot.commands.admin_panel import (
 from typer_bot.database import Database
 from typer_bot.services import AdminService
 from typer_bot.services.admin_service import FixtureScoreResult
-from typer_bot.utils import format_fixture_results, format_standings, is_admin, now
+from typer_bot.utils import (
+    format_fixture_results,
+    format_standings,
+    get_admin_permission_error,
+    has_setup_permission,
+    now,
+)
 from typer_bot.utils.config import BACKUP_DIR
 from typer_bot.utils.db_backup import cleanup_old_backups, create_backup
 
@@ -29,15 +35,13 @@ def admin_only():
     """Decorator to check if user has admin permissions."""
 
     async def predicate(interaction: discord.Interaction) -> bool:
-        if not interaction.guild:
-            await interaction.response.send_message(
-                "This command can only be used in a server.", ephemeral=True
-            )
+        db = getattr(interaction.client, "db", None)
+        if db is None:
+            await interaction.response.send_message("Bot database is not ready.", ephemeral=True)
             return False
-        if not is_admin(interaction):
-            await interaction.response.send_message(
-                "You don't have permission to use admin commands.", ephemeral=True
-            )
+        permission_error = await get_admin_permission_error(interaction, db)
+        if permission_error is not None:
+            await interaction.response.send_message(permission_error, ephemeral=True)
             return False
         return True
 
@@ -146,6 +150,11 @@ class AdminCommands(commands.Cog):
     @admin.command(name="panel", description="Open the admin management panel")
     @admin_only()
     async def panel(self, interaction: discord.Interaction):
+        permission_error = await get_admin_permission_error(interaction, self.db)
+        if permission_error is not None:
+            await interaction.response.send_message(permission_error, ephemeral=True)
+            return
+
         view = UnifiedAdminPanelView(
             self.db,
             self.service,
@@ -158,6 +167,45 @@ class AdminCommands(commands.Cog):
         await interaction.response.send_message(
             view.render_content(),
             view=view,
+            ephemeral=True,
+        )
+
+    @admin.command(name="setup", description="Configure TyperBot for this server")
+    @app_commands.describe(
+        admin_role="Role allowed to use TyperBot admin actions",
+        channel="League channel for fixture announcements and reminders",
+    )
+    async def setup_config(
+        self,
+        interaction: discord.Interaction,
+        admin_role: discord.Role,
+        channel: discord.TextChannel,
+    ):
+        if not interaction.guild or interaction.guild_id is None:
+            await interaction.response.send_message(
+                "This command can only be used in a server.", ephemeral=True
+            )
+            return
+
+        if not has_setup_permission(interaction):
+            await interaction.response.send_message(
+                "Only a server manager can configure TyperBot for this server.", ephemeral=True
+            )
+            return
+
+        if channel.guild.id != interaction.guild_id:
+            await interaction.response.send_message(
+                "Setup channel must belong to this server.", ephemeral=True
+            )
+            return
+
+        await self.db.upsert_guild_config(
+            str(interaction.guild_id),
+            str(admin_role.id),
+            str(channel.id),
+        )
+        await interaction.response.send_message(
+            f"TyperBot setup saved. Admin role: {admin_role.mention}. League channel: {channel.mention}.",
             ephemeral=True,
         )
 

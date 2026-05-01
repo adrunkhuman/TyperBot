@@ -325,6 +325,7 @@ class TestReminderSystem:
 
         fixture = {
             "id": 1,
+            "guild_id": "111111",
             "deadline": deadline,
             "week_number": 1,
         }
@@ -344,6 +345,7 @@ class TestReminderSystem:
 
         fixture = {
             "id": 1,
+            "guild_id": "111111",
             "deadline": deadline,
             "week_number": 1,
         }
@@ -363,6 +365,7 @@ class TestReminderSystem:
 
         fixture = {
             "id": 1,
+            "guild_id": "111111",
             "deadline": deadline,
             "week_number": 1,
         }
@@ -394,8 +397,8 @@ class TestReminderSystem:
         deadline = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
         mock_now.return_value = deadline - timedelta(hours=24)
 
-        fixture_a = {"id": 1, "deadline": deadline, "week_number": 1}
-        fixture_b = {"id": 2, "deadline": deadline, "week_number": 2}
+        fixture_a = {"id": 1, "guild_id": "111111", "deadline": deadline, "week_number": 1}
+        fixture_b = {"id": 2, "guild_id": "222222", "deadline": deadline, "week_number": 2}
         bot_instance.db.get_all_open_fixtures = AsyncMock(return_value=[fixture_a, fixture_b])
 
         await bot_instance.reminder_task()
@@ -410,18 +413,22 @@ class TestSendReminder:
     def bot_instance(self):
         with patch("typer_bot.bot.commands.Bot.__init__", return_value=None):
             bot = TyperBot.__new__(TyperBot)
+            bot.db = MagicMock()
             bot.get_channel = MagicMock()
+            bot.fetch_channel = AsyncMock()
             yield bot
 
     @pytest.mark.asyncio
-    @patch.dict(os.environ, {"REMINDER_CHANNEL_ID": "123456"})
     async def test_send_reminder_to_configured_channel(self, bot_instance):
         """Reminders route to the configured channel."""
         mock_channel = MagicMock()
         mock_channel.send = AsyncMock()
         bot_instance.get_channel.return_value = mock_channel
+        bot_instance.db.get_guild_config = AsyncMock(return_value={"league_channel_id": "123456"})
 
         fixture = {
+            "id": 1,
+            "guild_id": "111111",
             "deadline": datetime.now(UTC) + timedelta(days=1),
             "week_number": 1,
         }
@@ -434,11 +441,11 @@ class TestSendReminder:
         assert "/predict" in call_args
 
     @pytest.mark.asyncio
-    async def test_send_reminder_missing_channel_id(self, bot_instance):
+    async def test_send_reminder_missing_guild_config(self, bot_instance):
         """Missing channel configuration skips delivery."""
-        with patch.dict(os.environ, {}, clear=True):
-            fixture = {"deadline": datetime.now(UTC), "week_number": 1}
-            await bot_instance.send_reminder(fixture, "24 hours remaining")
+        bot_instance.db.get_guild_config = AsyncMock(return_value=None)
+        fixture = {"id": 1, "guild_id": "111111", "deadline": datetime.now(UTC), "week_number": 1}
+        await bot_instance.send_reminder(fixture, "24 hours remaining")
 
         bot_instance.get_channel.assert_not_called()
 

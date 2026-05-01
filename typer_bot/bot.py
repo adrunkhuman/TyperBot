@@ -212,16 +212,21 @@ class TyperBot(commands.Bot):
 
     async def send_reminder(self, fixture: dict, time_description: str):
         """Send prediction reminder to configured channel."""
-        channel_id = os.getenv("REMINDER_CHANNEL_ID")
-        if not channel_id:
-            logger.warning("REMINDER_CHANNEL_ID not set, skipping reminder")
+        config = await self.db.get_guild_config(fixture["guild_id"])
+        if config is None:
+            logger.warning(
+                "Guild %s is missing TyperBot setup, skipping reminder for fixture %s",
+                fixture["guild_id"],
+                fixture["id"],
+            )
             return
+
+        channel_id = config["league_channel_id"]
 
         try:
             channel = self.get_channel(int(channel_id))
             if channel is None:
-                logger.error(f"Could not find channel {channel_id}")
-                return
+                channel = await self.fetch_channel(int(channel_id))
 
             send = getattr(channel, "send", None)
             if send is None:

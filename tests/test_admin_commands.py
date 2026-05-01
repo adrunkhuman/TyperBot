@@ -5,12 +5,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from tests.conftest import MockRole, MockTextChannel
 from typer_bot.commands.admin_commands import (
     CALCULATE_COOLDOWN,
     AdminCommands,
 )
 from typer_bot.commands.admin_panel import PostResultsConfirmView, UnifiedAdminPanelView
-from typer_bot.utils import now
+from typer_bot.database import Database
+from typer_bot.utils import get_admin_permission_error, has_setup_permission, now
 from typer_bot.utils.permissions import is_admin
 
 
@@ -46,6 +48,50 @@ class TestAdminOnlyDecorator:
         result = is_admin(mock_interaction_admin)
         assert result is True
 
+    @pytest.mark.asyncio
+    async def test_configured_admin_role_grants_access(self, database, mock_interaction_admin):
+        await database.upsert_guild_config("111111", "987654", "123456")
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.roles = [MockRole("League Admin", role_id=987654)]
+
+        assert await get_admin_permission_error(mock_interaction_admin, database) is None
+
+    @pytest.mark.asyncio
+    async def test_configured_admin_role_rejects_name_only_admin(
+        self, database, mock_interaction_admin
+    ):
+        await database.upsert_guild_config("111111", "987654", "123456")
+
+        permission_error = await get_admin_permission_error(mock_interaction_admin, database)
+        assert permission_error is not None
+        assert "permission" in permission_error
+
+    @pytest.mark.asyncio
+    async def test_configured_admin_check_uses_interaction_member_when_cache_misses(
+        self,
+        database,
+        mock_interaction_admin,
+    ):
+        await database.upsert_guild_config("111111", "987654", "123456")
+        mock_interaction_admin.guild._members.clear()
+        mock_interaction_admin.user.roles = [MockRole("League Admin", role_id=987654)]
+
+        assert await get_admin_permission_error(mock_interaction_admin, database) is None
+
+    @pytest.mark.asyncio
+    async def test_setup_permission_uses_interaction_member_when_cache_misses(
+        self,
+        mock_interaction_admin,
+    ):
+        mock_interaction_admin.guild._members.clear()
+        mock_interaction_admin.user.roles = []
+        mock_interaction_admin.user.guild_permissions = MagicMock(
+            administrator=False,
+            manage_guild=True,
+        )
+
+        assert has_setup_permission(mock_interaction_admin) is True
+
 
 class TestAdminPanelEntry:
     @pytest.fixture
@@ -61,6 +107,52 @@ class TestAdminPanelEntry:
 
     def test_admin_group_exposes_panel_command(self, admin_cog):
         assert any(command.name == "panel" for command in admin_cog.admin.commands)
+
+    def test_admin_group_exposes_setup_command(self, admin_cog):
+        assert any(command.name == "setup" for command in admin_cog.admin.commands)
+
+    @pytest.mark.asyncio
+    async def test_setup_command_persists_guild_config(self, admin_cog, mock_interaction_admin):
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.guild_permissions.manage_guild = True
+        role = MockRole("League Admin", role_id=987654)
+        channel = MockTextChannel("765432", guild=mock_interaction_admin.guild)
+
+        await admin_cog.setup_config.callback(
+            admin_cog,
+            mock_interaction_admin,
+            role,
+            channel,
+        )
+
+        config = await admin_cog.db.get_guild_config("111111")
+        assert config["admin_role_id"] == "987654"
+        assert config["league_channel_id"] == "765432"
+
+    @pytest.mark.asyncio
+    async def test_setup_command_requires_server_manager(self, admin_cog, mock_interaction_admin):
+        role = MockRole("League Admin", role_id=987654)
+        channel = MockTextChannel("765432", guild=mock_interaction_admin.guild)
+
+        await admin_cog.setup_config.callback(
+            admin_cog,
+            mock_interaction_admin,
+            role,
+            channel,
+        )
+
+        assert "server manager" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_panel_requires_guild_setup(self, mock_bot, mock_interaction_admin, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        mock_bot.db = db
+        admin_cog = AdminCommands(mock_bot)
+
+        await admin_cog.panel.callback(admin_cog, mock_interaction_admin)
+
+        assert "not set up" in mock_interaction_admin.response_sent[-1]["content"]
 
 
 class TestResultsPostFlow:
