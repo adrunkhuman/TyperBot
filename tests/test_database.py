@@ -9,6 +9,7 @@ import aiosqlite
 import pytest
 
 from typer_bot.database import Database, SaveResult
+from typer_bot.database.predictions import PredictionRepository
 
 
 @pytest.fixture
@@ -762,6 +763,30 @@ class TestSavePredictionGuarded:
         )
         prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
         assert prediction["user_name"] == "NewName"
+
+
+class TestPartialApprovalPending:
+    @pytest.mark.asyncio
+    async def test_clearing_pending_does_not_clear_late_status(
+        self, prediction_db, open_fixture_id
+    ):
+        await prediction_db.save_prediction(
+            open_fixture_id,
+            "u1",
+            "User",
+            ["2-1", "0-0"],
+            is_late=True,
+            pending_partial_approval=True,
+        )
+
+        predictions = PredictionRepository(prediction_db.db_path)
+        updated = await predictions.set_partial_approval_pending(open_fixture_id, "u1", False)
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1")
+
+        assert updated is True
+        assert prediction is not None
+        assert prediction["pending_partial_approval"] is False
+        assert prediction["is_late"] == 1
 
 
 class TestCreateNextFixtureConcurrency:
