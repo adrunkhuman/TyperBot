@@ -9,6 +9,7 @@ from tests.conftest import MockRole, MockTextChannel
 from typer_bot.commands.admin_commands import (
     CALCULATE_COOLDOWN,
     AdminCommands,
+    EveryoneRoleConfirmView,
     GuildSetupPromptView,
 )
 from typer_bot.commands.admin_panel import PostResultsConfirmView, UnifiedAdminPanelView
@@ -145,6 +146,43 @@ class TestAdminPanelEntry:
         assert "server manager" in mock_interaction_admin.response_sent[-1]["content"]
 
     @pytest.mark.asyncio
+    async def test_setup_command_requires_confirmation_for_everyone_role(
+        self,
+        mock_bot,
+        mock_interaction_admin,
+        temp_db_path,
+    ):
+        db = Database(temp_db_path)
+        await db.initialize()
+        mock_bot.db = db
+        admin_cog = AdminCommands(mock_bot)
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.guild_permissions.manage_guild = True
+        everyone_role = MockRole("@everyone", role_id=mock_interaction_admin.guild.id)
+        channel = MockTextChannel("765432", guild=mock_interaction_admin.guild)
+
+        await admin_cog.setup_config.callback(
+            admin_cog,
+            mock_interaction_admin,
+            everyone_role,
+            channel,
+        )
+
+        assert isinstance(mock_interaction_admin.response_sent[-1]["view"], EveryoneRoleConfirmView)
+        assert await db.get_guild_config("111111") is None
+
+        confirm_view = mock_interaction_admin.response_sent[-1]["view"]
+        confirm_button = next(
+            child
+            for child in confirm_view.children
+            if getattr(child, "label", None) == "Confirm @everyone"
+        )
+        await confirm_button.callback(mock_interaction_admin)
+
+        config = await db.get_guild_config("111111")
+        assert config["admin_role_id"] == str(mock_interaction_admin.guild.id)
+
+    @pytest.mark.asyncio
     async def test_panel_requires_guild_setup(self, mock_bot, mock_interaction_admin, temp_db_path):
         db = Database(temp_db_path)
         await db.initialize()
@@ -231,6 +269,26 @@ class TestAdminPanelEntry:
         config = await database.get_guild_config("111111")
         assert config["admin_role_id"] == "987654"
         assert config["league_channel_id"] == "765432"
+
+    @pytest.mark.asyncio
+    async def test_inline_setup_prompt_requires_confirmation_for_everyone_role(
+        self,
+        temp_db_path,
+        mock_interaction_admin,
+    ):
+        database = Database(temp_db_path)
+        await database.initialize()
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.guild_permissions.manage_guild = True
+        view = GuildSetupPromptView(database, str(mock_interaction_admin.user.id))
+        view.admin_role = MockRole("@everyone", role_id=mock_interaction_admin.guild.id)
+        view.league_channel = MockTextChannel("765432", guild=mock_interaction_admin.guild)
+        view.refresh_save_button()
+
+        await view.save_button.callback(mock_interaction_admin)
+
+        assert isinstance(mock_interaction_admin.response_sent[-1]["view"], EveryoneRoleConfirmView)
+        assert await database.get_guild_config("111111") is None
 
 
 class TestResultsPostFlow:

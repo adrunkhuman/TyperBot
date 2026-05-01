@@ -33,6 +33,81 @@ COOLDOWN_ENTRY_EXPIRY = timedelta(hours=1)
 logger = logging.getLogger(__name__)
 
 
+def _is_everyone_role(role: discord.Role, guild_id: int | None) -> bool:
+    is_default = getattr(role, "is_default", None)
+    if callable(is_default) and is_default():
+        return True
+    return guild_id is not None and role.id == guild_id
+
+
+async def _save_guild_config(
+    db: Database,
+    interaction: discord.Interaction,
+    admin_role: discord.Role,
+    league_channel: discord.TextChannel,
+) -> None:
+    await db.upsert_guild_config(
+        str(interaction.guild_id),
+        str(admin_role.id),
+        str(league_channel.id),
+    )
+
+
+def _setup_saved_message(admin_role: discord.Role, league_channel: discord.TextChannel) -> str:
+    return f"TyperBot setup saved. Admin role: {admin_role.mention}. League channel: {league_channel.mention}."
+
+
+class EveryoneRoleConfirmView(discord.ui.View):
+    def __init__(
+        self,
+        db: Database,
+        owner_user_id: str,
+        admin_role: discord.Role,
+        league_channel: discord.TextChannel,
+    ):
+        super().__init__(timeout=60)
+        self.db = db
+        self.owner_user_id = owner_user_id
+        self.admin_role = admin_role
+        self.league_channel = league_channel
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if str(interaction.user.id) != self.owner_user_id:
+            await interaction.response.send_message(
+                "You don't have permission to do this!", ephemeral=True
+            )
+            return False
+        if not has_setup_permission(interaction):
+            await interaction.response.send_message(
+                "Only a server manager can configure TyperBot for this server.", ephemeral=True
+            )
+            return False
+        return True
+
+    @discord.ui.button(label="Confirm @everyone", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, _button: discord.ui.Button):
+        if interaction.guild_id is None or self.league_channel.guild.id != interaction.guild_id:
+            await interaction.response.send_message(
+                "Setup channel must belong to this server.", ephemeral=True
+            )
+            return
+
+        await _save_guild_config(self.db, interaction, self.admin_role, self.league_channel)
+        await interaction.response.edit_message(
+            content=_setup_saved_message(self.admin_role, self.league_channel),
+            view=None,
+        )
+
+
+def _everyone_warning_view(
+    db: Database,
+    interaction: discord.Interaction,
+    admin_role: discord.Role,
+    league_channel: discord.TextChannel,
+) -> EveryoneRoleConfirmView:
+    return EveryoneRoleConfirmView(db, str(interaction.user.id), admin_role, league_channel)
+
+
 class SetupRoleSelect(discord.ui.RoleSelect):
     def __init__(self, parent_view: GuildSetupPromptView):
         self.parent_view = parent_view
@@ -79,13 +154,18 @@ class SaveSetupButton(discord.ui.Button):
             )
             return
 
-        await self.parent_view.db.upsert_guild_config(
-            str(interaction.guild_id),
-            str(admin_role.id),
-            str(league_channel.id),
-        )
+        if _is_everyone_role(admin_role, interaction.guild_id):
+            await interaction.response.edit_message(
+                content="You selected @everyone as the TyperBot admin role. This gives every server member access to admin actions. Confirm this intentionally?",
+                view=_everyone_warning_view(
+                    self.parent_view.db, interaction, admin_role, league_channel
+                ),
+            )
+            return
+
+        await _save_guild_config(self.parent_view.db, interaction, admin_role, league_channel)
         await interaction.response.edit_message(
-            content=f"TyperBot setup saved. Admin role: {admin_role.mention}. League channel: {league_channel.mention}.",
+            content=_setup_saved_message(admin_role, league_channel),
             view=None,
         )
 
@@ -316,13 +396,17 @@ class AdminCommands(commands.Cog):
             )
             return
 
-        await self.db.upsert_guild_config(
-            str(interaction.guild_id),
-            str(admin_role.id),
-            str(channel.id),
-        )
+        if _is_everyone_role(admin_role, interaction.guild_id):
+            await interaction.response.send_message(
+                "You selected @everyone as the TyperBot admin role. This gives every server member access to admin actions. Confirm this intentionally?",
+                view=_everyone_warning_view(self.db, interaction, admin_role, channel),
+                ephemeral=True,
+            )
+            return
+
+        await _save_guild_config(self.db, interaction, admin_role, channel)
         await interaction.response.send_message(
-            f"TyperBot setup saved. Admin role: {admin_role.mention}. League channel: {channel.mention}.",
+            _setup_saved_message(admin_role, channel),
             ephemeral=True,
         )
 
