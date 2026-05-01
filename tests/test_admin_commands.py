@@ -174,11 +174,51 @@ class TestAdminPanelEntry:
         assert isinstance(mock_interaction_admin.response_sent[-1]["view"], GuildSetupPromptView)
 
     @pytest.mark.asyncio
+    async def test_panel_check_prompts_server_manager_to_setup_inline(
+        self,
+        mock_bot,
+        mock_interaction_admin,
+        temp_db_path,
+    ):
+        db = Database(temp_db_path)
+        await db.initialize()
+        mock_bot.db = db
+        admin_cog = AdminCommands(mock_bot)
+        mock_interaction_admin.client = mock_bot
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.guild_permissions.manage_guild = True
+
+        can_run = await admin_cog.panel.checks[0](mock_interaction_admin)
+
+        assert can_run is False
+        assert isinstance(mock_interaction_admin.response_sent[-1]["view"], GuildSetupPromptView)
+
+    @pytest.mark.asyncio
+    async def test_panel_check_blocks_non_manager_without_setup(
+        self,
+        mock_bot,
+        mock_interaction_admin,
+        temp_db_path,
+    ):
+        db = Database(temp_db_path)
+        await db.initialize()
+        mock_bot.db = db
+        admin_cog = AdminCommands(mock_bot)
+        mock_interaction_admin.client = mock_bot
+
+        can_run = await admin_cog.panel.checks[0](mock_interaction_admin)
+
+        assert can_run is False
+        assert mock_interaction_admin.response_sent[-1].get("view") is None
+
+    @pytest.mark.asyncio
     async def test_inline_setup_prompt_saves_config(
         self,
-        database,
+        temp_db_path,
         mock_interaction_admin,
     ):
+        database = Database(temp_db_path)
+        await database.initialize()
         member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
         member.guild_permissions.manage_guild = True
         view = GuildSetupPromptView(database, str(mock_interaction_admin.user.id))
