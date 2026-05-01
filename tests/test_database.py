@@ -10,6 +10,7 @@ import pytest
 
 from typer_bot.database import Database, SaveResult
 from typer_bot.database import scores as scores_module
+from typer_bot.database.predictions import PredictionRepository
 
 
 @pytest.fixture
@@ -884,6 +885,42 @@ class TestTrySavePrediction:
         assert row[2] in {"2-1\n0-0", "3-0\n1-1"}
 
 
+class TestPredictionSaveMetadata:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "method_name",
+        ["save_prediction", "try_save_prediction", "save_prediction_guarded"],
+    )
+    async def test_save_paths_preserve_non_default_metadata(
+        self, prediction_db, open_fixture_id, method_name
+    ):
+        save = getattr(prediction_db, method_name)
+
+        result = await save(
+            open_fixture_id,
+            "u1",
+            "User",
+            ["1-1"],
+            True,
+            predicted_game_indexes=[1],
+            pending_partial_approval=True,
+            public_message_id="message-1",
+            public_message_kind="bot_post",
+        )
+
+        if method_name != "save_prediction":
+            assert result == SaveResult.SAVED
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
+        assert prediction is not None
+        assert prediction["user_name"] == "User"
+        assert prediction["predictions"] == ["1-1"]
+        assert prediction["is_late"] == 1
+        assert prediction["predicted_game_indexes"] == [1]
+        assert prediction["pending_partial_approval"] is True
+        assert prediction["public_message_id"] == "message-1"
+        assert prediction["public_message_kind"] == "bot_post"
+
+
 class TestSavePredictionGuarded:
     """Upsert with fixture-open guard (DM re-submission path)."""
 
@@ -925,6 +962,80 @@ class TestSavePredictionGuarded:
         )
         prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
         assert prediction["user_name"] == "NewName"
+
+    @pytest.mark.asyncio
+    async def test_resubmission_clears_admin_and_waiver_metadata(
+        self, prediction_db, open_fixture_id
+    ):
+        await prediction_db.save_prediction_guarded(
+            open_fixture_id, "u1", "User", ["2-1", "0-0"], True
+        )
+        await prediction_db.set_late_penalty_waiver(open_fixture_id, "u1", True)
+        await prediction_db.admin_update_prediction(
+            open_fixture_id, "u1", ["2-0", "1-1"], "admin-1"
+        )
+        async with aiosqlite.connect(prediction_db.db_path) as conn:
+            await conn.execute(
+                "UPDATE predictions SET submitted_at = '2000-01-01T00:00:00+00:00' WHERE fixture_id = ? AND user_id = ?",
+                (open_fixture_id, "u1"),
+            )
+            await conn.commit()
+
+        result = await prediction_db.save_prediction_guarded(
+            open_fixture_id, "u1", "User", ["3-0", "1-1"], False
+        )
+
+        assert result == SaveResult.SAVED
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
+        assert prediction is not None
+        assert prediction["late_penalty_waived"] == 0
+        assert prediction["admin_edited_at"] is None
+        assert prediction["admin_edited_by"] is None
+        assert prediction["submitted_at"] > datetime(2000, 1, 1, tzinfo=UTC)
+
+
+class TestPartialApprovalPending:
+    @pytest.mark.asyncio
+    async def test_clearing_pending_does_not_clear_late_status(
+        self, prediction_db, open_fixture_id
+    ):
+        await prediction_db.save_prediction(
+            open_fixture_id,
+            "u1",
+            "User",
+            ["2-1", "0-0"],
+            is_late=True,
+            pending_partial_approval=True,
+        )
+
+        predictions = PredictionRepository(prediction_db.db_path)
+        updated = await predictions.set_partial_approval_pending(open_fixture_id, "u1", False)
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
+
+        assert updated is True
+        assert prediction is not None
+        assert prediction["pending_partial_approval"] is False
+        assert prediction["is_late"] == 1
+
+    @pytest.mark.asyncio
+    async def test_setting_pending_does_not_force_late_status(self, prediction_db, open_fixture_id):
+        await prediction_db.save_prediction(
+            open_fixture_id,
+            "u1",
+            "User",
+            ["2-1", "0-0"],
+            is_late=False,
+            pending_partial_approval=False,
+        )
+
+        predictions = PredictionRepository(prediction_db.db_path)
+        updated = await predictions.set_partial_approval_pending(open_fixture_id, "u1", True)
+        prediction = await prediction_db.get_prediction(open_fixture_id, "u1", "111111")
+
+        assert updated is True
+        assert prediction is not None
+        assert prediction["pending_partial_approval"] is True
+        assert prediction["is_late"] == 0
 
 
 class TestCreateNextFixtureConcurrency:

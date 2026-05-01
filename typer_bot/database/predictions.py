@@ -13,6 +13,66 @@ from .scores import _fixture_has_scores_in_connection, _recalculate_scores_in_co
 
 logger = logging.getLogger(__name__)
 
+_PREDICTION_INSERT_COLUMNS = (
+    "fixture_id",
+    "user_id",
+    "user_name",
+    "predictions",
+    "is_late",
+    "predicted_game_indexes",
+    "pending_partial_approval",
+    "public_message_id",
+    "public_message_kind",
+)
+
+_PREDICTION_UPSERT_CLAUSE = """
+ON CONFLICT(fixture_id, user_id)
+  DO UPDATE SET predictions = excluded.predictions,
+                 user_name = excluded.user_name,
+                 is_late = excluded.is_late,
+                 predicted_game_indexes = excluded.predicted_game_indexes,
+                 pending_partial_approval = excluded.pending_partial_approval,
+                 public_message_id = excluded.public_message_id,
+                 public_message_kind = excluded.public_message_kind,
+                 late_penalty_waived = FALSE,
+                 admin_edited_at = NULL,
+                 admin_edited_by = NULL,
+                 submitted_at = CURRENT_TIMESTAMP
+"""
+
+
+def _build_prediction_insert_sql(*, upsert: bool) -> str:
+    columns = ", ".join(_PREDICTION_INSERT_COLUMNS)
+    placeholders = ", ".join("?" for _ in _PREDICTION_INSERT_COLUMNS)
+    sql = f"INSERT INTO predictions ({columns}) VALUES ({placeholders})"
+    if upsert:
+        return f"{sql} {_PREDICTION_UPSERT_CLAUSE}"
+    return sql
+
+
+def _prediction_insert_values(
+    fixture_id: int,
+    user_id: str,
+    user_name: str,
+    predictions: list[str],
+    is_late: bool,
+    predicted_game_indexes: list[int] | None,
+    pending_partial_approval: bool,
+    public_message_id: str | None,
+    public_message_kind: str | None,
+) -> tuple[int, str, str, str, bool, str | None, bool, str | None, str | None]:
+    return (
+        fixture_id,
+        user_id,
+        user_name,
+        "\n".join(predictions),
+        is_late,
+        _serialize_game_indexes(predicted_game_indexes, len(predictions)),
+        pending_partial_approval,
+        public_message_id,
+        public_message_kind,
+    )
+
 
 def _serialize_game_indexes(game_indexes: list[int] | None, prediction_count: int) -> str | None:
     if game_indexes is None:
@@ -80,37 +140,14 @@ class PredictionRepository:
         start_time = time.perf_counter()
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                """INSERT INTO predictions (
-                       fixture_id,
-                       user_id,
-                       user_name,
-                       predictions,
-                       is_late,
-                       predicted_game_indexes,
-                       pending_partial_approval,
-                       public_message_id,
-                       public_message_kind
-                   )
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                   ON CONFLICT(fixture_id, user_id)
-                     DO UPDATE SET predictions = excluded.predictions,
-                                    user_name = excluded.user_name,
-                                    is_late = excluded.is_late,
-                                    predicted_game_indexes = excluded.predicted_game_indexes,
-                                    pending_partial_approval = excluded.pending_partial_approval,
-                                    public_message_id = excluded.public_message_id,
-                                    public_message_kind = excluded.public_message_kind,
-                                    late_penalty_waived = FALSE,
-                                    admin_edited_at = NULL,
-                                    admin_edited_by = NULL,
-                                   submitted_at = CURRENT_TIMESTAMP""",
-                (
+                _build_prediction_insert_sql(upsert=True),
+                _prediction_insert_values(
                     fixture_id,
                     user_id,
                     user_name,
-                    "\n".join(predictions),
+                    predictions,
                     is_late,
-                    _serialize_game_indexes(predicted_game_indexes, len(predictions)),
+                    predicted_game_indexes,
                     pending_partial_approval,
                     public_message_id,
                     public_message_kind,
@@ -181,25 +218,14 @@ class PredictionRepository:
                         return SaveResult.DUPLICATE
 
                 await db.execute(
-                    """INSERT INTO predictions (
-                           fixture_id,
-                           user_id,
-                           user_name,
-                           predictions,
-                           is_late,
-                           predicted_game_indexes,
-                           pending_partial_approval,
-                           public_message_id,
-                           public_message_kind
-                       )
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
+                    _build_prediction_insert_sql(upsert=False),
+                    _prediction_insert_values(
                         fixture_id,
                         user_id,
                         user_name,
-                        "\n".join(predictions),
+                        predictions,
                         is_late,
-                        _serialize_game_indexes(predicted_game_indexes, len(predictions)),
+                        predicted_game_indexes,
                         pending_partial_approval,
                         public_message_id,
                         public_message_kind,
@@ -266,37 +292,14 @@ class PredictionRepository:
                         return SaveResult.FIXTURE_CLOSED
 
                 await db.execute(
-                    """INSERT INTO predictions (
-                           fixture_id,
-                           user_id,
-                           user_name,
-                           predictions,
-                           is_late,
-                           predicted_game_indexes,
-                           pending_partial_approval,
-                           public_message_id,
-                           public_message_kind
-                       )
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                       ON CONFLICT(fixture_id, user_id)
-                        DO UPDATE SET predictions = excluded.predictions,
-                                      user_name = excluded.user_name,
-                                      is_late = excluded.is_late,
-                                      predicted_game_indexes = excluded.predicted_game_indexes,
-                                      pending_partial_approval = excluded.pending_partial_approval,
-                                      public_message_id = excluded.public_message_id,
-                                      public_message_kind = excluded.public_message_kind,
-                                      late_penalty_waived = FALSE,
-                                      admin_edited_at = NULL,
-                                      admin_edited_by = NULL,
-                                      submitted_at = CURRENT_TIMESTAMP""",
-                    (
+                    _build_prediction_insert_sql(upsert=True),
+                    _prediction_insert_values(
                         fixture_id,
                         user_id,
                         user_name,
-                        "\n".join(predictions),
+                        predictions,
                         is_late,
-                        _serialize_game_indexes(predicted_game_indexes, len(predictions)),
+                        predicted_game_indexes,
                         pending_partial_approval,
                         public_message_id,
                         public_message_kind,
@@ -480,10 +483,11 @@ class PredictionRepository:
         user_id: str,
         pending: bool,
     ) -> bool:
+        """Set only the partial-approval pending flag for an existing prediction."""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                "UPDATE predictions SET pending_partial_approval = ?, is_late = ? WHERE fixture_id = ? AND user_id = ?",
-                (pending, pending, fixture_id, user_id),
+                "UPDATE predictions SET pending_partial_approval = ? WHERE fixture_id = ? AND user_id = ?",
+                (pending, fixture_id, user_id),
             )
             await db.commit()
             return cursor.rowcount > 0
