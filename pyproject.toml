@@ -4,7 +4,7 @@ version = "1.1.0"
 description = "TyperBot - Discord bot for football predictions"
 requires-python = ">=3.13"
 authors = [
-    {name = "Typer Team"}
+    {name = "adrunkhuman"}
 ]
 dependencies = [
     "discord-py>=2.6.0",
