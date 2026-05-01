@@ -211,7 +211,7 @@ async def fixture_with_thread(database, sample_games):
     deadline = datetime.now(UTC) + timedelta(days=1)
     fixture_id = await database.create_fixture("111111", 1, sample_games, deadline)
     await database.update_fixture_announcement(fixture_id, message_id="789012", channel_id="123456")
-    fixture = await database.get_fixture_by_id(fixture_id)
+    fixture = await database.get_fixture_by_id(fixture_id, "111111")
     yield fixture
 
 
@@ -220,7 +220,7 @@ async def fixture_with_dm(database, sample_games):
     """Fixture for DM prediction tests (no thread needed)."""
     deadline = datetime.now(UTC) + timedelta(days=1)
     fixture_id = await database.create_fixture("111111", 1, sample_games, deadline)
-    fixture = await database.get_fixture_by_id(fixture_id)
+    fixture = await database.get_fixture_by_id(fixture_id, "111111")
     yield fixture
 
 

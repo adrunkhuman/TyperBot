@@ -591,7 +591,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         if fixture is None:
             return
         self.current_prediction = await self.db.get_prediction(
-            self.selection.fixture_id, self.selection.user_id
+            self.selection.fixture_id, self.selection.user_id, self.guild_id
         )
 
     async def populate_fixture_details(self, fixture: dict | None) -> None:

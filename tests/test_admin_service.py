@@ -38,7 +38,7 @@ class TestLatePenaltyWaiver:
             True,
         )
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
-        await service.calculate_fixture_scores(fixture_id)
+        await service.calculate_fixture_scores(fixture_id, "111111")
 
         standings = await database.get_standings("111111")
         assert standings[0]["total_points"] == 0
@@ -46,6 +46,7 @@ class TestLatePenaltyWaiver:
         fixture, prediction, recalculation = await service.toggle_late_penalty_waiver(
             fixture_id,
             "late-user",
+            "111111",
         )
 
         assert fixture["week_number"] == 1
@@ -75,7 +76,7 @@ class TestLatePenaltyWaiver:
             True,
         )
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
-        await service.calculate_fixture_scores(fixture_id)
+        await service.calculate_fixture_scores(fixture_id, "111111")
 
         async def raise_recalc_error(*_args, **_kwargs):
             raise RuntimeError("boom")
@@ -85,9 +86,9 @@ class TestLatePenaltyWaiver:
         )
 
         with pytest.raises(RuntimeError, match="boom"):
-            await service.toggle_late_penalty_waiver(fixture_id, "late-user")
+            await service.toggle_late_penalty_waiver(fixture_id, "late-user", "111111")
 
-        prediction = await database.get_prediction(fixture_id, "late-user")
+        prediction = await database.get_prediction(fixture_id, "late-user", "111111")
         assert prediction is not None
         assert prediction["late_penalty_waived"] == 0
 
@@ -98,7 +99,7 @@ class TestAdminFlowErrors:
         service = AdminService(database)
 
         with pytest.raises(FixtureNotFoundError):
-            await service.get_fixture_prediction_summary(999)
+            await service.get_fixture_prediction_summary(999, "111111")
 
     @pytest.mark.asyncio
     async def test_wrong_guild_service_actions_raise_fixture_not_found(
@@ -146,7 +147,7 @@ class TestAdminFlowErrors:
                 "111111",
             )
 
-        prediction = await database.get_prediction(fixture_id, "user-1")
+        prediction = await database.get_prediction(fixture_id, "user-1", "guild-2")
         assert prediction is not None
         assert prediction["predictions"] == original_prediction
         assert prediction["pending_partial_approval"] is True
@@ -163,7 +164,7 @@ class TestAdminFlowErrors:
         )
 
         with pytest.raises(NoPredictionsSavedError):
-            await service.get_fixture_prediction_summary(fixture_id)
+            await service.get_fixture_prediction_summary(fixture_id, "111111")
 
     @pytest.mark.asyncio
     async def test_replace_prediction_raises_typed_prediction_not_found(
@@ -180,6 +181,7 @@ class TestAdminFlowErrors:
                 "missing-user",
                 "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2",
                 "admin-1",
+                "111111",
             )
 
     @pytest.mark.asyncio
@@ -200,8 +202,8 @@ class TestAdminFlowErrors:
 
         original_get_prediction = database.get_prediction
 
-        async def disappear_after_toggle(request_fixture_id: int, user_id: str):
-            prediction = await original_get_prediction(request_fixture_id, user_id)
+        async def disappear_after_toggle(request_fixture_id: int, user_id: str, guild_id: str):
+            prediction = await original_get_prediction(request_fixture_id, user_id, guild_id)
             if prediction is not None and prediction["late_penalty_waived"]:
                 return None
             return prediction
@@ -209,7 +211,7 @@ class TestAdminFlowErrors:
         monkeypatch.setattr(database, "get_prediction", disappear_after_toggle)
 
         with pytest.raises(PredictionDisappearedError, match="waiver update"):
-            await service.toggle_late_penalty_waiver(fixture_id, "late-user")
+            await service.toggle_late_penalty_waiver(fixture_id, "late-user", "111111")
 
 
 class TestPredictionReplacement:
@@ -234,7 +236,7 @@ class TestPredictionReplacement:
             True,
         )
 
-        original = await database.get_prediction(fixture_id, "user-1")
+        original = await database.get_prediction(fixture_id, "user-1", "111111")
         assert original is not None
 
         fixture, updated_prediction, recalculation = await service.replace_prediction(
@@ -242,6 +244,7 @@ class TestPredictionReplacement:
             "user-1",
             "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2",
             "admin-1",
+            "111111",
         )
 
         assert fixture["week_number"] == 1
@@ -272,7 +275,7 @@ class TestPredictionReplacement:
             False,
         )
         await database.save_results(fixture_id, ["1-0", "1-1", "0-0"])
-        await service.calculate_fixture_scores(fixture_id)
+        await service.calculate_fixture_scores(fixture_id, "111111")
 
         async def raise_recalc_error(*_args, **_kwargs):
             raise RuntimeError("boom")
@@ -287,9 +290,10 @@ class TestPredictionReplacement:
                 "user-1",
                 "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2",
                 "admin-1",
+                "111111",
             )
 
-        prediction = await database.get_prediction(fixture_id, "user-1")
+        prediction = await database.get_prediction(fixture_id, "user-1", "111111")
         assert prediction is not None
         assert prediction["predictions"] == ["1-0", "1-1", "0-0"]
         assert prediction["admin_edited_by"] is None
@@ -313,7 +317,7 @@ class TestPredictionReplacement:
             False,
         )
         await database.save_results(fixture_id, ["1-0", "1-1", "0-0"])
-        await service.calculate_fixture_scores(fixture_id)
+        await service.calculate_fixture_scores(fixture_id, "111111")
 
         before = await database.get_standings("111111")
         assert before[0]["total_points"] == 9
@@ -323,6 +327,7 @@ class TestPredictionReplacement:
             "user-1",
             "Team A - Team B 2-1\nTeam C - Team D 2-2\nTeam E - Team F 1-0",
             "admin-1",
+            "111111",
         )
 
         assert updated_prediction["admin_edited_by"] == "admin-1"
@@ -364,7 +369,7 @@ class TestResultCorrection:
             False,
         )
         await database.save_results(fixture1_id, ["1-0", "1-1", "0-2"])
-        await service.calculate_fixture_scores(fixture1_id)
+        await service.calculate_fixture_scores(fixture1_id, "111111")
 
         await database.save_prediction(
             fixture2_id,
@@ -374,7 +379,7 @@ class TestResultCorrection:
             False,
         )
         await database.save_results(fixture2_id, ["2-0", "0-0", "1-1"])
-        await service.calculate_fixture_scores(fixture2_id)
+        await service.calculate_fixture_scores(fixture2_id, "111111")
 
         before = await database.get_standings("111111")
         assert before[0]["user_id"] == "user-1"
@@ -384,6 +389,7 @@ class TestResultCorrection:
         fixture, results, recalculation = await service.correct_results(
             fixture1_id,
             "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2",
+            "111111",
         )
 
         assert fixture["week_number"] == 1
@@ -425,7 +431,7 @@ class TestResultCorrection:
             False,
         )
         await database.save_results(fixture_id, ["1-0", "1-1", "0-0"])
-        await service.calculate_fixture_scores(fixture_id)
+        await service.calculate_fixture_scores(fixture_id, "111111")
 
         async def raise_recalc_error(*_args, **_kwargs):
             raise RuntimeError("boom")
@@ -436,6 +442,7 @@ class TestResultCorrection:
             await service.correct_results(
                 fixture_id,
                 "Team A - Team B 2-1\nTeam C - Team D 2-2\nTeam E - Team F 1-0",
+                "111111",
             )
 
         assert await database.get_results(fixture_id) == ["1-0", "1-1", "0-0"]
@@ -470,7 +477,7 @@ class TestPartialPredictionApproval:
             pending_partial_approval=True,
         )
 
-        result = await service.calculate_fixture_scores(fixture_id)
+        result = await service.calculate_fixture_scores(fixture_id, "111111")
 
         assert [score["user_id"] for score in result.scores] == ["111"]
 
@@ -504,8 +511,8 @@ class TestPartialPredictionApproval:
             False,
         )
 
-        await service.calculate_fixture_scores(other_fixture_id)
-        result = await service.calculate_fixture_scores(current_fixture_id)
+        await service.calculate_fixture_scores(other_fixture_id, "guild-2")
+        result = await service.calculate_fixture_scores(current_fixture_id, "111111")
 
         assert [row["user_id"] for row in result.standings] == ["shared-user"]
         assert result.standings[0]["user_name"] == "Guild One"
@@ -538,12 +545,13 @@ class TestPartialPredictionApproval:
             fixture_id,
             "222",
             "admin-1",
+            "111111",
         )
 
         assert approved_prediction["pending_partial_approval"] is False
         assert recalculation is None
 
-        result = await service.calculate_fixture_scores(fixture_id)
+        result = await service.calculate_fixture_scores(fixture_id, "111111")
 
         assert result.scores[0]["user_id"] == "222"
         assert result.scores[0]["points"] == 6
@@ -566,7 +574,7 @@ class TestPartialPredictionApproval:
             ["2-1", "1-1", "0-2"],
             False,
         )
-        await service.calculate_fixture_scores(fixture_id)
+        await service.calculate_fixture_scores(fixture_id, "111111")
         await database.save_prediction(
             fixture_id,
             "222",
@@ -581,6 +589,7 @@ class TestPartialPredictionApproval:
             fixture_id,
             "222",
             "admin-1",
+            "111111",
         )
 
         assert approved_prediction["pending_partial_approval"] is False
@@ -607,7 +616,7 @@ class TestPartialPredictionApproval:
             ["2-1", "1-1", "0-2"],
             False,
         )
-        await service.calculate_fixture_scores(fixture_id)
+        await service.calculate_fixture_scores(fixture_id, "111111")
         await database.save_prediction(
             fixture_id,
             "222",
@@ -626,9 +635,9 @@ class TestPartialPredictionApproval:
         )
 
         with pytest.raises(RuntimeError, match="boom"):
-            await service.approve_partial_prediction(fixture_id, "222", "admin-1")
+            await service.approve_partial_prediction(fixture_id, "222", "admin-1", "111111")
 
-        prediction = await database.get_prediction(fixture_id, "222")
+        prediction = await database.get_prediction(fixture_id, "222", "111111")
         assert prediction is not None
         assert prediction["pending_partial_approval"] is True
         assert prediction["is_late"] == 1
@@ -652,7 +661,7 @@ class TestPartialPredictionApproval:
             ["2-1", "1-1", "0-2"],
             False,
         )
-        await service.calculate_fixture_scores(fixture_id)
+        await service.calculate_fixture_scores(fixture_id, "111111")
         await database.save_prediction(
             fixture_id,
             "222",
@@ -666,11 +675,12 @@ class TestPartialPredictionApproval:
         _fixture, prediction, recalculation = await service.reject_partial_prediction(
             fixture_id,
             "222",
+            "111111",
         )
 
         assert prediction["pending_partial_approval"] is True
         assert recalculation is not None
-        assert await database.get_prediction(fixture_id, "222") is None
+        assert await database.get_prediction(fixture_id, "222", "111111") is None
 
     @pytest.mark.asyncio
     async def test_reject_partial_prediction_rolls_back_if_recalculation_fails(
@@ -691,7 +701,7 @@ class TestPartialPredictionApproval:
             ["2-1", "1-1", "0-2"],
             False,
         )
-        await service.calculate_fixture_scores(fixture_id)
+        await service.calculate_fixture_scores(fixture_id, "111111")
         await database.save_prediction(
             fixture_id,
             "222",
@@ -710,9 +720,9 @@ class TestPartialPredictionApproval:
         )
 
         with pytest.raises(RuntimeError, match="boom"):
-            await service.reject_partial_prediction(fixture_id, "222")
+            await service.reject_partial_prediction(fixture_id, "222", "111111")
 
-        prediction = await database.get_prediction(fixture_id, "222")
+        prediction = await database.get_prediction(fixture_id, "222", "111111")
         assert prediction is not None
         assert prediction["pending_partial_approval"] is True
         assert prediction["is_late"] == 1
