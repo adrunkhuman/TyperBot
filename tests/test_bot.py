@@ -95,6 +95,26 @@ class TestSetupHook:
         with pytest.raises(Exception, match="DB Error"):
             await bot_instance.setup_hook()
 
+    @pytest.mark.asyncio
+    async def test_cleanup_sessions_task_cleans_admin_state_only(self):
+        admin_cog = MagicMock()
+        admin_cog.cleanup_expired_state.return_value = 1
+        with patch.object(TyperBot, "cogs", {"AdminCommands": admin_cog}):
+            bot = TyperBot.__new__(TyperBot)
+            bot.thread_handler = MagicMock(spec=[])
+
+            await TyperBot._cleanup_sessions_task.coro(bot)
+
+        admin_cog.cleanup_expired_state.assert_called_once_with()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_sessions_task_ignores_missing_admin_cog(self):
+        with patch.object(TyperBot, "cogs", {}):
+            bot = TyperBot.__new__(TyperBot)
+            bot.thread_handler = MagicMock(spec=[])
+
+            await TyperBot._cleanup_sessions_task.coro(bot)
+
 
 class TestOnReady:
     """Test suite for on_ready event handler."""

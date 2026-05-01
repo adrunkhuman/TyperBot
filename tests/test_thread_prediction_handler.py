@@ -317,14 +317,15 @@ class TestOnMessage:
         assert second is True
         assert retry_message.reactions_added == []
 
-    def test_cleanup_expired_state_removes_stale_cooldowns(self, handler):
+    def test_record_attempt_prunes_stale_cooldowns(self, handler):
         handler.record_thread_prediction_attempt(
             "guild-1", "user-1", datetime.now(UTC) - timedelta(hours=2)
         )
 
-        removed = handler.cleanup_expired_state()
+        handler.record_thread_prediction_attempt("guild-1", "user-2", datetime.now(UTC))
 
-        assert removed == 1
+        assert handler.get_thread_prediction_cooldown("guild-1", "user-1") is None
+        assert handler.get_thread_prediction_cooldown("guild-1", "user-2") is not None
 
 
 class TestEdgeCases:
