@@ -31,9 +31,6 @@ venv.bak/
 .DS_Store
 Thumbs.db
 
-# Railway
-.railway/
-
 # Private Data
 data.txt
 archive/*
