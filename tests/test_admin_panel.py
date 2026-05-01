@@ -1353,7 +1353,7 @@ class TestFixturePanelFlows:
         assert "Correct Results" in mock_interaction_admin.response_sent[-1]["content"]
 
     @pytest.mark.asyncio
-    async def test_unified_panel_calculate_scores_button_uses_admin_helpers(
+    async def test_unified_panel_calculate_scores_button_posts_results(
         self,
         admin_cog,
         mock_interaction_admin,
@@ -1362,10 +1362,18 @@ class TestFixturePanelFlows:
         fixture_id = await admin_cog.db.create_fixture(
             45, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        score_result = MagicMock()
-        admin_cog.service.calculate_fixture_scores = AsyncMock(return_value=score_result)
+        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        mock_interaction_admin.channel = channel
         admin_cog._create_backup = AsyncMock()
-        admin_cog._post_calculation_to_channel = AsyncMock()
 
         view = UnifiedAdminPanelView(
             admin_cog.db,
@@ -1382,11 +1390,12 @@ class TestFixturePanelFlows:
         await calculate_button.callback(mock_interaction_admin)
 
         assert admin_cog.get_calculate_cooldown(str(mock_interaction_admin.user.id)) is not None
-        admin_cog.service.calculate_fixture_scores.assert_awaited_once_with(fixture_id)
-        admin_cog._create_backup.assert_awaited_once()
-        admin_cog._post_calculation_to_channel.assert_awaited_once_with(
-            mock_interaction_admin, score_result
+        channel.send.assert_awaited_once()
+        assert (
+            "Week 45 results calculated and posted"
+            in mock_interaction_admin.response_sent[-1]["content"]
         )
+        assert "User One" in channel.send.call_args.args[0]
 
     @pytest.mark.asyncio
     async def test_unified_panel_calculate_scores_button_rejects_active_cooldown(

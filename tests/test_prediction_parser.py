@@ -505,7 +505,7 @@ class TestAsciiUsername:
     def test_basic_ascii_username(self):
         """Basic ASCII username should be unchanged."""
         result = ascii_username("User123")
-        assert result == "User123             "
+        assert result.strip() == "User123"
         assert len(result) == 20
 
     def test_username_with_emojis(self):
@@ -534,7 +534,7 @@ class TestAsciiUsername:
         """Short usernames should be padded to max_len."""
         result = ascii_username("Bob", max_len=20)
         assert len(result) == 20
-        assert result == "Bob                 "
+        assert result.strip() == "Bob"
 
     def test_empty_username(self):
         """Empty username should return padded string."""

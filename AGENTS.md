@@ -104,6 +104,8 @@ When modifying code, ensure tests pass and add tests for new functionality.
 - Use descriptive test names: `test_rejects_non_admin_users` not `test_admin_1`
 - Group related tests in classes (e.g., `class TestAdminOnlyDecorator`)
 - Mock external dependencies (Discord API, time) - never hit real services
+- Prefer behavior and contract assertions over exact UI layout, log wording, mock-call choreography, or source-string checks.
+- Delete low-value tests that only verify Python/library behavior or fixture setup.
 
 **Running Tests:**
 ```bash
