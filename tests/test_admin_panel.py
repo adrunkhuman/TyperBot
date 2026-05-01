@@ -374,7 +374,7 @@ class TestAdminPanelCommand:
         await cancel_button.callback(mock_interaction_admin)
 
         assert "Fixture creation cancelled" in mock_interaction_admin.response_sent[-1]["content"]
-        assert await admin_cog.db.get_current_fixture() is None
+        assert await admin_cog.db.get_current_fixture("111111") is None
 
     @pytest.mark.asyncio
     async def test_create_fixture_confirm_rechecks_admin_permission(
@@ -403,7 +403,7 @@ class TestAdminPanelCommand:
         await confirm_button.callback(mock_interaction_admin)
 
         assert "no longer have permission" in mock_interaction_admin.response_sent[-1]["content"]
-        assert await admin_cog.db.get_current_fixture() is None
+        assert await admin_cog.db.get_current_fixture("111111") is None
 
     @pytest.mark.asyncio
     async def test_panel_command_returns_view(self, admin_cog, mock_interaction_admin):
@@ -426,7 +426,7 @@ class TestPredictionPanelFlows:
     @pytest.mark.asyncio
     async def test_prediction_panel_blocks_non_owner(self, admin_cog, mock_interaction_admin):
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         outsider = MockInteraction(
             user=MockUser(user_id="999999", name="Outsider"),
@@ -443,7 +443,7 @@ class TestPredictionPanelFlows:
     @pytest.mark.asyncio
     async def test_prediction_panel_rechecks_admin_role(self, admin_cog, mock_interaction_admin):
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
         member.roles = []
@@ -468,6 +468,7 @@ class TestPredictionPanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -496,7 +497,7 @@ class TestPredictionPanelFlows:
         )
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
 
@@ -538,7 +539,7 @@ class TestPredictionPanelFlows:
         )
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -572,7 +573,7 @@ class TestPredictionPanelFlows:
             )
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -610,7 +611,7 @@ class TestPredictionPanelFlows:
             )
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -643,7 +644,7 @@ class TestPredictionPanelFlows:
             )
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -684,7 +685,7 @@ class TestPredictionPanelFlows:
             )
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -716,7 +717,7 @@ class TestPredictionPanelFlows:
         )
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
 
@@ -755,7 +756,7 @@ class TestPredictionPanelFlows:
         admin_cog.bot.get_user.return_value = target_user
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         view.bot = admin_cog.bot
         await view.load_fixture_options()
@@ -793,7 +794,7 @@ class TestPredictionPanelFlows:
         admin_cog.bot.get_user.return_value = failing_user
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         view.bot = admin_cog.bot
         await view.load_fixture_options()
@@ -829,7 +830,7 @@ class TestPredictionPanelFlows:
         admin_cog.bot.fetch_user = AsyncMock(return_value=target_user)
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         view.bot = admin_cog.bot
         await view.load_fixture_options()
@@ -863,7 +864,7 @@ class TestPredictionPanelFlows:
         )
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -898,7 +899,7 @@ class TestPredictionPanelFlows:
         )
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -933,7 +934,7 @@ class TestPredictionPanelFlows:
         )
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -977,7 +978,7 @@ class TestPredictionPanelFlows:
         )
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -1017,6 +1018,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1024,6 +1026,34 @@ class TestFixturePanelFlows:
 
         assert view.fixture_select.disabled is False
         assert view.fixture_select.options[0].label == "Week 4 [OPEN]"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "view_cls",
+        [FixturesPanelView, PredictionsPanelView, ResultsPanelView, UnifiedAdminPanelView],
+    )
+    async def test_admin_fixture_selectors_only_show_current_guild(
+        self,
+        view_cls,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        await admin_cog.db.create_fixture("111111", 1, sample_games, deadline)
+        await admin_cog.db.create_fixture("guild-2", 2, sample_games, deadline)
+
+        view = view_cls(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+        )
+        await view.load_fixture_options()
+
+        option_labels = [option.label for option in view.fixture_select.options]
+        assert "Week 1 [OPEN]" in option_labels
+        assert "Week 2 [OPEN]" not in option_labels
 
     @pytest.mark.asyncio
     async def test_fixture_panel_delete_button_enables_after_fixture_selection(
@@ -1037,7 +1067,11 @@ class TestFixturePanelFlows:
         )
 
         view = FixturesPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), bot=admin_cog.bot
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+            bot=admin_cog.bot,
         )
         await view.load_fixture_options()
 
@@ -1065,6 +1099,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1095,6 +1130,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1109,6 +1145,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1136,6 +1173,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1168,12 +1206,45 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
         await view.load_fixture_options()
 
         assert _has_button(view, "Review Late") is True
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_hides_other_guild_pending_partials(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            "guild-2", 55, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+            pending_partial_approval=True,
+        )
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+
+        assert _has_button(view, "Review Late") is False
 
     @pytest.mark.asyncio
     async def test_unified_panel_review_pending_button_jumps_to_pending_submission(
@@ -1199,6 +1270,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1248,6 +1320,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1279,6 +1352,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1299,6 +1373,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1321,6 +1396,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1348,6 +1424,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1387,6 +1464,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1424,6 +1502,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1455,6 +1534,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1509,6 +1589,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1532,6 +1613,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1559,6 +1641,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1587,6 +1670,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1613,6 +1697,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1636,6 +1721,7 @@ class TestFixturePanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1662,6 +1748,7 @@ class TestFixturePanelFlows:
         confirm_view = DeleteConfirmView(
             db_mock,
             str(mock_interaction_admin.user.id),
+            "111111",
             fixture_id,
             week_number=7,
         )
@@ -1739,7 +1826,7 @@ class TestResultsPanelFlows:
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
 
         view = ResultsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
 
@@ -1769,7 +1856,7 @@ class TestResultsPanelFlows:
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
 
         view = ResultsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
 
@@ -1796,7 +1883,7 @@ class TestResultsPanelFlows:
         )
 
         view = ResultsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
 
@@ -1826,7 +1913,7 @@ class TestResultsPanelFlows:
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
 
         view = ResultsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -1851,7 +1938,7 @@ class TestResultsPanelFlows:
             "111111", 23, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         view = ResultsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         await admin_cog.db.delete_fixture(fixture_id)
@@ -1877,7 +1964,7 @@ class TestResultsPanelFlows:
         await admin_cog.db.save_results(fixture_id, ["1-0"] * len(games))
 
         view = ResultsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -1911,6 +1998,7 @@ class TestResultsPanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1957,6 +2045,7 @@ class TestResultsPanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -1999,6 +2088,7 @@ class TestResultsPanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -2038,6 +2128,7 @@ class TestResultsPanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -2082,6 +2173,7 @@ class TestResultsPanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -2137,6 +2229,7 @@ class TestResultsPanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -2191,6 +2284,7 @@ class TestResultsPanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -2250,6 +2344,7 @@ class TestResultsPanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -2310,6 +2405,7 @@ class TestResultsPanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -2358,6 +2454,7 @@ class TestResultsPanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -2410,6 +2507,7 @@ class TestResultsPanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -2460,6 +2558,7 @@ class TestResultsPanelFlows:
             admin_cog.db,
             admin_cog.service,
             str(mock_interaction_admin.user.id),
+            "111111",
             admin_commands=admin_cog,
             bot=admin_cog.bot,
         )
@@ -2718,7 +2817,7 @@ class TestAdminPanelModals:
             False,
         )
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -2759,7 +2858,7 @@ class TestAdminPanelModals:
             False,
         )
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -2792,7 +2891,7 @@ class TestAdminPanelModals:
             False,
         )
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -2839,7 +2938,7 @@ class TestAdminPanelModals:
         admin_cog.bot.get_user.return_value = target_user
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         view.bot = admin_cog.bot
         await view.load_fixture_options()
@@ -2885,7 +2984,7 @@ class TestAdminPanelModals:
         admin_cog.bot.get_user.return_value = failing_user
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         view.bot = admin_cog.bot
         await view.load_fixture_options()
@@ -2931,7 +3030,7 @@ class TestAdminPanelModals:
         admin_cog.bot.fetch_user = AsyncMock(return_value=target_user)
 
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         view.bot = admin_cog.bot
         await view.load_fixture_options()
@@ -2972,7 +3071,7 @@ class TestAdminPanelModals:
             False,
         )
         view = PredictionsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -3010,7 +3109,7 @@ class TestAdminPanelModals:
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         view = ResultsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -3039,7 +3138,7 @@ class TestAdminPanelModals:
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         view = ResultsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -3056,6 +3155,33 @@ class TestAdminPanelModals:
         assert "Fixture not found" in mock_interaction_admin.response_sent[-1]["content"]
 
     @pytest.mark.asyncio
+    async def test_correct_results_modal_rejects_cross_guild_fixture(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            "guild-2", 7, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        original_results = ["0-0", "1-1", "2-2"]
+        await admin_cog.db.save_results(fixture_id, original_results)
+        fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+        view = ResultsPanelView(
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
+        )
+        view.selection.fixture_id = fixture_id
+        view.selection.fixture_label = "Week 7 [OPEN]"
+        modal = CorrectResultsModal(view, fixture, original_results)
+        modal.results_input._value = "Team A - Team B 3-0\nTeam C - Team D 3-0\nTeam E - Team F 3-0"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert "Fixture not found" in mock_interaction_admin.response_sent[-1]["content"]
+        assert await admin_cog.db.get_results(fixture_id) == original_results
+
+    @pytest.mark.asyncio
     async def test_correct_results_modal_prefills_stored_results(
         self,
         admin_cog,
@@ -3067,7 +3193,7 @@ class TestAdminPanelModals:
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         view = ResultsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -3093,7 +3219,7 @@ class TestAdminPanelModals:
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         view = ResultsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
@@ -3137,7 +3263,7 @@ class TestAdminPanelModals:
         )
 
         view = ResultsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         view.bot = admin_cog.bot
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
@@ -3170,7 +3296,7 @@ class TestAdminPanelModals:
         admin_cog.bot.get_user.return_value = failing_user
 
         view = ResultsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         view.bot = admin_cog.bot
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
@@ -3211,7 +3337,7 @@ class TestAdminPanelModals:
         )
 
         view = ResultsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         view.bot = admin_cog.bot
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
@@ -3248,7 +3374,7 @@ class TestAdminPanelModals:
         )
 
         view = ResultsPanelView(
-            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
+            admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         view.bot = admin_cog.bot
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)

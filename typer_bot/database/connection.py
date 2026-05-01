@@ -255,32 +255,35 @@ class Database:
     async def create_next_fixture(self, guild_id, games, deadline):
         return await self._fixtures.create_next_fixture(guild_id, games, deadline)
 
-    async def get_current_fixture(self):
-        return await self._fixtures.get_current_fixture()
+    async def get_current_fixture(self, guild_id):
+        return await self._fixtures.get_current_fixture(guild_id)
 
-    async def get_open_fixtures(self):
-        return await self._fixtures.get_open_fixtures()
+    async def get_open_fixtures(self, guild_id):
+        return await self._fixtures.get_open_fixtures(guild_id)
 
-    async def get_open_fixture_by_week(self, week_number):
-        return await self._fixtures.get_open_fixture_by_week(week_number)
+    async def get_all_open_fixtures(self):
+        return await self._fixtures.get_all_open_fixtures()
 
-    async def get_fixture_by_id(self, fixture_id):
-        return await self._fixtures.get_fixture_by_id(fixture_id)
+    async def get_open_fixture_by_week(self, guild_id, week_number):
+        return await self._fixtures.get_open_fixture_by_week(guild_id, week_number)
 
-    async def get_fixture_by_week(self, week_number):
-        return await self._fixtures.get_fixture_by_week(week_number)
+    async def get_fixture_by_id(self, fixture_id, guild_id=None):
+        return await self._fixtures.get_fixture_by_id(fixture_id, guild_id)
 
-    async def get_recent_fixtures(self, limit=25):
-        return await self._fixtures.get_recent_fixtures(limit)
+    async def get_fixture_by_week(self, guild_id, week_number):
+        return await self._fixtures.get_fixture_by_week(guild_id, week_number)
 
-    async def get_fixture_by_message_id(self, message_id):
-        return await self._fixtures.get_fixture_by_message_id(message_id)
+    async def get_recent_fixtures(self, guild_id, limit=25):
+        return await self._fixtures.get_recent_fixtures(guild_id, limit)
+
+    async def get_fixture_by_message_id(self, message_id, guild_id=None):
+        return await self._fixtures.get_fixture_by_message_id(message_id, guild_id)
 
     async def get_max_week_number(self, guild_id):
         return await self._fixtures.get_max_week_number(guild_id)
 
-    async def delete_fixture(self, fixture_id):
-        return await self._fixtures.delete_fixture(fixture_id)
+    async def delete_fixture(self, fixture_id, guild_id=None):
+        return await self._fixtures.delete_fixture(fixture_id, guild_id)
 
     async def update_fixture_announcement(self, fixture_id, message_id, channel_id):
         return await self._fixtures.update_fixture_announcement(fixture_id, message_id, channel_id)

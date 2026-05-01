@@ -231,7 +231,7 @@ class CreateFixtureModal(discord.ui.Modal):
 
         preview_week_number = await self.db.get_max_week_number(str(interaction.guild_id)) + 1
         preview = _build_fixture_preview_text(preview_week_number, games, deadline)
-        open_fixtures = await self.db.get_open_fixtures()
+        open_fixtures = await self.db.get_open_fixtures(str(interaction.guild_id))
         if open_fixtures:
             open_weeks = ", ".join(str(fixture["week_number"]) for fixture in open_fixtures)
             preview += (
@@ -424,6 +424,7 @@ class ReplacePredictionModal(discord.ui.Modal):
                 self.prediction["user_id"],
                 self.predictions_input.value,
                 str(interaction.user.id),
+                self.parent_view.guild_id,
             )
         except (FixtureNotFoundError, PredictionNotFoundError, PredictionDisappearedError) as exc:
             self.parent_view.selection.user_id = None
@@ -533,6 +534,7 @@ class CorrectResultsModal(discord.ui.Modal):
             ) = await self.parent_view.service.correct_results(
                 self.fixture["id"],
                 self.results_input.value,
+                self.parent_view.guild_id,
             )
         except FixtureNotFoundError as exc:
             self.parent_view.selection.fixture_id = None

@@ -101,6 +101,59 @@ class TestAdminFlowErrors:
             await service.get_fixture_prediction_summary(999)
 
     @pytest.mark.asyncio
+    async def test_wrong_guild_service_actions_raise_fixture_not_found(
+        self, database, sample_games
+    ):
+        service = AdminService(database)
+        fixture_id = await database.create_fixture(
+            "guild-2", 1, sample_games, datetime.now(UTC) - timedelta(hours=2)
+        )
+        original_prediction = ["1-0", "1-1"]
+        original_results = ["0-0", "1-1", "2-2"]
+        await database.save_prediction(
+            fixture_id,
+            "user-1",
+            "User One",
+            original_prediction,
+            True,
+            predicted_game_indexes=[0, 1],
+            pending_partial_approval=True,
+        )
+        await database.save_results(fixture_id, original_results)
+
+        with pytest.raises(FixtureNotFoundError):
+            await service.get_fixture_prediction_summary(fixture_id, "111111")
+        with pytest.raises(FixtureNotFoundError):
+            await service.calculate_fixture_scores(fixture_id, "111111")
+        with pytest.raises(FixtureNotFoundError):
+            await service.replace_prediction(
+                fixture_id,
+                "user-1",
+                "Team A - Team B 3-0\nTeam C - Team D 3-0\nTeam E - Team F 3-0",
+                "admin-1",
+                "111111",
+            )
+        with pytest.raises(FixtureNotFoundError):
+            await service.toggle_late_penalty_waiver(fixture_id, "user-1", "111111")
+        with pytest.raises(FixtureNotFoundError):
+            await service.approve_partial_prediction(fixture_id, "user-1", "admin-1", "111111")
+        with pytest.raises(FixtureNotFoundError):
+            await service.reject_partial_prediction(fixture_id, "user-1", "111111")
+        with pytest.raises(FixtureNotFoundError):
+            await service.correct_results(
+                fixture_id,
+                "Team A - Team B 3-0\nTeam C - Team D 3-0\nTeam E - Team F 3-0",
+                "111111",
+            )
+
+        prediction = await database.get_prediction(fixture_id, "user-1")
+        assert prediction is not None
+        assert prediction["predictions"] == original_prediction
+        assert prediction["pending_partial_approval"] is True
+        assert await database.get_results(fixture_id) == original_results
+        assert await database.get_scores_for_fixture(fixture_id) == []
+
+    @pytest.mark.asyncio
     async def test_get_fixture_prediction_summary_raises_typed_no_predictions(
         self, database, sample_games
     ):

@@ -66,6 +66,61 @@ class TestPredictCommand:
         assert isinstance(mock_interaction.response_sent[0]["view"], FixtureSelectView)
 
     @pytest.mark.asyncio
+    async def test_predict_only_uses_current_guild_fixtures(
+        self, user_commands, mock_interaction, database, sample_games
+    ):
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        await database.create_fixture("guild-2", 1, sample_games, deadline)
+
+        await user_commands.predict.callback(user_commands, mock_interaction)
+
+        assert "No active fixture" in mock_interaction.response_sent[0]["content"]
+
+    @pytest.mark.asyncio
+    async def test_fixture_picker_rejects_cross_guild_fixture(
+        self, user_commands, mock_interaction, database, sample_games
+    ):
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        fixture_id = await database.create_fixture("guild-2", 1, sample_games, deadline)
+        fixture = await database.get_fixture_by_id(fixture_id)
+
+        view = FixtureSelectView(
+            database,
+            user_commands.bot,
+            str(mock_interaction.user.id),
+            "111111",
+            [fixture],
+        )
+        select = view.children[0]
+        select._values = [str(fixture_id)]
+        await select.callback(mock_interaction)
+
+        assert not hasattr(mock_interaction, "modal_sent")
+        assert "no longer open" in mock_interaction.response_sent[-1]["content"].lower()
+
+    @pytest.mark.asyncio
+    async def test_continue_predict_rejects_cross_guild_fixture(
+        self, user_commands, mock_interaction, database, sample_games
+    ):
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        fixture_id = await database.create_fixture("guild-2", 1, sample_games, deadline)
+        fixture = await database.get_fixture_by_id(fixture_id)
+
+        view = ContinuePredictView(
+            database,
+            user_commands.bot,
+            str(mock_interaction.user.id),
+            "111111",
+            [fixture],
+            set(),
+        )
+        button = view.children[0]
+        await button.callback(mock_interaction)
+
+        assert not hasattr(mock_interaction, "modal_sent")
+        assert "no longer open" in mock_interaction.response_sent[-1]["content"].lower()
+
+    @pytest.mark.asyncio
     async def test_multiple_open_fixture_picker_opens_modal_for_selection(
         self, user_commands, mock_interaction, database, sample_games
     ):
@@ -788,6 +843,20 @@ class TestFixturesCommand:
         assert "Week 1" in content
         assert "Week 2" in content
 
+    @pytest.mark.asyncio
+    async def test_fixtures_only_shows_current_guild(
+        self, user_commands, mock_interaction, database, sample_games
+    ):
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        await database.create_fixture("111111", 1, sample_games, deadline)
+        await database.create_fixture("guild-2", 2, sample_games, deadline)
+
+        await user_commands.fixtures.callback(user_commands, mock_interaction)
+
+        content = mock_interaction.response_sent[0]["content"]
+        assert "Week 1" in content
+        assert "Week 2" not in content
+
 
 class TestStandingsCommand:
     @pytest.mark.asyncio
@@ -836,6 +905,24 @@ class TestStandingsCommand:
 class TestMyPredictionsCommand:
     @pytest.mark.asyncio
     async def test_no_open_fixture_shows_error(self, user_commands, mock_interaction):
+        await user_commands.my_predictions.callback(user_commands, mock_interaction)
+
+        assert mock_interaction.response_sent[0]["content"] == "❌ No active fixture found!"
+
+    @pytest.mark.asyncio
+    async def test_only_uses_current_guild_fixtures(
+        self, user_commands, mock_interaction, database, sample_games
+    ):
+        deadline = datetime.now(UTC) + timedelta(days=1)
+        fixture_id = await database.create_fixture("guild-2", 1, sample_games, deadline)
+        await database.save_prediction(
+            fixture_id,
+            str(mock_interaction.user.id),
+            mock_interaction.user.name,
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+
         await user_commands.my_predictions.callback(user_commands, mock_interaction)
 
         assert mock_interaction.response_sent[0]["content"] == "❌ No active fixture found!"

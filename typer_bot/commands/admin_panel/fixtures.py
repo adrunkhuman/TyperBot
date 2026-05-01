@@ -66,9 +66,10 @@ class FixturesPanelView(OwnerRestrictedView):
         db: Database,
         service: AdminService,
         owner_user_id: str,
+        guild_id: str,
         bot: discord.Client | None = None,
     ):
-        super().__init__(db, service, owner_user_id, bot=bot)
+        super().__init__(db, service, owner_user_id, guild_id, bot=bot)
         self.selection = PanelSelectionState()
         self.fixture_select = FixtureSelect(self)
         self._refresh_items()
@@ -79,7 +80,7 @@ class FixturesPanelView(OwnerRestrictedView):
         self.add_item(FixturesDeleteButton(self, disabled=self.selection.fixture_id is None))
 
     async def load_fixture_options(self) -> None:
-        fixtures = await self.db.get_open_fixtures()
+        fixtures = await self.db.get_open_fixtures(self.guild_id)
         self.fixture_select.update_options(fixtures)
 
     def render_content(self) -> str:
@@ -123,7 +124,7 @@ class FixturesDeleteButton(discord.ui.Button):
             await interaction.response.send_message("Select an open fixture first.", ephemeral=True)
             return
 
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id)
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
         if fixture is None or fixture["status"] != "open":
             await interaction.response.send_message(
                 "Only open fixtures can be deleted from the panel.", ephemeral=True
@@ -133,6 +134,7 @@ class FixturesDeleteButton(discord.ui.Button):
         confirm_view = DeleteConfirmView(
             self.parent_view.db,
             self.parent_view.owner_user_id,
+            self.parent_view.guild_id,
             fixture_id,
             fixture["week_number"],
             bot=self.parent_view.bot,
@@ -150,6 +152,7 @@ class DeleteConfirmView(discord.ui.View):
         self,
         db: Database,
         user_id: str,
+        guild_id: str,
         fixture_id: int,
         week_number: int,
         bot: discord.Client | None = None,
@@ -159,6 +162,7 @@ class DeleteConfirmView(discord.ui.View):
         super().__init__(timeout=60)
         self.db = db
         self.user_id = user_id
+        self.guild_id = guild_id
         self.fixture_id = fixture_id
         self.week_number = week_number
         self.bot = bot
@@ -179,7 +183,13 @@ class DeleteConfirmView(discord.ui.View):
             return
 
         try:
-            await self.db.delete_fixture(self.fixture_id)
+            deleted = await self.db.delete_fixture(self.fixture_id, self.guild_id)
+            if not deleted:
+                await interaction.response.edit_message(
+                    content="Fixture no longer exists or belongs to another server.",
+                    view=None,
+                )
+                return
         except Exception:
             logger.exception(
                 "Failed to delete fixture %s (week %s)", self.fixture_id, self.week_number

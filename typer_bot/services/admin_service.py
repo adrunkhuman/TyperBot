@@ -32,8 +32,10 @@ class AdminService:
     def __init__(self, db: Database):
         self.db = db
 
-    async def _build_score_result(self, fixture_id: int) -> FixtureScoreResult:
-        fixture = await self.db.get_fixture_by_id(fixture_id)
+    async def _build_score_result(
+        self, fixture_id: int, guild_id: str | None = None
+    ) -> FixtureScoreResult:
+        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
@@ -57,9 +59,11 @@ class AdminService:
             last_fixture=last_fixture,
         )
 
-    async def calculate_fixture_scores(self, fixture_id: int) -> FixtureScoreResult:
+    async def calculate_fixture_scores(
+        self, fixture_id: int, guild_id: str | None = None
+    ) -> FixtureScoreResult:
         """Recalculate one fixture and refresh standings."""
-        fixture = await self.db.get_fixture_by_id(fixture_id)
+        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
@@ -104,22 +108,26 @@ class AdminService:
         )
         await self.db.save_scores(fixture_id, scores)
 
-        return await self._build_score_result(fixture_id)
+        return await self._build_score_result(fixture_id, guild_id)
 
-    async def maybe_recalculate_fixture(self, fixture_id: int) -> FixtureScoreResult | None:
+    async def maybe_recalculate_fixture(
+        self, fixture_id: int, guild_id: str | None = None
+    ) -> FixtureScoreResult | None:
         """Recalculate a fixture only when it has already been scored."""
         if not await self.db.fixture_has_scores(fixture_id):
             return None
-        return await self.calculate_fixture_scores(fixture_id)
+        return await self.calculate_fixture_scores(fixture_id, guild_id)
 
-    async def get_fixture_prediction_summary(self, fixture_id: int) -> tuple[dict, list[dict]]:
+    async def get_fixture_prediction_summary(
+        self, fixture_id: int, guild_id: str | None = None
+    ) -> tuple[dict, list[dict]]:
         """Return fixture and its predictions for panel display.
 
         Raises:
             FixtureNotFoundError: Fixture was deleted before the panel action ran.
             NoPredictionsSavedError: Fixture still exists but has no saved predictions.
         """
-        fixture = await self.db.get_fixture_by_id(fixture_id)
+        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
@@ -135,8 +143,9 @@ class AdminService:
         fixture_id: int,
         user_id: str,
         admin_user_id: str,
+        guild_id: str | None = None,
     ) -> tuple[dict, dict, FixtureScoreResult | None]:
-        fixture = await self.db.get_fixture_by_id(fixture_id)
+        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
@@ -154,15 +163,16 @@ class AdminService:
 
         recalculation = None
         if await self.db.fixture_has_scores(fixture_id):
-            recalculation = await self._build_score_result(fixture_id)
+            recalculation = await self._build_score_result(fixture_id, guild_id)
         return fixture, refreshed_prediction, recalculation
 
     async def reject_partial_prediction(
         self,
         fixture_id: int,
         user_id: str,
+        guild_id: str | None = None,
     ) -> tuple[dict, dict, FixtureScoreResult | None]:
-        fixture = await self.db.get_fixture_by_id(fixture_id)
+        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
@@ -176,7 +186,7 @@ class AdminService:
 
         recalculation = None
         if await self.db.fixture_has_scores(fixture_id):
-            recalculation = await self._build_score_result(fixture_id)
+            recalculation = await self._build_score_result(fixture_id, guild_id)
         return fixture, prediction, recalculation
 
     async def replace_prediction(
@@ -185,6 +195,7 @@ class AdminService:
         user_id: str,
         prediction_lines: str,
         admin_user_id: str,
+        guild_id: str | None = None,
     ) -> tuple[dict, dict, FixtureScoreResult | None]:
         """Replace a stored prediction through an explicit admin action.
 
@@ -194,7 +205,7 @@ class AdminService:
             PredictionDisappearedError: Update succeeded but the refreshed row vanished.
             ValueError: Validation or write failures that should surface directly to admins.
         """
-        fixture = await self.db.get_fixture_by_id(fixture_id)
+        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
@@ -221,13 +232,14 @@ class AdminService:
 
         recalculation = None
         if await self.db.fixture_has_scores(fixture_id):
-            recalculation = await self._build_score_result(fixture_id)
+            recalculation = await self._build_score_result(fixture_id, guild_id)
         return fixture, refreshed_prediction, recalculation
 
     async def toggle_late_penalty_waiver(
         self,
         fixture_id: int,
         user_id: str,
+        guild_id: str | None = None,
     ) -> tuple[dict, dict, FixtureScoreResult | None]:
         """Toggle the waiver flag for a stored late prediction.
 
@@ -237,7 +249,7 @@ class AdminService:
             PredictionDisappearedError: Waiver update succeeded but the refreshed row vanished.
             ValueError: On-time or write-failure cases that should surface directly to admins.
         """
-        fixture = await self.db.get_fixture_by_id(fixture_id)
+        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
@@ -257,16 +269,17 @@ class AdminService:
 
         recalculation = None
         if await self.db.fixture_has_scores(fixture_id):
-            recalculation = await self._build_score_result(fixture_id)
+            recalculation = await self._build_score_result(fixture_id, guild_id)
         return fixture, refreshed_prediction, recalculation
 
     async def correct_results(
         self,
         fixture_id: int,
         results_lines: str,
+        guild_id: str | None = None,
     ) -> tuple[dict, list[str], FixtureScoreResult | None]:
         """Replace stored results and recalculate scored fixtures."""
-        fixture = await self.db.get_fixture_by_id(fixture_id)
+        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
@@ -275,5 +288,7 @@ class AdminService:
             raise ValueError("\n".join(errors))
 
         recalculated = await self.db.save_results_with_recalc(fixture_id, results)
-        recalculation = await self._build_score_result(fixture_id) if recalculated else None
+        recalculation = (
+            await self._build_score_result(fixture_id, guild_id) if recalculated else None
+        )
         return fixture, results, recalculation

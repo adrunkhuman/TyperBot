@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from typer_bot.dev.seed_test_data import seed_mixed_test_data
+from typer_bot.dev.seed_test_data import DEFAULT_MANUAL_GUILD_ID, seed_mixed_test_data
 
 
 def _write_cleanup_artifacts(temp_db_path: str, backup_dir: Path) -> None:
@@ -32,11 +32,11 @@ async def test_seed_mixed_data_creates_expected_fixture_states(temp_db_path, tmp
     from typer_bot.database import Database
 
     db = Database(temp_db_path)
-    open_fixtures = await db.get_open_fixtures()
+    open_fixtures = await db.get_open_fixtures(DEFAULT_MANUAL_GUILD_ID)
     standings = await db.get_standings()
-    week_one = await db.get_fixture_by_week(1)
-    week_two = await db.get_fixture_by_week(2)
-    week_three = await db.get_fixture_by_week(3)
+    week_one = await db.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 1)
+    week_two = await db.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 2)
+    week_three = await db.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 3)
 
     assert [fixture["week_number"] for fixture in open_fixtures] == [2, 3]
     assert week_one is not None
@@ -75,8 +75,8 @@ async def test_seed_mixed_data_includes_real_tester_when_user_id_provided(temp_d
     from typer_bot.database import Database
 
     db = Database(temp_db_path)
-    week_one = await db.get_fixture_by_week(1)
-    week_two = await db.get_fixture_by_week(2)
+    week_one = await db.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 1)
+    week_two = await db.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 2)
     assert week_one is not None
     assert week_two is not None
 
@@ -99,14 +99,14 @@ async def test_seed_mixed_data_resets_existing_database(temp_db_path, tmp_path):
     from typer_bot.database import Database
 
     db = Database(temp_db_path)
-    week_two = await db.get_fixture_by_week(2)
+    week_two = await db.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 2)
     assert week_two is not None
     await db.delete_fixture(week_two["id"])
 
     await seed_mixed_test_data(temp_db_path, str(backup_dir), None, force_reset=True)
 
     refreshed_db = Database(temp_db_path)
-    open_fixtures = await refreshed_db.get_open_fixtures()
+    open_fixtures = await refreshed_db.get_open_fixtures(DEFAULT_MANUAL_GUILD_ID)
     assert [fixture["week_number"] for fixture in open_fixtures] == [2, 3]
 
 

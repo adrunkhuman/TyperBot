@@ -25,6 +25,15 @@ BUTTON_PAGE_SIZE = 23
 logger = logging.getLogger(__name__)
 
 
+async def _require_guild_id(interaction: discord.Interaction) -> str | None:
+    if interaction.guild_id is None:
+        await interaction.response.send_message(
+            "This command can only be used in a server.", ephemeral=True
+        )
+        return None
+    return str(interaction.guild_id)
+
+
 def _prediction_template(games: list[str]) -> str:
     return "\n".join(f"{game} 2:0" for game in games)
 
@@ -197,7 +206,7 @@ class ContinuePredictButton(discord.ui.Button):
             )
             return
 
-        latest_fixture = await view.db.get_fixture_by_id(self.fixture["id"])
+        latest_fixture = await view.db.get_fixture_by_id(self.fixture["id"], view.guild_id)
         if latest_fixture is None or latest_fixture["status"] != "open":
             await interaction.response.edit_message(
                 content="That fixture is no longer open. Use `/predict` to refresh the list.",
@@ -225,12 +234,14 @@ class ContinuePredictView(PaginatedFixtureView):
         db: Database,
         bot: commands.Bot,
         owner_user_id: str,
+        guild_id: str,
         remaining_fixtures: list[dict],
         completed_fixture_ids: set[int],
     ):
         super().__init__(owner_user_id, timeout=3600)
         self.bot = bot
         self.db = db
+        self.guild_id = guild_id
         self.completed_fixture_ids = completed_fixture_ids
         self.fixtures = remaining_fixtures
         self.page_size = BUTTON_PAGE_SIZE
@@ -267,7 +278,7 @@ class FixtureSelect(discord.ui.Select):
             return
 
         fixture_id = int(self.values[0])
-        fixture = await view.db.get_fixture_by_id(fixture_id)
+        fixture = await view.db.get_fixture_by_id(fixture_id, view.guild_id)
         if fixture is None or fixture["status"] != "open":
             await interaction.response.edit_message(
                 content="That fixture is no longer open. Use `/predict` to refresh the list.",
@@ -295,12 +306,14 @@ class FixtureSelectView(PaginatedFixtureView):
         db: Database,
         bot: commands.Bot,
         owner_user_id: str,
+        guild_id: str,
         fixtures: list[dict],
         completed_fixture_ids: set[int] | None = None,
     ):
         super().__init__(owner_user_id, timeout=3600)
         self.bot = bot
         self.db = db
+        self.guild_id = guild_id
         self.fixtures = fixtures
         self.page_size = SELECT_PAGE_SIZE
         self.completed_fixture_ids = completed_fixture_ids or set()
@@ -358,7 +371,7 @@ class PredictModal(discord.ui.Modal):
         self.add_item(self.predictions_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        fixture = await self.db.get_fixture_by_id(self.fixture["id"])
+        fixture = await self.db.get_fixture_by_id(self.fixture["id"], self.fixture["guild_id"])
         if fixture is None or fixture["status"] != "open":
             await interaction.response.send_message(
                 "This fixture is no longer open. Use `/predict` to refresh the list.",
@@ -479,13 +492,14 @@ class PredictModal(discord.ui.Modal):
 
         completed_fixture_ids = set(self.completed_fixture_ids)
         completed_fixture_ids.add(fixture["id"])
-        open_fixtures = await self.db.get_open_fixtures()
+        open_fixtures = await self.db.get_open_fixtures(fixture["guild_id"])
         remaining_fixtures = _remaining_open_fixtures(open_fixtures, completed_fixture_ids)
         if remaining_fixtures:
             view = ContinuePredictView(
                 self.db,
                 self.bot,
                 str(interaction.user.id),
+                fixture["guild_id"],
                 remaining_fixtures,
                 completed_fixture_ids,
             )
@@ -555,7 +569,11 @@ class UserCommands(commands.Cog):
     @app_commands.checks.cooldown(1, 1.0)
     async def predict(self, interaction: discord.Interaction):
         """Open a modal to submit predictions for open fixtures."""
-        open_fixtures = await self.db.get_open_fixtures()
+        guild_id = await _require_guild_id(interaction)
+        if guild_id is None:
+            return
+
+        open_fixtures = await self.db.get_open_fixtures(guild_id)
         if not open_fixtures:
             await interaction.response.send_message(
                 "❌ No active fixture found! Ask an admin to create one.", ephemeral=True
@@ -578,7 +596,9 @@ class UserCommands(commands.Cog):
             await interaction.response.send_modal(modal)
             return
 
-        view = FixtureSelectView(self.db, self.bot, str(interaction.user.id), open_fixtures)
+        view = FixtureSelectView(
+            self.db, self.bot, str(interaction.user.id), guild_id, open_fixtures
+        )
         await interaction.response.send_message(
             "Multiple fixtures are open. Choose which week you want to predict first.",
             ephemeral=True,
@@ -661,7 +681,11 @@ Use these directly in Discord."""
     @app_commands.command(name="fixtures", description="View open fixtures")
     async def fixtures(self, interaction: discord.Interaction):
         """Display current fixtures."""
-        open_fixtures = await self.db.get_open_fixtures()
+        guild_id = await _require_guild_id(interaction)
+        if guild_id is None:
+            return
+
+        open_fixtures = await self.db.get_open_fixtures(guild_id)
 
         if not open_fixtures:
             await interaction.response.send_message("❌ No active fixture found!", ephemeral=True)
@@ -707,7 +731,11 @@ Use these directly in Discord."""
     )
     async def my_predictions(self, interaction: discord.Interaction):
         """Show user's current predictions."""
-        open_fixtures = await self.db.get_open_fixtures()
+        guild_id = await _require_guild_id(interaction)
+        if guild_id is None:
+            return
+
+        open_fixtures = await self.db.get_open_fixtures(guild_id)
 
         if not open_fixtures:
             await interaction.response.send_message("❌ No active fixture found!", ephemeral=True)

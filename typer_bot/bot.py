@@ -171,7 +171,7 @@ class TyperBot(commands.Bot):
     async def reminder_task(self):
         """Send reminders 24h and 1h before each open fixture deadline."""
         current_time = now()
-        open_fixtures = await self.db.get_open_fixtures()
+        open_fixtures = await self.db.get_all_open_fixtures()
 
         if not open_fixtures:
             return
@@ -252,7 +252,7 @@ class TyperBot(commands.Bot):
         logger.info("Verifying fixture announcement...")
 
         try:
-            open_fixtures = await self.db.get_open_fixtures()
+            open_fixtures = await self.db.get_all_open_fixtures()
             if not open_fixtures:
                 logger.info("No open fixture found, skipping verification")
                 return

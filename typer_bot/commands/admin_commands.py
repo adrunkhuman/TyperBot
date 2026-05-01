@@ -150,6 +150,7 @@ class AdminCommands(commands.Cog):
             self.db,
             self.service,
             str(interaction.user.id),
+            str(interaction.guild_id),
             admin_commands=self,
             bot=self.bot,
         )
