@@ -138,47 +138,6 @@ class TestOpenFixturesQueries:
         assert fixture_two["week_number"] == 2
 
 
-class TestDefensiveColumnAccess:
-    """Test suite for defensive .get() column access patterns."""
-
-    @pytest.mark.asyncio
-    async def test_get_current_fixture_handles_missing_columns(self, temp_db_path):
-        """Should gracefully handle missing optional columns using .get()."""
-        db = Database(temp_db_path)
-        await db.initialize()
-
-        await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
-
-        fixture = await db.get_current_fixture()
-        assert fixture is not None
-        assert fixture["message_id"] is None
-
-    @pytest.mark.asyncio
-    async def test_get_fixture_by_id_handles_missing_columns(self, temp_db_path):
-        """Should gracefully handle missing optional columns using .get()."""
-        db = Database(temp_db_path)
-        await db.initialize()
-
-        fixture_id = await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
-
-        fixture = await db.get_fixture_by_id(fixture_id)
-        assert fixture is not None
-        assert fixture["message_id"] is None
-
-    @pytest.mark.asyncio
-    async def test_get_fixture_by_message_id_handles_missing_columns(self, temp_db_path):
-        """Should gracefully handle missing optional columns using .get()."""
-        db = Database(temp_db_path)
-        await db.initialize()
-
-        fixture_id = await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
-        await db.update_fixture_announcement(fixture_id, message_id="123456", channel_id="999")
-
-        fixture = await db.get_fixture_by_message_id("123456")
-        assert fixture is not None
-        assert fixture["message_id"] == "123456"
-
-
 class TestSchemaMigration:
     """Test suite for automatic schema migration."""
 

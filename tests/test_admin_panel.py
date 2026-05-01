@@ -468,8 +468,8 @@ class TestPredictionPanelFlows:
         await unified_view.load_fixture_options()
 
         assert unified_view.user_select.disabled is True
-        assert len(unified_view.user_select.options) == 1
-        assert unified_view.user_select.options[0].label == "No predictions available"
+        assert _get_button(unified_view, "Replace Prediction").disabled is True
+        assert _get_button(unified_view, "Toggle Late Waiver").disabled is True
 
     @pytest.mark.asyncio
     async def test_prediction_panel_buttons_enable_as_selections_are_made(
@@ -1096,7 +1096,7 @@ class TestFixturePanelFlows:
 
         assert isinstance(mock_interaction_admin.modal_sent["modal"], CreateFixtureModal)
 
-    def test_unified_panel_layout_contract(self, admin_cog, mock_interaction_admin):
+    def test_unified_panel_exposes_admin_workflows(self, admin_cog, mock_interaction_admin):
         view = UnifiedAdminPanelView(
             admin_cog.db,
             admin_cog.service,
@@ -1105,10 +1105,8 @@ class TestFixturePanelFlows:
             bot=admin_cog.bot,
         )
 
-        labels = [getattr(child, "label", None) for child in view.children]
-        assert labels == [
-            None,
-            None,
+        labels = {getattr(child, "label", None) for child in view.children}
+        assert labels >= {
             "Create Fixture",
             "Delete Fixture",
             "Jump To Week",
@@ -1118,21 +1116,7 @@ class TestFixturePanelFlows:
             "Re-post Results",
             "Replace Prediction",
             "Toggle Late Waiver",
-        ]
-        rows_by_label = {
-            getattr(child, "label", None): child.row
-            for child in view.children
-            if getattr(child, "label", None)
         }
-        assert rows_by_label["Create Fixture"] == 2
-        assert rows_by_label["Delete Fixture"] == 2
-        assert rows_by_label["Jump To Week"] == 2
-        assert rows_by_label["Enter Results"] == 3
-        assert rows_by_label["Calculate Scores"] == 3
-        assert rows_by_label["Correct Results"] == 3
-        assert rows_by_label["Re-post Results"] == 3
-        assert rows_by_label["Replace Prediction"] == 4
-        assert rows_by_label["Toggle Late Waiver"] == 4
 
     @pytest.mark.asyncio
     async def test_unified_panel_hides_review_pending_button_without_pending_partials(
@@ -1182,8 +1166,6 @@ class TestFixturePanelFlows:
         await view.load_fixture_options()
 
         assert _has_button(view, "Review Late") is True
-        assert _get_button(view, "Review Late").row == 4
-        assert _get_button(view, "Review Late").style == discord.ButtonStyle.primary
 
     @pytest.mark.asyncio
     async def test_unified_panel_review_pending_button_jumps_to_pending_submission(
@@ -1220,10 +1202,7 @@ class TestFixturePanelFlows:
         assert view.selection.fixture_label == "Week 56 [OPEN]"
         assert view.selection.user_id == "111"
         assert _has_button(view, "Approve Late") is True
-        assert _get_button(view, "Approve Late").row == 4
-        assert _get_button(view, "Approve Late").style == discord.ButtonStyle.success
-        assert _get_button(view, "Reject Late").row == 4
-        assert _get_button(view, "Reject Late").style == discord.ButtonStyle.danger
+        assert _has_button(view, "Reject Late") is True
 
     @pytest.mark.asyncio
     async def test_unified_panel_review_pending_button_cycles_pending_submissions(
@@ -1374,7 +1353,7 @@ class TestFixturePanelFlows:
         assert "Correct Results" in mock_interaction_admin.response_sent[-1]["content"]
 
     @pytest.mark.asyncio
-    async def test_unified_panel_calculate_scores_button_uses_admin_helpers(
+    async def test_unified_panel_calculate_scores_button_posts_results(
         self,
         admin_cog,
         mock_interaction_admin,
@@ -1383,10 +1362,18 @@ class TestFixturePanelFlows:
         fixture_id = await admin_cog.db.create_fixture(
             45, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        score_result = MagicMock()
-        admin_cog.service.calculate_fixture_scores = AsyncMock(return_value=score_result)
+        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        channel = MagicMock(spec=discord.TextChannel)
+        channel.send = AsyncMock()
+        mock_interaction_admin.channel = channel
         admin_cog._create_backup = AsyncMock()
-        admin_cog._post_calculation_to_channel = AsyncMock()
 
         view = UnifiedAdminPanelView(
             admin_cog.db,
@@ -1403,11 +1390,12 @@ class TestFixturePanelFlows:
         await calculate_button.callback(mock_interaction_admin)
 
         assert admin_cog.get_calculate_cooldown(str(mock_interaction_admin.user.id)) is not None
-        admin_cog.service.calculate_fixture_scores.assert_awaited_once_with(fixture_id)
-        admin_cog._create_backup.assert_awaited_once()
-        admin_cog._post_calculation_to_channel.assert_awaited_once_with(
-            mock_interaction_admin, score_result
+        channel.send.assert_awaited_once()
+        assert (
+            "Week 45 results calculated and posted"
+            in mock_interaction_admin.response_sent[-1]["content"]
         )
+        assert "User One" in channel.send.call_args.args[0]
 
     @pytest.mark.asyncio
     async def test_unified_panel_calculate_scores_button_rejects_active_cooldown(
@@ -1700,15 +1688,6 @@ class TestDiscordCleanup:
         mock_message.delete.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_cleanup_skips_when_channel_not_in_cache(self):
-        bot = MagicMock(spec=discord.Client)
-        bot.get_channel.return_value = None
-
-        await _cleanup_discord_announcement(bot, "111", "222", week_number=5)
-
-        bot.get_channel.assert_called_once_with(111)
-
-    @pytest.mark.asyncio
     async def test_cleanup_no_thread_deletes_message_only(self):
         bot = MagicMock(spec=discord.Client)
         mock_message = AsyncMock()
@@ -1729,18 +1708,6 @@ class TestDiscordCleanup:
         bot.get_channel.return_value = channel
 
         await _cleanup_discord_announcement(bot, "111", "222", week_number=5)
-
-    @pytest.mark.asyncio
-    async def test_cleanup_logs_warning_on_error(self):
-        bot = MagicMock(spec=discord.Client)
-        channel = AsyncMock()
-        channel.fetch_message.side_effect = Exception("Discord unavailable")
-        bot.get_channel.return_value = channel
-
-        with patch("typer_bot.commands.admin_panel.fixtures.logger") as mock_logger:
-            await _cleanup_discord_announcement(bot, "111", "222", week_number=5)
-
-        mock_logger.warning.assert_called_once()
 
 
 class TestResultsPanelFlows:

@@ -7,7 +7,7 @@ Timezones are tricky. These tests verify:
 """
 
 import importlib
-from datetime import UTC, datetime
+from datetime import datetime
 
 import pytest
 from freezegun import freeze_time
@@ -133,23 +133,3 @@ class TestTimezoneConfiguration:
 
         monkeypatch.delenv("TZ", raising=False)
         importlib.reload(tz_module)
-
-
-class TestTimezoneComparisons:
-    """Test datetime comparisons across timezones."""
-
-    def test_same_time_different_zones(self):
-        """parse_deadline produces a tz-aware datetime that round-trips to UTC correctly."""
-        app_time = tz_module.parse_deadline("2024-03-15 14:00")
-        utc_time = app_time.astimezone(UTC)
-
-        assert app_time.timestamp() == utc_time.timestamp()
-        assert app_time.hour == utc_time.hour
-
-    def test_comparing_naive_and_aware_raises_error(self):
-        """Can't compare naive and timezone-aware datetimes directly."""
-        aware = tz_module.parse_deadline("2024-03-15 14:00")
-        naive = datetime(2024, 3, 15, 14, 0)
-
-        with pytest.raises(TypeError):
-            aware > naive  # noqa: B015

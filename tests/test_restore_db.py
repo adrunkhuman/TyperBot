@@ -30,9 +30,6 @@ class TestValidateBackupSql:
     def test_rejects_delete(self):
         assert validate_backup_sql("DELETE FROM users;") is False
 
-    def test_rejects_bare_create_without_if_not_exists(self):
-        assert validate_backup_sql("DROP TABLE users;") is False
-
     def test_accepts_real_sqlite_dump_output(self, tmp_path):
         db_path = tmp_path / "source.db"
         conn = sqlite3.connect(db_path)

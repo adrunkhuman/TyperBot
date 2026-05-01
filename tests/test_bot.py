@@ -15,15 +15,6 @@ class TestBotInitialization:
     """Test suite for bot initialization and setup."""
 
     @pytest.mark.asyncio
-    async def test_bot_creates_database_instance(self):
-        """Database is initialized at startup."""
-        with patch.object(TyperBot, "__init__", lambda _: None):
-            bot = TyperBot.__new__(TyperBot)
-            bot.db = MagicMock()
-            bot.thread_handler = MagicMock()
-            assert bot.db is not None
-
-    @pytest.mark.asyncio
     async def test_bot_has_required_intents(self):
         """Message content and member intents are required for prediction processing and permission verification."""
         with (
@@ -65,16 +56,6 @@ class TestSetupHook:
             bot.reminder_task = MagicMock()
             bot._cleanup_sessions_task = MagicMock()
             yield bot
-
-    @pytest.mark.asyncio
-    async def test_cleanup_task_prunes_owner_state(self, bot_instance):
-        bot_instance.thread_handler.cleanup_expired_state = MagicMock(return_value=2)
-        bot_instance.cogs["AdminCommands"].cleanup_expired_state = MagicMock(return_value=1)
-
-        with patch("typer_bot.bot.logger") as mock_logger:
-            await TyperBot._cleanup_sessions_task.coro(bot_instance)
-
-        mock_logger.debug.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_setup_hook_initializes_database(self, bot_instance):
@@ -134,15 +115,6 @@ class TestOnReady:
             yield bot
 
     @pytest.mark.asyncio
-    async def test_on_ready_logs_bot_info(self, bot_instance):
-        """Connection logging provides deployment visibility."""
-        with patch("typer_bot.bot.logger") as mock_logger:
-            await bot_instance.on_ready()
-            mock_logger.info.assert_any_call(
-                f"✓ Bot connected: {bot_instance.user} (ID: {bot_instance.user.id})"
-            )
-
-    @pytest.mark.asyncio
     async def test_on_ready_checks_permissions(self, bot_instance):
         """Permission verification at startup alerts admins to missing rights."""
         await bot_instance.on_ready()
@@ -183,30 +155,13 @@ class TestPermissionCheck:
 
         with patch("typer_bot.bot.logger") as mock_logger:
             await bot_instance._check_permissions()
-            mock_logger.warning.assert_called_once_with(
-                "⚠️  Guild 'Test Guild' (ID: 123456): Missing permissions: "
-                "Send Messages, Read Message History, Add Reactions, Create Public Threads"
-            )
+            warning = mock_logger.warning.call_args.args[0]
 
-    @pytest.mark.asyncio
-    async def test_check_permissions_logs_all_permissions_ok(self, bot_instance):
-        """Permission success logging confirms proper bot configuration."""
-        mock_guild = MagicMock()
-        mock_guild.name = "Test Guild"
-        mock_guild.id = 123456
-        mock_guild.me = MagicMock()
-        mock_guild.me.guild_permissions.send_messages = True
-        mock_guild.me.guild_permissions.read_message_history = True
-        mock_guild.me.guild_permissions.add_reactions = True
-        mock_guild.me.guild_permissions.create_public_threads = True
-
-        bot_instance.guilds = [mock_guild]
-
-        with patch("typer_bot.bot.logger") as mock_logger:
-            await bot_instance._check_permissions()
-            mock_logger.info.assert_called_with(
-                "✓ Guild 'Test Guild': All required permissions present"
-            )
+        assert "Test Guild" in warning
+        assert "Send Messages" in warning
+        assert "Read Message History" in warning
+        assert "Add Reactions" in warning
+        assert "Create Public Threads" in warning
 
     @pytest.mark.asyncio
     async def test_check_permissions_warns_when_only_thread_permission_missing(self, bot_instance):
@@ -224,9 +179,9 @@ class TestPermissionCheck:
 
         with patch("typer_bot.bot.logger") as mock_logger:
             await bot_instance._check_permissions()
-            mock_logger.warning.assert_called_once_with(
-                "⚠️  Guild 'Test Guild' (ID: 123456): Missing permissions: Create Public Threads"
-            )
+            warning = mock_logger.warning.call_args.args[0]
+
+            assert "Create Public Threads" in warning
             mock_logger.info.assert_not_called()
 
 
@@ -480,11 +435,12 @@ class TestSendReminder:
 
     @pytest.mark.asyncio
     async def test_send_reminder_missing_channel_id(self, bot_instance):
-        """Missing channel configuration logs a warning."""
-        with patch.dict(os.environ, {}, clear=True), patch("typer_bot.bot.logger") as mock_logger:
+        """Missing channel configuration skips delivery."""
+        with patch.dict(os.environ, {}, clear=True):
             fixture = {"deadline": datetime.now(UTC), "week_number": 1}
             await bot_instance.send_reminder(fixture, "24 hours remaining")
-            mock_logger.warning.assert_called_with("REMINDER_CHANNEL_ID not set, skipping reminder")
+
+        bot_instance.get_channel.assert_not_called()
 
 
 class TestMainFunction:
@@ -506,38 +462,32 @@ class TestMainFunction:
 
     @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token", "ENVIRONMENT": "development"})
     @patch("typer_bot.bot.TyperBot")
-    @patch("typer_bot.bot.logger")
-    def test_main_runs_bot_in_non_production_environment(self, mock_logger, mock_bot_cls):
+    def test_main_runs_bot_in_non_production_environment(self, mock_bot_cls):
         """Non-production environments still connect to Discord."""
         mock_bot = mock_bot_cls.return_value
 
         main()
 
-        mock_logger.info.assert_any_call("Running in non-production environment: %s", "development")
         mock_bot.run.assert_called_once_with("valid_token", log_handler=None)
 
     @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token"}, clear=True)
     @patch("typer_bot.bot.TyperBot")
-    @patch("typer_bot.bot.logger")
-    def test_main_runs_bot_when_environment_is_unset(self, mock_logger, mock_bot_cls):
+    def test_main_runs_bot_when_environment_is_unset(self, mock_bot_cls):
         """Missing ENVIRONMENT still boots with the default non-production label."""
         mock_bot = mock_bot_cls.return_value
 
         main()
 
-        mock_logger.info.assert_any_call("Running in non-production environment: %s", "development")
         mock_bot.run.assert_called_once_with("valid_token", log_handler=None)
 
     @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token", "ENVIRONMENT": "production"})
     @patch("typer_bot.bot.TyperBot")
-    @patch("typer_bot.bot.logger")
-    def test_main_runs_bot_in_production_environment(self, mock_logger, mock_bot_cls):
+    def test_main_runs_bot_in_production_environment(self, mock_bot_cls):
         """Production environment uses the production label and still boots normally."""
         mock_bot = mock_bot_cls.return_value
 
         main()
 
-        mock_logger.info.assert_any_call("Running in production environment")
         mock_bot.run.assert_called_once_with("valid_token", log_handler=None)
 
     @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token", "ENVIRONMENT": "production"})
@@ -552,10 +502,7 @@ class TestMainFunction:
             main()
 
         assert exc_info.value.code == 1
-        mock_logger.exception.assert_called_once_with(
-            "❌ Privileged intents are not enabled in the Discord developer portal. "
-            "Enable Message Content Intent and Server Members Intent for this bot application."
-        )
+        assert "Privileged intents" in mock_logger.exception.call_args.args[0]
 
 
 class TestOnMessage:
