@@ -14,6 +14,7 @@ from typer_bot.commands.admin_commands import (
     GuildSetupStartView,
 )
 from typer_bot.commands.admin_panel import PostResultsConfirmView, UnifiedAdminPanelView
+from typer_bot.commands.admin_panel.unified import SetupBotButton
 from typer_bot.database import Database
 from typer_bot.utils import get_admin_permission_error, has_setup_permission, now
 from typer_bot.utils.permissions import is_admin
@@ -194,6 +195,24 @@ class TestAdminPanelEntry:
             child
             for child in start_view.children
             if getattr(child, "label", None) == "Setup TyperBot"
+        )
+
+        await setup_button.callback(mock_interaction_admin)
+
+        assert isinstance(mock_interaction_admin.response_sent[-1]["view"], GuildSetupPromptView)
+
+    @pytest.mark.asyncio
+    async def test_configured_panel_setup_button_opens_reconfigure_flow(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.guild_permissions.manage_guild = True
+        await admin_cog.panel.callback(admin_cog, mock_interaction_admin)
+        panel_view = mock_interaction_admin.response_sent[-1]["view"]
+        setup_button = next(
+            child for child in panel_view.children if isinstance(child, SetupBotButton)
         )
 
         await setup_button.callback(mock_interaction_admin)

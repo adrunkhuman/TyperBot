@@ -501,6 +501,7 @@ class TestAdminPanelCommand:
         assert "Admin Panel" in response["content"]
         assert response["ephemeral"] is True
         assert response["view"] is not None
+        assert _has_button(response["view"], "Setup TyperBot") is True
 
 
 class TestPredictionPanelFlows:
