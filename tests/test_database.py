@@ -29,7 +29,7 @@ class TestGetMaxWeekNumber:
         db = Database(temp_db_path)
         await db.initialize()
 
-        result = await db.get_max_week_number()
+        result = await db.get_max_week_number("111111")
         assert result == 0
 
     @pytest.mark.asyncio
@@ -38,11 +38,11 @@ class TestGetMaxWeekNumber:
         db = Database(temp_db_path)
         await db.initialize()
 
-        await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
-        await db.create_fixture(3, ["Team C - Team D"], datetime.now(UTC))
-        await db.create_fixture(5, ["Team E - Team F"], datetime.now(UTC))
+        await db.create_fixture("111111", 1, ["Team A - Team B"], datetime.now(UTC))
+        await db.create_fixture("111111", 3, ["Team C - Team D"], datetime.now(UTC))
+        await db.create_fixture("111111", 5, ["Team E - Team F"], datetime.now(UTC))
 
-        result = await db.get_max_week_number()
+        result = await db.get_max_week_number("111111")
         assert result == 5
 
     @pytest.mark.asyncio
@@ -51,7 +51,7 @@ class TestGetMaxWeekNumber:
         db = Database(temp_db_path)
         await db.initialize()
 
-        fixture_id = await db.create_fixture(10, ["Team A - Team B"], datetime.now(UTC))
+        fixture_id = await db.create_fixture("111111", 10, ["Team A - Team B"], datetime.now(UTC))
         await db.save_scores(
             fixture_id,
             [
@@ -65,9 +65,9 @@ class TestGetMaxWeekNumber:
             ],
         )
 
-        await db.create_fixture(5, ["Team C - Team D"], datetime.now(UTC))
+        await db.create_fixture("111111", 5, ["Team C - Team D"], datetime.now(UTC))
 
-        result = await db.get_max_week_number()
+        result = await db.get_max_week_number("111111")
         assert result == 10
 
 
@@ -80,9 +80,15 @@ class TestOpenFixturesQueries:
         db = Database(temp_db_path)
         await db.initialize()
 
-        fixture_week_2 = await db.create_fixture(2, ["Team C - Team D"], datetime.now(UTC))
-        fixture_week_1 = await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
-        fixture_week_3 = await db.create_fixture(3, ["Team E - Team F"], datetime.now(UTC))
+        fixture_week_2 = await db.create_fixture(
+            "111111", 2, ["Team C - Team D"], datetime.now(UTC)
+        )
+        fixture_week_1 = await db.create_fixture(
+            "111111", 1, ["Team A - Team B"], datetime.now(UTC)
+        )
+        fixture_week_3 = await db.create_fixture(
+            "111111", 3, ["Team E - Team F"], datetime.now(UTC)
+        )
 
         # Close week 3 fixture so only weeks 1 and 2 remain open
         await db.save_scores(fixture_week_3, [])
@@ -101,8 +107,12 @@ class TestOpenFixturesQueries:
         db = Database(temp_db_path)
         await db.initialize()
 
-        open_fixture_id = await db.create_fixture(7, ["Team A - Team B"], datetime.now(UTC))
-        closed_fixture_id = await db.create_fixture(8, ["Team C - Team D"], datetime.now(UTC))
+        open_fixture_id = await db.create_fixture(
+            "111111", 7, ["Team A - Team B"], datetime.now(UTC)
+        )
+        closed_fixture_id = await db.create_fixture(
+            "111111", 8, ["Team C - Team D"], datetime.now(UTC)
+        )
         await db.save_scores(closed_fixture_id, [])
 
         open_fixture = await db.get_open_fixture_by_week(7)
@@ -119,10 +129,12 @@ class TestOpenFixturesQueries:
         await db.initialize()
 
         fixture_one_id, week_one = await db.create_next_fixture(
+            "111111",
             ["Team A - Team B"],
             datetime.now(UTC),
         )
         fixture_two_id, week_two = await db.create_next_fixture(
+            "111111",
             ["Team C - Team D"],
             datetime.now(UTC),
         )
@@ -137,9 +149,83 @@ class TestOpenFixturesQueries:
         assert fixture_two is not None
         assert fixture_two["week_number"] == 2
 
+    @pytest.mark.asyncio
+    async def test_created_fixtures_store_guild_ownership(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+
+        fixture_id = await db.create_fixture(
+            "guild-2",
+            4,
+            ["Team A - Team B"],
+            datetime.now(UTC),
+        )
+
+        fixture = await db.get_fixture_by_id(fixture_id)
+        assert fixture is not None
+        assert fixture["guild_id"] == "guild-2"
+
+    @pytest.mark.asyncio
+    async def test_create_fixture_rejects_missing_guild_id(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+
+        with pytest.raises(ValueError, match="guild_id is required"):
+            await db.create_fixture("", 1, ["Team A - Team B"], datetime.now(UTC))
+
+    @pytest.mark.asyncio
+    async def test_create_next_fixture_rejects_missing_guild_id(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+
+        with pytest.raises(ValueError, match="guild_id is required"):
+            await db.create_next_fixture("", ["Team A - Team B"], datetime.now(UTC))
+
+    @pytest.mark.asyncio
+    async def test_create_next_fixture_allocates_weeks_per_guild(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+
+        _, guild_one_week = await db.create_next_fixture(
+            "111111",
+            ["Team A - Team B"],
+            datetime.now(UTC),
+        )
+        _, guild_two_week = await db.create_next_fixture(
+            "guild-2",
+            ["Team C - Team D"],
+            datetime.now(UTC),
+        )
+
+        assert guild_one_week == 1
+        assert guild_two_week == 1
+        assert await db.get_max_week_number("111111") == 1
+        assert await db.get_max_week_number("guild-2") == 1
+
 
 class TestSchemaMigration:
     """Test suite for automatic schema migration."""
+
+    @pytest.mark.asyncio
+    async def test_initialize_rejects_fixtures_without_guild_ownership(self, temp_db_path):
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute(
+                """
+                CREATE TABLE fixtures (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    week_number INTEGER NOT NULL,
+                    games TEXT NOT NULL,
+                    deadline DATETIME NOT NULL,
+                    status TEXT DEFAULT 'open'
+                )
+                """
+            )
+            await conn.commit()
+
+        db = Database(temp_db_path)
+
+        with pytest.raises(RuntimeError, match="fixtures.guild_id is missing"):
+            await db.initialize()
 
     @pytest.mark.asyncio
     async def test_initialize_adds_missing_columns(self, temp_db_path):
@@ -148,6 +234,7 @@ class TestSchemaMigration:
             await conn.execute("""
                 CREATE TABLE fixtures (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
                     week_number INTEGER NOT NULL,
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
@@ -161,7 +248,7 @@ class TestSchemaMigration:
 
         await db.initialize()
 
-        await db.create_fixture(1, ["Team A - Team B"], datetime.now(UTC))
+        await db.create_fixture("111111", 1, ["Team A - Team B"], datetime.now(UTC))
         fixture = await db.get_current_fixture()
         assert fixture is not None
         assert "message_id" in fixture
@@ -174,6 +261,7 @@ class TestSchemaMigration:
                 """
                 CREATE TABLE fixtures (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
                     week_number INTEGER NOT NULL,
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
@@ -206,7 +294,7 @@ class TestSchemaMigration:
                 """
             )
             await conn.execute(
-                "INSERT INTO fixtures (id, week_number, games, deadline, status) VALUES (1, 1, 'A - B', ?, 'open')",
+                "INSERT INTO fixtures (id, guild_id, week_number, games, deadline, status) VALUES (1, '111111', 1, 'A - B', ?, 'open')",
                 (datetime.now(UTC).isoformat(),),
             )
             await conn.execute(
@@ -251,6 +339,7 @@ class TestSchemaMigration:
                 """
                 CREATE TABLE fixtures (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
                     week_number INTEGER NOT NULL,
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
@@ -283,7 +372,7 @@ class TestSchemaMigration:
                 """
             )
             await conn.execute(
-                "INSERT INTO fixtures (id, week_number, games, deadline, status) VALUES (1, 1, 'A - B', ?, 'open')",
+                "INSERT INTO fixtures (id, guild_id, week_number, games, deadline, status) VALUES (1, '111111', 1, 'A - B', ?, 'open')",
                 (datetime.now(UTC).isoformat(),),
             )
             await conn.execute(
@@ -316,13 +405,13 @@ async def prediction_db(temp_db_path):
 @pytest.fixture
 async def open_fixture_id(prediction_db):
     deadline = datetime.now(UTC) + timedelta(hours=1)
-    return await prediction_db.create_fixture(1, ["A - B", "C - D"], deadline)
+    return await prediction_db.create_fixture("111111", 1, ["A - B", "C - D"], deadline)
 
 
 @pytest.fixture
 async def closed_fixture_id(prediction_db):
     deadline = datetime.now(UTC) + timedelta(hours=1)
-    fixture_id = await prediction_db.create_fixture(2, ["A - B", "C - D"], deadline)
+    fixture_id = await prediction_db.create_fixture("111111", 2, ["A - B", "C - D"], deadline)
     async with aiosqlite.connect(prediction_db.db_path) as conn:
         await conn.execute("UPDATE fixtures SET status = 'closed' WHERE id = ?", (fixture_id,))
         await conn.commit()
@@ -464,8 +553,8 @@ class TestCreateNextFixtureConcurrency:
         await db.initialize()
 
         created = await asyncio.gather(
-            db.create_next_fixture(["A - B"], datetime.now(UTC)),
-            db.create_next_fixture(["C - D"], datetime.now(UTC)),
+            db.create_next_fixture("111111", ["A - B"], datetime.now(UTC)),
+            db.create_next_fixture("111111", ["C - D"], datetime.now(UTC)),
         )
 
         fixture_ids = [fixture_id for fixture_id, _week in created]
@@ -492,8 +581,8 @@ class TestRowToFixture:
 
         async with aiosqlite.connect(temp_db_path) as conn:
             await conn.execute(
-                "INSERT INTO fixtures (week_number, games, deadline, status) VALUES (?, ?, ?, ?)",
-                (99, "", "2030-01-01T00:00:00+00:00", "open"),
+                "INSERT INTO fixtures (guild_id, week_number, games, deadline, status) VALUES (?, ?, ?, ?, ?)",
+                ("111111", 99, "", "2030-01-01T00:00:00+00:00", "open"),
             )
             await conn.commit()
 

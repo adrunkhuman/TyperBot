@@ -58,8 +58,8 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        await database.create_fixture(1, sample_games, deadline)
-        await database.create_fixture(2, sample_games, deadline)
+        await database.create_fixture("111111", 1, sample_games, deadline)
+        await database.create_fixture("111111", 2, sample_games, deadline)
 
         await user_commands.predict.callback(user_commands, mock_interaction)
 
@@ -70,8 +70,8 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        await database.create_fixture(1, sample_games, deadline)
-        await database.create_fixture(2, sample_games, deadline)
+        await database.create_fixture("111111", 1, sample_games, deadline)
+        await database.create_fixture("111111", 2, sample_games, deadline)
 
         await user_commands.predict.callback(user_commands, mock_interaction)
 
@@ -88,7 +88,7 @@ class TestPredictCommand:
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
         for week in range(1, 27):
-            await database.create_fixture(week, sample_games, deadline)
+            await database.create_fixture("111111", week, sample_games, deadline)
 
         await user_commands.predict.callback(user_commands, mock_interaction)
 
@@ -144,7 +144,7 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_two_id = await database.create_fixture(2, sample_games, deadline)
+        fixture_two_id = await database.create_fixture("111111", 2, sample_games, deadline)
         await _attach_prediction_threads(
             user_commands, database, [1, fixture_two_id], mock_interaction.guild
         )
@@ -514,7 +514,7 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_two_id = await database.create_fixture(2, sample_games, deadline)
+        fixture_two_id = await database.create_fixture("111111", 2, sample_games, deadline)
         await _attach_prediction_threads(
             user_commands, database, [1, fixture_two_id], mock_interaction.guild
         )
@@ -542,8 +542,8 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_one_id = await database.create_fixture(1, sample_games, deadline)
-        fixture_two_id = await database.create_fixture(2, sample_games, deadline)
+        fixture_one_id = await database.create_fixture("111111", 1, sample_games, deadline)
+        fixture_two_id = await database.create_fixture("111111", 2, sample_games, deadline)
         await _attach_prediction_threads(
             user_commands, database, [fixture_one_id, fixture_two_id], mock_interaction.guild
         )
@@ -582,7 +582,9 @@ class TestPredictCommand:
         deadline = datetime.now(UTC) + timedelta(days=1)
         fixture_ids = []
         for week in range(1, 28):
-            fixture_ids.append(await database.create_fixture(week, sample_games, deadline))
+            fixture_ids.append(
+                await database.create_fixture("111111", week, sample_games, deadline)
+            )
         await _attach_prediction_threads(
             user_commands, database, fixture_ids, mock_interaction.guild
         )
@@ -620,8 +622,8 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        await database.create_fixture(1, sample_games, deadline)
-        await database.create_fixture(2, sample_games, deadline)
+        await database.create_fixture("111111", 1, sample_games, deadline)
+        await database.create_fixture("111111", 2, sample_games, deadline)
 
         await user_commands.predict.callback(user_commands, mock_interaction)
 
@@ -644,8 +646,8 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        await database.create_fixture(1, sample_games, deadline)
-        await database.create_fixture(2, sample_games, deadline)
+        await database.create_fixture("111111", 1, sample_games, deadline)
+        await database.create_fixture("111111", 2, sample_games, deadline)
 
         await user_commands.predict.callback(user_commands, mock_interaction)
 
@@ -674,8 +676,8 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_one_id = await database.create_fixture(1, sample_games, deadline)
-        fixture_two_id = await database.create_fixture(2, sample_games, deadline)
+        fixture_one_id = await database.create_fixture("111111", 1, sample_games, deadline)
+        fixture_two_id = await database.create_fixture("111111", 2, sample_games, deadline)
         await _attach_prediction_threads(
             user_commands, database, [fixture_one_id, fixture_two_id], mock_interaction.guild
         )
@@ -710,8 +712,8 @@ class TestPredictCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_one_id = await database.create_fixture(1, sample_games, deadline)
-        fixture_two_id = await database.create_fixture(2, sample_games, deadline)
+        fixture_one_id = await database.create_fixture("111111", 1, sample_games, deadline)
+        fixture_two_id = await database.create_fixture("111111", 2, sample_games, deadline)
         await _attach_prediction_threads(
             user_commands, database, [fixture_one_id, fixture_two_id], mock_interaction.guild
         )
@@ -759,7 +761,9 @@ class TestFixturesCommand:
     async def test_single_open_fixture_lists_games_and_deadline(
         self, user_commands, mock_interaction, database, sample_games
     ):
-        await database.create_fixture(1, sample_games, datetime.now(UTC) + timedelta(days=1))
+        await database.create_fixture(
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
 
         await user_commands.fixtures.callback(user_commands, mock_interaction)
 
@@ -774,8 +778,8 @@ class TestFixturesCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        await database.create_fixture(1, sample_games, deadline)
-        await database.create_fixture(2, sample_games, deadline)
+        await database.create_fixture("111111", 1, sample_games, deadline)
+        await database.create_fixture("111111", 2, sample_games, deadline)
 
         await user_commands.fixtures.callback(user_commands, mock_interaction)
 
@@ -840,7 +844,9 @@ class TestMyPredictionsCommand:
     async def test_single_fixture_without_prediction_shows_prompt(
         self, user_commands, mock_interaction, database, sample_games
     ):
-        await database.create_fixture(1, sample_games, datetime.now(UTC) + timedelta(days=1))
+        await database.create_fixture(
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
 
         await user_commands.my_predictions.callback(user_commands, mock_interaction)
 
@@ -853,7 +859,7 @@ class TestMyPredictionsCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         fixture_id = await database.create_fixture(
-            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await database.save_prediction(
             fixture_id,
@@ -876,8 +882,8 @@ class TestMyPredictionsCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_week_1 = await database.create_fixture(1, sample_games, deadline)
-        await database.create_fixture(2, sample_games, deadline)
+        fixture_week_1 = await database.create_fixture("111111", 1, sample_games, deadline)
+        await database.create_fixture("111111", 2, sample_games, deadline)
         await database.save_prediction(
             fixture_week_1,
             str(mock_interaction.user.id),

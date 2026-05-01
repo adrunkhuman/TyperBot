@@ -117,7 +117,11 @@ class CreateFixtureConfirmView(discord.ui.View):
             )
             return
 
-        fixture_id, allocated_week = await self.db.create_next_fixture(self.games, self.deadline)
+        fixture_id, allocated_week = await self.db.create_next_fixture(
+            str(interaction.guild_id),
+            self.games,
+            self.deadline,
+        )
         final_preview = _build_fixture_preview_text(allocated_week, self.games, self.deadline)
 
         created_text = f"**Week {allocated_week} Fixture Created!**\n\n{final_preview}"
@@ -225,7 +229,7 @@ class CreateFixtureModal(discord.ui.Modal):
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
 
-        preview_week_number = await self.db.get_max_week_number() + 1
+        preview_week_number = await self.db.get_max_week_number(str(interaction.guild_id)) + 1
         preview = _build_fixture_preview_text(preview_week_number, games, deadline)
         open_fixtures = await self.db.get_open_fixtures()
         if open_fixtures:
