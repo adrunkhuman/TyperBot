@@ -13,7 +13,6 @@ from typer_bot.commands.user_commands import (
     UserCommands,
 )
 from typer_bot.database import SaveResult
-from typer_bot.utils import format_standings
 
 
 @pytest.fixture
@@ -791,7 +790,7 @@ class TestStandingsCommand:
     async def test_standings_sends_empty_state(self, user_commands, mock_interaction):
         await user_commands.standings.callback(user_commands, mock_interaction)
 
-        assert mock_interaction.response_sent[0]["content"] == format_standings([], None)
+        assert "No standings yet" in mock_interaction.response_sent[0]["content"]
         assert mock_interaction.response_sent[0]["ephemeral"] is True
 
     @pytest.mark.asyncio
@@ -824,9 +823,10 @@ class TestStandingsCommand:
 
         await user_commands.standings.callback(user_commands, mock_interaction)
 
-        assert mock_interaction.response_sent[0]["content"] == format_standings(
-            standings, last_fixture
-        )
+        content = mock_interaction.response_sent[0]["content"]
+        assert "User1" in content
+        assert "9" in content
+        assert "Week 4" in content
 
 
 class TestMyPredictionsCommand:

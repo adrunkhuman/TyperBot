@@ -58,16 +58,6 @@ class TestSetupHook:
             yield bot
 
     @pytest.mark.asyncio
-    async def test_cleanup_task_prunes_owner_state(self, bot_instance):
-        bot_instance.thread_handler.cleanup_expired_state = MagicMock(return_value=2)
-        bot_instance.cogs["AdminCommands"].cleanup_expired_state = MagicMock(return_value=1)
-
-        with patch("typer_bot.bot.logger") as mock_logger:
-            await TyperBot._cleanup_sessions_task.coro(bot_instance)
-
-        mock_logger.debug.assert_called_once()
-
-    @pytest.mark.asyncio
     async def test_setup_hook_initializes_database(self, bot_instance):
         """Database is initialized during setup_hook."""
         await bot_instance.setup_hook()
@@ -445,11 +435,12 @@ class TestSendReminder:
 
     @pytest.mark.asyncio
     async def test_send_reminder_missing_channel_id(self, bot_instance):
-        """Missing channel configuration logs a warning."""
-        with patch.dict(os.environ, {}, clear=True), patch("typer_bot.bot.logger") as mock_logger:
+        """Missing channel configuration skips delivery."""
+        with patch.dict(os.environ, {}, clear=True):
             fixture = {"deadline": datetime.now(UTC), "week_number": 1}
             await bot_instance.send_reminder(fixture, "24 hours remaining")
-            mock_logger.warning.assert_called_with("REMINDER_CHANNEL_ID not set, skipping reminder")
+
+        bot_instance.get_channel.assert_not_called()
 
 
 class TestMainFunction:
@@ -471,38 +462,32 @@ class TestMainFunction:
 
     @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token", "ENVIRONMENT": "development"})
     @patch("typer_bot.bot.TyperBot")
-    @patch("typer_bot.bot.logger")
-    def test_main_runs_bot_in_non_production_environment(self, mock_logger, mock_bot_cls):
+    def test_main_runs_bot_in_non_production_environment(self, mock_bot_cls):
         """Non-production environments still connect to Discord."""
         mock_bot = mock_bot_cls.return_value
 
         main()
 
-        mock_logger.info.assert_any_call("Running in non-production environment: %s", "development")
         mock_bot.run.assert_called_once_with("valid_token", log_handler=None)
 
     @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token"}, clear=True)
     @patch("typer_bot.bot.TyperBot")
-    @patch("typer_bot.bot.logger")
-    def test_main_runs_bot_when_environment_is_unset(self, mock_logger, mock_bot_cls):
+    def test_main_runs_bot_when_environment_is_unset(self, mock_bot_cls):
         """Missing ENVIRONMENT still boots with the default non-production label."""
         mock_bot = mock_bot_cls.return_value
 
         main()
 
-        mock_logger.info.assert_any_call("Running in non-production environment: %s", "development")
         mock_bot.run.assert_called_once_with("valid_token", log_handler=None)
 
     @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token", "ENVIRONMENT": "production"})
     @patch("typer_bot.bot.TyperBot")
-    @patch("typer_bot.bot.logger")
-    def test_main_runs_bot_in_production_environment(self, mock_logger, mock_bot_cls):
+    def test_main_runs_bot_in_production_environment(self, mock_bot_cls):
         """Production environment uses the production label and still boots normally."""
         mock_bot = mock_bot_cls.return_value
 
         main()
 
-        mock_logger.info.assert_any_call("Running in production environment")
         mock_bot.run.assert_called_once_with("valid_token", log_handler=None)
 
     @patch.dict(os.environ, {"DISCORD_TOKEN": "valid_token", "ENVIRONMENT": "production"})

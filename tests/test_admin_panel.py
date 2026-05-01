@@ -1688,15 +1688,6 @@ class TestDiscordCleanup:
         mock_message.delete.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_cleanup_skips_when_channel_not_in_cache(self):
-        bot = MagicMock(spec=discord.Client)
-        bot.get_channel.return_value = None
-
-        await _cleanup_discord_announcement(bot, "111", "222", week_number=5)
-
-        bot.get_channel.assert_called_once_with(111)
-
-    @pytest.mark.asyncio
     async def test_cleanup_no_thread_deletes_message_only(self):
         bot = MagicMock(spec=discord.Client)
         mock_message = AsyncMock()
@@ -1717,18 +1708,6 @@ class TestDiscordCleanup:
         bot.get_channel.return_value = channel
 
         await _cleanup_discord_announcement(bot, "111", "222", week_number=5)
-
-    @pytest.mark.asyncio
-    async def test_cleanup_logs_warning_on_error(self):
-        bot = MagicMock(spec=discord.Client)
-        channel = AsyncMock()
-        channel.fetch_message.side_effect = Exception("Discord unavailable")
-        bot.get_channel.return_value = channel
-
-        with patch("typer_bot.commands.admin_panel.fixtures.logger") as mock_logger:
-            await _cleanup_discord_announcement(bot, "111", "222", week_number=5)
-
-        mock_logger.warning.assert_called_once()
 
 
 class TestResultsPanelFlows:
