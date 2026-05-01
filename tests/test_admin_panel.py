@@ -1569,7 +1569,10 @@ class TestFixturePanelFlows:
         calculate_button = _get_button(view, "Calculate Scores")
         await calculate_button.callback(mock_interaction_admin)
 
-        assert admin_cog.get_calculate_cooldown(str(mock_interaction_admin.user.id)) is not None
+        assert (
+            admin_cog.get_calculate_cooldown("111111", str(mock_interaction_admin.user.id))
+            is not None
+        )
         channel.send.assert_awaited_once()
         assert (
             "Week 45 results calculated and posted"
@@ -1588,7 +1591,7 @@ class TestFixturePanelFlows:
             "111111", 47, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         admin_cog.record_calculate_cooldown(
-            str(mock_interaction_admin.user.id), current_time=now().timestamp()
+            "111111", str(mock_interaction_admin.user.id), current_time=now().timestamp()
         )
         admin_cog.service.calculate_fixture_scores = AsyncMock()
 

@@ -30,48 +30,49 @@ class ThreadPredictionHandler:
     def __init__(self, bot: discord.Client, db: Database):
         self.bot = bot
         self.db = db
-        self._thread_prediction_cooldowns: dict[str, datetime] = {}
+        self._thread_prediction_cooldowns: dict[tuple[str, str], datetime] = {}
 
     def record_thread_prediction_attempt(
-        self, user_id: str, current_time: datetime
+        self, guild_id: str, user_id: str, current_time: datetime
     ) -> datetime | None:
         """Record a thread prediction attempt and return the previous timestamp.
 
         Also prunes cooldown entries older than `COOLDOWN_ENTRY_EXPIRY` so the
         rate-limit check does not require a separate cleanup pass.
         """
-        previous_attempt = self._thread_prediction_cooldowns.get(user_id)
-        self._thread_prediction_cooldowns[user_id] = current_time
+        cooldown_key = (guild_id, user_id)
+        previous_attempt = self._thread_prediction_cooldowns.get(cooldown_key)
+        self._thread_prediction_cooldowns[cooldown_key] = current_time
 
         cutoff = current_time - COOLDOWN_ENTRY_EXPIRY
         expired_users = [
-            stored_user_id
-            for stored_user_id, timestamp in self._thread_prediction_cooldowns.items()
+            stored_key
+            for stored_key, timestamp in self._thread_prediction_cooldowns.items()
             if timestamp < cutoff
         ]
-        for stored_user_id in expired_users:
-            self._thread_prediction_cooldowns.pop(stored_user_id, None)
+        for stored_key in expired_users:
+            self._thread_prediction_cooldowns.pop(stored_key, None)
 
         return previous_attempt
 
-    def is_rate_limited(self, user_id: str, current_time: datetime) -> bool:
+    def is_rate_limited(self, guild_id: str, user_id: str, current_time: datetime) -> bool:
         """Return whether a recognized prediction attempt should be rate limited."""
-        last_time = self._thread_prediction_cooldowns.get(user_id)
+        last_time = self._thread_prediction_cooldowns.get((guild_id, user_id))
         if last_time is None:
             return False
         return (current_time - last_time).total_seconds() < PREDICTION_RATE_LIMIT_SECONDS
 
-    def get_thread_prediction_cooldown(self, user_id: str) -> datetime | None:
-        return self._thread_prediction_cooldowns.get(user_id)
+    def get_thread_prediction_cooldown(self, guild_id: str, user_id: str) -> datetime | None:
+        return self._thread_prediction_cooldowns.get((guild_id, user_id))
 
     def clear_thread_prediction_cooldowns(self) -> None:
         self._thread_prediction_cooldowns.clear()
 
     def cleanup_expired_state(self) -> int:
         cutoff = now() - COOLDOWN_ENTRY_EXPIRY
-        expired = [uid for uid, ts in self._thread_prediction_cooldowns.items() if ts < cutoff]
-        for uid in expired:
-            self._thread_prediction_cooldowns.pop(uid, None)
+        expired = [key for key, ts in self._thread_prediction_cooldowns.items() if ts < cutoff]
+        for key in expired:
+            self._thread_prediction_cooldowns.pop(key, None)
         return len(expired)
 
     async def on_message(self, message: discord.Message):
@@ -93,6 +94,7 @@ class ThreadPredictionHandler:
         if not fixture:
             return False
 
+        guild_id = str(message.guild.id)
         user_id = str(message.author.id)
         with LogContextManager(
             user_id=user_id,
@@ -107,11 +109,11 @@ class ThreadPredictionHandler:
             )
 
             if len(message.content) > MAX_MESSAGE_LENGTH or has_score_like_content:
-                if self.is_rate_limited(user_id, current_time):
+                if self.is_rate_limited(guild_id, user_id, current_time):
                     logger.debug(f"Rate limiting prediction from {user_id}")
                     return True
 
-                self.record_thread_prediction_attempt(user_id, current_time)
+                self.record_thread_prediction_attempt(guild_id, user_id, current_time)
 
             if len(message.content) > MAX_MESSAGE_LENGTH:
                 await self._handle_error(

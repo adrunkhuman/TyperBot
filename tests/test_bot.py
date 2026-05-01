@@ -195,12 +195,13 @@ class TestFixtureAnnouncementSync:
             bot = TyperBot.__new__(TyperBot)
             bot.db = MagicMock()
             bot.get_channel = MagicMock()
+            bot.get_guild = MagicMock()
             bot.fetch_channel = AsyncMock()
             yield bot
 
     @pytest.mark.asyncio
     async def test_sync_fixture_thread_uses_stored_channel_id(self, bot_instance):
-        fixture = {"id": 1, "message_id": "789012", "channel_id": "123456"}
+        fixture = {"id": 1, "guild_id": "111111", "message_id": "789012", "channel_id": "123456"}
         message = MagicMock()
         message.thread = MagicMock(id=789012)
         channel = MagicMock()
@@ -215,12 +216,18 @@ class TestFixtureAnnouncementSync:
         bot_instance.fetch_channel.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_sync_fixture_thread_scans_guild_channels_only_without_channel_id(
+    async def test_sync_fixture_thread_scans_owning_guild_channels_only_without_channel_id(
         self, bot_instance
     ):
-        fixture = {"id": 1, "message_id": "789012", "channel_id": None}
+        fixture = {"id": 1, "guild_id": "111111", "message_id": "789012", "channel_id": None}
         message = MagicMock()
         message.thread = MagicMock(id=789012)
+        other_channel = MagicMock()
+        other_channel.id = 50
+        other_channel.fetch_message = AsyncMock(return_value=message)
+        other_guild = MagicMock()
+        other_guild.id = 222222
+        other_guild.text_channels = [other_channel]
         miss_channel = MagicMock()
         miss_channel.id = 100
         miss_channel.fetch_message = AsyncMock(side_effect=discord.NotFound(MagicMock(), "missing"))
@@ -228,14 +235,17 @@ class TestFixtureAnnouncementSync:
         hit_channel.id = 200
         hit_channel.fetch_message = AsyncMock(return_value=message)
         guild = MagicMock()
+        guild.id = 111111
         guild.text_channels = [miss_channel, hit_channel]
-        bot_instance.guilds = [guild]
+        bot_instance.guilds = [other_guild, guild]
+        bot_instance.get_guild.return_value = guild
         bot_instance.db.get_all_open_fixtures = AsyncMock(return_value=[fixture])
 
         await bot_instance._sync_fixture_thread()
 
         bot_instance.get_channel.assert_not_called()
         bot_instance.fetch_channel.assert_not_called()
+        other_channel.fetch_message.assert_not_called()
         miss_channel.fetch_message.assert_awaited_once_with(789012)
         hit_channel.fetch_message.assert_awaited_once_with(789012)
 
@@ -243,7 +253,7 @@ class TestFixtureAnnouncementSync:
     async def test_sync_fixture_thread_does_not_scan_when_stored_channel_missing(
         self, bot_instance
     ):
-        fixture = {"id": 1, "message_id": "789012", "channel_id": "123456"}
+        fixture = {"id": 1, "guild_id": "111111", "message_id": "789012", "channel_id": "123456"}
         guild = MagicMock()
         guild.text_channels = [MagicMock()]
         bot_instance.guilds = [guild]
@@ -259,7 +269,7 @@ class TestFixtureAnnouncementSync:
     async def test_sync_fixture_thread_does_not_scan_when_stored_channel_message_missing(
         self, bot_instance
     ):
-        fixture = {"id": 1, "message_id": "789012", "channel_id": "123456"}
+        fixture = {"id": 1, "guild_id": "111111", "message_id": "789012", "channel_id": "123456"}
         channel = MagicMock()
         channel.fetch_message = AsyncMock(side_effect=discord.NotFound(MagicMock(), "missing"))
         guild = MagicMock()
@@ -275,7 +285,7 @@ class TestFixtureAnnouncementSync:
 
     @pytest.mark.asyncio
     async def test_sync_fixture_thread_fetches_stored_channel_when_not_cached(self, bot_instance):
-        fixture = {"id": 1, "message_id": "789012", "channel_id": "123456"}
+        fixture = {"id": 1, "guild_id": "111111", "message_id": "789012", "channel_id": "123456"}
         message = MagicMock()
         message.thread = MagicMock(id=789012)
         channel = MagicMock()
@@ -291,7 +301,12 @@ class TestFixtureAnnouncementSync:
 
     @pytest.mark.asyncio
     async def test_sync_fixture_thread_does_not_scan_with_invalid_stored_ids(self, bot_instance):
-        fixture = {"id": 1, "message_id": "not-a-message", "channel_id": "not-a-channel"}
+        fixture = {
+            "id": 1,
+            "guild_id": "111111",
+            "message_id": "not-a-message",
+            "channel_id": "not-a-channel",
+        }
         guild = MagicMock()
         guild.text_channels = [MagicMock()]
         bot_instance.guilds = [guild]
