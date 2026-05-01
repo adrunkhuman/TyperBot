@@ -43,7 +43,7 @@ class SetupBotButton(discord.ui.Button):
 
         if not has_setup_permission(interaction):
             await interaction.response.send_message(
-                "Only a server manager can configure TyperBot for this server.", ephemeral=True
+                "Only a server admin can configure TyperBot for this server.", ephemeral=True
             )
             return
 

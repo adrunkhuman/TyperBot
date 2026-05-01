@@ -79,7 +79,7 @@ class EveryoneRoleConfirmView(discord.ui.View):
             return False
         if not has_setup_permission(interaction):
             await interaction.response.send_message(
-                "Only a server manager can configure TyperBot for this server.", ephemeral=True
+                "Only a server admin can configure TyperBot for this server.", ephemeral=True
             )
             return False
         return True
@@ -192,7 +192,7 @@ class GuildSetupPromptView(discord.ui.View):
             return False
         if not has_setup_permission(interaction):
             await interaction.response.send_message(
-                "Only a server manager can configure TyperBot for this server.", ephemeral=True
+                "Only a server admin can configure TyperBot for this server.", ephemeral=True
             )
             return False
         return True
@@ -209,7 +209,7 @@ class StartSetupButton(discord.ui.Button):
     async def callback(self, interaction: discord.Interaction):
         if not has_setup_permission(interaction):
             await interaction.response.send_message(
-                "Only a server manager can configure TyperBot for this server.", ephemeral=True
+                "Only a server admin can configure TyperBot for this server.", ephemeral=True
             )
             return
 

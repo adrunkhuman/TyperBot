@@ -31,7 +31,7 @@ The panel handles:
 - review late partial predictions
 - toggle late waivers
 
-After setup, admins need the configured TyperBot admin role. Only Discord-native server managers/admins can complete or update setup from `/admin panel`.
+After setup, admins need the configured TyperBot admin role. Only Discord-native server admins can complete or update setup from `/admin panel`.
 
 ## Permissions
 - `Send Messages`

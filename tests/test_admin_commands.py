@@ -127,7 +127,7 @@ class TestAdminPanelEntry:
         assert "not set up" in mock_interaction_admin.response_sent[-1]["content"]
 
     @pytest.mark.asyncio
-    async def test_panel_prompts_server_manager_to_setup_inline(
+    async def test_panel_prompts_server_admin_to_setup_inline(
         self,
         mock_bot,
         mock_interaction_admin,

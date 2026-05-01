@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from typer_bot.database import Database
 
 SETUP_REQUIRED_MESSAGE = (
-    "TyperBot is not set up for this server. A server manager must run `/admin panel` first."
+    "TyperBot is not set up for this server. A server admin must run `/admin panel` first."
 )
 
 
@@ -97,7 +97,7 @@ def is_admin_member(member: discord.Member | None, admin_role_id: str | None = N
 
 
 def has_setup_permission(interaction: discord.Interaction) -> bool:
-    """Only Discord-native server managers/admins may configure TyperBot."""
+    """Only Discord-native server admins may configure TyperBot."""
     if not interaction.guild:
         return False
 
