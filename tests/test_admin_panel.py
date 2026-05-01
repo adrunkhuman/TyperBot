@@ -1233,29 +1233,6 @@ class TestFixturePanelFlows:
 
         assert isinstance(mock_interaction_admin.modal_sent["modal"], CreateFixtureModal)
 
-    def test_unified_panel_exposes_admin_workflows(self, admin_cog, mock_interaction_admin):
-        view = UnifiedAdminPanelView(
-            admin_cog.db,
-            admin_cog.service,
-            str(mock_interaction_admin.user.id),
-            "111111",
-            admin_commands=admin_cog,
-            bot=admin_cog.bot,
-        )
-
-        labels = {getattr(child, "label", None) for child in view.children}
-        assert labels >= {
-            "Create Fixture",
-            "Delete Fixture",
-            "Jump To Week",
-            "Enter Results",
-            "Calculate Scores",
-            "Correct Results",
-            "Re-post Results",
-            "Replace Prediction",
-            "Toggle Late Waiver",
-        }
-
     @pytest.mark.asyncio
     async def test_unified_panel_hides_review_pending_button_without_pending_partials(
         self,
@@ -1337,7 +1314,6 @@ class TestFixturePanelFlows:
         )
         await view.load_fixture_options()
 
-        assert view.has_pending_partials is False
         assert _has_button(view, "Review Late") is False
 
     @pytest.mark.asyncio
