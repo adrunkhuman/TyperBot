@@ -97,7 +97,7 @@ This bot runs anywhere you can deploy a persistent container.
 ### Coolify
 
 1. Create a new Coolify worker/background service from this repo.
-2. Use Nixpacks.
+2. Use the included Dockerfile.
 3. Disable HTTP/port health checks if Coolify enables them by default for the service.
 4. Mount a persistent volume at `/app/data`.
 5. Set variables:
