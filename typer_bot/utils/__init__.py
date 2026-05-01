@@ -1,6 +1,7 @@
 """Utility functions and helpers."""
 
 from .permissions import (
+    SETUP_REQUIRED_MESSAGE,
     get_admin_permission_error,
     get_admin_role_mention,
     get_configured_admin_role_mention,
@@ -43,4 +44,5 @@ __all__ = [
     "format_for_discord",
     "parse_iso",
     "APP_TZ",
+    "SETUP_REQUIRED_MESSAGE",
 ]

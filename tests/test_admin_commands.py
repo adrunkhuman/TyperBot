@@ -9,6 +9,7 @@ from tests.conftest import MockRole, MockTextChannel
 from typer_bot.commands.admin_commands import (
     CALCULATE_COOLDOWN,
     AdminCommands,
+    GuildSetupPromptView,
 )
 from typer_bot.commands.admin_panel import PostResultsConfirmView, UnifiedAdminPanelView
 from typer_bot.database import Database
@@ -153,6 +154,43 @@ class TestAdminPanelEntry:
         await admin_cog.panel.callback(admin_cog, mock_interaction_admin)
 
         assert "not set up" in mock_interaction_admin.response_sent[-1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_panel_prompts_server_manager_to_setup_inline(
+        self,
+        mock_bot,
+        mock_interaction_admin,
+        temp_db_path,
+    ):
+        db = Database(temp_db_path)
+        await db.initialize()
+        mock_bot.db = db
+        admin_cog = AdminCommands(mock_bot)
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.guild_permissions.manage_guild = True
+
+        await admin_cog.panel.callback(admin_cog, mock_interaction_admin)
+
+        assert isinstance(mock_interaction_admin.response_sent[-1]["view"], GuildSetupPromptView)
+
+    @pytest.mark.asyncio
+    async def test_inline_setup_prompt_saves_config(
+        self,
+        database,
+        mock_interaction_admin,
+    ):
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.guild_permissions.manage_guild = True
+        view = GuildSetupPromptView(database, str(mock_interaction_admin.user.id))
+        view.admin_role = MockRole("League Admin", role_id=987654)
+        view.league_channel = MockTextChannel("765432", guild=mock_interaction_admin.guild)
+        view.refresh_save_button()
+
+        await view.save_button.callback(mock_interaction_admin)
+
+        config = await database.get_guild_config("111111")
+        assert config["admin_role_id"] == "987654"
+        assert config["league_channel_id"] == "765432"
 
 
 class TestResultsPostFlow:
