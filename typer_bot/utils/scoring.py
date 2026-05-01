@@ -46,6 +46,8 @@ def calculate_points(
         # Skip nullified games (marked with 'x')
         if actual == "x":
             continue
+        if pred is None:
+            continue
 
         parsed_pred = parse_result(pred)
         parsed_actual = parse_result(actual)

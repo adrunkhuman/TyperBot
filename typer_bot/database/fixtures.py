@@ -1,4 +1,4 @@
-"""Fixture repository — CRUD for the fixtures table."""
+"""Fixture repository for guild-scoped fixture ownership."""
 
 import logging
 import time
@@ -17,7 +17,11 @@ def _validate_guild_id(guild_id: str) -> None:
 
 
 class FixtureRepository:
-    """CRUD for the fixtures table."""
+    """Read and write fixtures without crossing guild league boundaries.
+
+    Public guild-scoped methods require a nonblank Discord guild ID and raise
+    ``ValueError`` when it is missing.
+    """
 
     def __init__(self, db_path: str | None = None) -> None:
         self.db_path = db_path or DB_PATH
@@ -126,7 +130,6 @@ class FixtureRepository:
             return insert_cursor.lastrowid, next_week
 
     async def get_current_fixture(self, guild_id: str) -> dict | None:
-        """Get the most recently created open fixture for a guild."""
         _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -138,7 +141,6 @@ class FixtureRepository:
                 return self._row_to_fixture(row) if row else None
 
     async def get_open_fixtures(self, guild_id: str) -> list[dict]:
-        """Get open fixtures for a guild ordered by week and creation order."""
         _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -160,7 +162,6 @@ class FixtureRepository:
                 return [self._row_to_fixture(row) for row in rows]
 
     async def get_open_fixture_by_week(self, guild_id: str, week_number: int) -> dict | None:
-        """Get an open fixture by guild and week number."""
         _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -172,7 +173,6 @@ class FixtureRepository:
                 return self._row_to_fixture(row) if row else None
 
     async def get_fixture_by_id(self, fixture_id: int, guild_id: str) -> dict | None:
-        """Get a fixture by ID, requiring guild ownership."""
         _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -192,7 +192,6 @@ class FixtureRepository:
                 return self._row_to_fixture(row) if row else None
 
     async def get_fixture_by_week(self, guild_id: str, week_number: int) -> dict | None:
-        """Get the most recent fixture for a guild week, regardless of status."""
         _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -204,7 +203,6 @@ class FixtureRepository:
                 return self._row_to_fixture(row) if row else None
 
     async def get_recent_fixtures(self, guild_id: str, limit: int = 25) -> list[dict]:
-        """Get recent fixtures for a guild ordered by newest first."""
         _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
@@ -238,11 +236,6 @@ class FixtureRepository:
                 return self._row_to_fixture(row) if row else None
 
     async def get_max_week_number(self, guild_id: str) -> int:
-        """Get the maximum week number for a guild.
-
-        Returns:
-            Maximum week number, or 0 if no fixtures exist.
-        """
         _validate_guild_id(guild_id)
         async with (
             aiosqlite.connect(self.db_path) as db,

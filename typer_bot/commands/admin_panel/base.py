@@ -36,8 +36,6 @@ def _fixture_select_description(fixture: dict) -> str:
 
 
 def _format_prediction_line(index: int, game: str, prediction: str) -> str:
-    """Format a per-match score line for prediction or result displays."""
-
     return f"{index}. {game} {prediction}"
 
 

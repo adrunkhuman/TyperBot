@@ -31,7 +31,7 @@ The panel handles:
 - review late partial predictions
 - toggle late waivers
 
-After setup, admins need the configured TyperBot admin role. Only Discord-native server admins can complete or update setup from `/admin panel`.
+After setup, admins need the configured TyperBot admin role. Setup from `/admin panel` requires Discord `Administrator` or `Manage Server` permission.
 
 ## Permissions
 - `Send Messages`
@@ -74,7 +74,7 @@ Team E - Team F 3:2
 ## Operational constraints
 - Match data, predictions, results, and scores are stored in SQLite.
 - Short-lived cooldowns are kept in memory, including the thread-post rate limiter and the score-calculation cooldown.
-- The bot is intentionally single-process for v1. If the process restarts, in-memory cooldowns reset.
+- The bot is intentionally single-process. If the process restarts, in-memory cooldowns reset.
 
 ## Configuration
 
@@ -109,21 +109,11 @@ This bot runs anywhere you can deploy a persistent container.
 
 Use a separate token for previews and manual testing. Do not run multiple deployments against the same live token.
 
-### Migration and Data
+### Data
 
 Routine host migration is a direct copy of the live SQLite file at `DB_PATH` (default: `{DATA_DIR}/typer.db`). The `scripts/restore_db.py` helper is for restoring SQL dump backups during recovery, not for the normal host-to-host move.
 
 If you override `DB_PATH` or `BACKUP_DIR`, keep them on the persistent volume too.
-
-Before deploying v2.0.0 over an existing v1.x database, back up the live database and assign all existing fixtures to your current Discord guild:
-
-```sql
-ALTER TABLE fixtures ADD COLUMN guild_id TEXT;
-UPDATE fixtures SET guild_id = '<your guild id>' WHERE guild_id IS NULL OR TRIM(guild_id) = '';
-SELECT COUNT(*) FROM fixtures WHERE guild_id IS NULL OR TRIM(guild_id) = '';
-```
-
-The final query must return `0`. TyperBot refuses to start if any fixture has no guild owner.
 
 ## Running locally
 
@@ -155,9 +145,11 @@ Use a separate bot token in a private test guild. Point it at an isolated data d
 $env:DISCORD_TOKEN="your_test_bot_token"
 $env:ENVIRONMENT="development"
 $env:DATA_DIR="./.local/manual-discord-test"
-uv run python -m typer_bot.dev.seed_test_data --tester-user-id "your_discord_user_id"
+uv run python -m typer_bot.dev.seed_test_data --tester-user-id "your_discord_user_id" --guild-id "your_discord_server_id"
 uv run python -m typer_bot
 ```
+
+Enable Discord Developer Mode, right-click your test server, and copy the server ID for `--guild-id`.
 
 The seed command resets that local test database and creates:
 - one scored past fixture for standings/history

@@ -1,25 +1,25 @@
 [project]
 name = "typerbot"
-version = "1.1.0"
+version = "2.0.0"
 description = "TyperBot - Discord bot for football predictions"
 requires-python = ">=3.13"
 authors = [
     {name = "adrunkhuman"}
 ]
 dependencies = [
-    "discord-py>=2.6.0",
-    "python-dotenv>=1.0.0",
-    "aiosqlite>=0.22.0",
-    "tzdata>=2024.1",
+    "discord-py>=2.7.1",
+    "python-dotenv>=1.2.2",
+    "aiosqlite>=0.22.1",
+    "tzdata>=2026.2",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=9.0.0",
-    "pytest-asyncio>=1.0.0",
-    "ruff>=0.14.0",
-    "freezegun>=1.5.0",
-    "ty>=0.0.16",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.3.0",
+    "ruff>=0.15.12",
+    "freezegun>=1.5.5",
+    "ty>=0.0.33",
 ]
 
 [build-system]

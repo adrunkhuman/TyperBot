@@ -25,6 +25,7 @@ _PREDICTION_INSERT_COLUMNS = (
     "public_message_kind",
 )
 
+# User resubmission replaces admin edits/waivers so the new public prediction is authoritative.
 _PREDICTION_UPSERT_CLAUSE = """
 ON CONFLICT(fixture_id, user_id)
   DO UPDATE SET predictions = excluded.predictions,

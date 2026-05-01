@@ -162,8 +162,12 @@ class Database:
         """Create tables, enable WAL mode, and apply additive migrations.
 
         Fresh databases get the current schema. Existing databases are migrated
-        in place by adding missing columns and by collapsing legacy ``results``
-        rows into the current one-row-per-fixture layout.
+        in place by adding missing columns and by collapsing ``results`` rows
+        into the current one-row-per-fixture layout.
+
+        Raises:
+            RuntimeError: Existing databases must have a populated
+                ``fixtures.guild_id`` before v2 startup can continue.
         """
         async with aiosqlite.connect(self.db_path) as db:
             async with db.execute("PRAGMA journal_mode=WAL") as cur:

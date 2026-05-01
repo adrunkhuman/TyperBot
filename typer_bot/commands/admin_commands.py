@@ -253,7 +253,7 @@ async def send_setup_prompt_if_allowed(interaction: discord.Interaction, db: Dat
 
 
 def admin_only():
-    """Decorator to check if user has admin permissions."""
+    """App-command check: prompt setup when missing, otherwise require configured admin role."""
 
     async def predicate(interaction: discord.Interaction) -> bool:
         db = getattr(interaction.client, "db", None)
