@@ -155,6 +155,50 @@ class TestScores:
         assert [score["user_id"] for score in scores] == ["user-1"]
 
     @pytest.mark.asyncio
+    async def test_save_scores_rolls_back_after_partial_write_failure(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture("111111", 1, ["Team A - Team B"], datetime.now(UTC))
+        await db.save_scores(
+            fixture_id,
+            [
+                {
+                    "user_id": "user-1",
+                    "user_name": "User One",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+
+        with pytest.raises(aiosqlite.IntegrityError):
+            await db.save_scores(
+                fixture_id,
+                [
+                    {
+                        "user_id": "user-2",
+                        "user_name": "User Two",
+                        "points": 9,
+                        "exact_scores": 3,
+                        "correct_results": 3,
+                    },
+                    {
+                        "user_id": "user-2",
+                        "user_name": "Duplicate User Two",
+                        "points": 0,
+                        "exact_scores": 0,
+                        "correct_results": 0,
+                    },
+                ],
+            )
+
+        scores = await db.get_scores_for_fixture(fixture_id)
+        assert len(scores) == 1
+        assert scores[0]["user_id"] == "user-1"
+        assert scores[0]["points"] == 3
+
+    @pytest.mark.asyncio
     async def test_standings_order_by_points_tiebreakers_and_name(self, temp_db_path):
         db = Database(temp_db_path)
         await db.initialize()
