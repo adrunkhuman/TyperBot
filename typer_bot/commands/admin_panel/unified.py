@@ -528,8 +528,8 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.add_item(self.fixture_select)
         self.add_item(self.user_select)
         self.add_item(CreateFixtureButton(self))
-        self.add_item(SetupBotButton(self))
         self.add_item(FixturesDeleteButton(self, disabled=self.selection.fixture_id is None, row=2))
+        self.add_item(SetupBotButton(self))
         self.add_item(JumpToWeekButton(self))
         if self.has_pending_partials:
             self.add_item(ReviewPendingPartialsButton(self))
