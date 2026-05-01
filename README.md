@@ -114,6 +114,16 @@ Routine host migration is a direct copy of the live SQLite file at `DB_PATH` (de
 
 If you override `DB_PATH` or `BACKUP_DIR`, keep them on the persistent volume too.
 
+Before deploying v2.0.0 over an existing v1.x database, back up the live database and assign all existing fixtures to your current Discord guild:
+
+```sql
+ALTER TABLE fixtures ADD COLUMN guild_id TEXT;
+UPDATE fixtures SET guild_id = '<your guild id>' WHERE guild_id IS NULL OR TRIM(guild_id) = '';
+SELECT COUNT(*) FROM fixtures WHERE guild_id IS NULL OR TRIM(guild_id) = '';
+```
+
+The final query must return `0`. TyperBot refuses to start if any fixture has no guild owner.
+
 ## Running locally
 
 Local runs default to `ENVIRONMENT=development`, `DATA_DIR=./data`, and `TZ=UTC`.

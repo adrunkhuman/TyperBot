@@ -11,6 +11,11 @@ from typer_bot.utils.config import DB_PATH
 logger = logging.getLogger(__name__)
 
 
+def _validate_guild_id(guild_id: str) -> None:
+    if not isinstance(guild_id, str) or not guild_id.strip():
+        raise ValueError("guild_id is required")
+
+
 class FixtureRepository:
     """CRUD for the fixtures table."""
 
@@ -25,6 +30,7 @@ class FixtureRepository:
         deadline_text = deadline_val if isinstance(deadline_val, str) else None
         return {
             "id": row_dict.get("id"),
+            "guild_id": row_dict.get("guild_id"),
             "week_number": row_dict.get("week_number"),
             "games": [g for g in games_text.split("\n") if g],
             "deadline": parse_iso(deadline_text) if deadline_text else None,
@@ -33,8 +39,15 @@ class FixtureRepository:
             "channel_id": row_dict.get("channel_id"),
         }
 
-    async def create_fixture(self, week_number: int, games: list[str], deadline) -> int:
+    async def create_fixture(
+        self,
+        guild_id: str,
+        week_number: int,
+        games: list[str],
+        deadline,
+    ) -> int:
         """Create a new fixture and return its ID."""
+        _validate_guild_id(guild_id)
         if deadline.tzinfo is None:
             from typer_bot.utils import APP_TZ
 
@@ -42,8 +55,8 @@ class FixtureRepository:
         start_time = time.perf_counter()
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                "INSERT INTO fixtures (week_number, games, deadline) VALUES (?, ?, ?)",
-                (week_number, "\n".join(games), deadline.isoformat()),
+                "INSERT INTO fixtures (guild_id, week_number, games, deadline) VALUES (?, ?, ?, ?)",
+                (guild_id, week_number, "\n".join(games), deadline.isoformat()),
             )
             await db.commit()
             if cursor.lastrowid is None:
@@ -62,12 +75,15 @@ class FixtureRepository:
             )
             return cursor.lastrowid
 
-    async def create_next_fixture(self, games: list[str], deadline) -> tuple[int, int]:
+    async def create_next_fixture(
+        self, guild_id: str, games: list[str], deadline
+    ) -> tuple[int, int]:
         """Create a new fixture with the next available week number atomically.
 
         Returns:
             Tuple of (fixture_id, allocated_week_number).
         """
+        _validate_guild_id(guild_id)
         if deadline.tzinfo is None:
             from typer_bot.utils import APP_TZ
 
@@ -78,14 +94,15 @@ class FixtureRepository:
             await db.execute("BEGIN IMMEDIATE")
             try:
                 async with db.execute(
-                    "SELECT COALESCE(MAX(week_number), 0) FROM fixtures"
+                    "SELECT COALESCE(MAX(week_number), 0) FROM fixtures WHERE guild_id = ?",
+                    (guild_id,),
                 ) as cursor:
                     row = await cursor.fetchone()
                     next_week = int(row[0]) + 1 if row else 1
 
                 insert_cursor = await db.execute(
-                    "INSERT INTO fixtures (week_number, games, deadline) VALUES (?, ?, ?)",
-                    (next_week, "\n".join(games), deadline.isoformat()),
+                    "INSERT INTO fixtures (guild_id, week_number, games, deadline) VALUES (?, ?, ?, ?)",
+                    (guild_id, next_week, "\n".join(games), deadline.isoformat()),
                 )
                 await db.commit()
             except Exception:
@@ -188,15 +205,19 @@ class FixtureRepository:
                 row = await cursor.fetchone()
                 return self._row_to_fixture(row) if row else None
 
-    async def get_max_week_number(self) -> int:
-        """Get the maximum week number from all fixtures.
+    async def get_max_week_number(self, guild_id: str) -> int:
+        """Get the maximum week number for a guild.
 
         Returns:
             Maximum week number, or 0 if no fixtures exist.
         """
+        _validate_guild_id(guild_id)
         async with (
             aiosqlite.connect(self.db_path) as db,
-            db.execute("SELECT MAX(week_number) FROM fixtures") as cursor,
+            db.execute(
+                "SELECT MAX(week_number) FROM fixtures WHERE guild_id = ?",
+                (guild_id,),
+            ) as cursor,
         ):
             row = await cursor.fetchone()
             return row[0] if row and row[0] is not None else 0

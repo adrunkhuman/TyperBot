@@ -27,7 +27,7 @@ class TestLatePenaltyWaiver:
     ):
         service = AdminService(database)
         fixture_id = await database.create_fixture(
-            1, sample_games, datetime.now(UTC) - timedelta(hours=2)
+            "111111", 1, sample_games, datetime.now(UTC) - timedelta(hours=2)
         )
 
         await database.save_prediction(
@@ -64,7 +64,7 @@ class TestLatePenaltyWaiver:
     ):
         service = AdminService(database)
         fixture_id = await database.create_fixture(
-            1, sample_games, datetime.now(UTC) - timedelta(hours=2)
+            "111111", 1, sample_games, datetime.now(UTC) - timedelta(hours=2)
         )
 
         await database.save_prediction(
@@ -106,7 +106,7 @@ class TestAdminFlowErrors:
     ):
         service = AdminService(database)
         fixture_id = await database.create_fixture(
-            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
         with pytest.raises(NoPredictionsSavedError):
@@ -118,7 +118,7 @@ class TestAdminFlowErrors:
     ):
         service = AdminService(database)
         fixture_id = await database.create_fixture(
-            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
         with pytest.raises(PredictionNotFoundError):
@@ -135,7 +135,7 @@ class TestAdminFlowErrors:
     ):
         service = AdminService(database)
         fixture_id = await database.create_fixture(
-            1, sample_games, datetime.now(UTC) - timedelta(hours=2)
+            "111111", 1, sample_games, datetime.now(UTC) - timedelta(hours=2)
         )
         await database.save_prediction(
             fixture_id,
@@ -170,7 +170,7 @@ class TestPredictionReplacement:
     ):
         service = AdminService(database)
         fixture_id = await database.create_fixture(
-            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
         await database.save_prediction(
@@ -208,7 +208,7 @@ class TestPredictionReplacement:
     ):
         service = AdminService(database)
         fixture_id = await database.create_fixture(
-            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
         await database.save_prediction(
@@ -249,7 +249,7 @@ class TestPredictionReplacement:
     ):
         service = AdminService(database)
         fixture_id = await database.create_fixture(
-            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
         await database.save_prediction(
@@ -290,10 +290,10 @@ class TestResultCorrection:
     ):
         service = AdminService(database)
         fixture1_id = await database.create_fixture(
-            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         fixture2_id = await database.create_fixture(
-            2, sample_games, datetime.now(UTC) + timedelta(days=2)
+            "111111", 2, sample_games, datetime.now(UTC) + timedelta(days=2)
         )
 
         await database.save_prediction(
@@ -362,7 +362,7 @@ class TestResultCorrection:
     ):
         service = AdminService(database)
         fixture_id = await database.create_fixture(
-            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await database.save_prediction(
             fixture_id,
@@ -397,7 +397,7 @@ class TestPartialPredictionApproval:
     ):
         service = AdminService(database)
         fixture_id = await database.create_fixture(
-            3, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 3, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
         await database.save_prediction(
@@ -429,7 +429,7 @@ class TestPartialPredictionApproval:
     ):
         service = AdminService(database)
         fixture_id = await database.create_fixture(
-            4, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 4, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
         await database.save_prediction(
@@ -464,7 +464,7 @@ class TestPartialPredictionApproval:
     ):
         service = AdminService(database)
         fixture_id = await database.create_fixture(
-            5, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 5, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
         await database.save_prediction(
@@ -505,7 +505,7 @@ class TestPartialPredictionApproval:
     ):
         service = AdminService(database)
         fixture_id = await database.create_fixture(
-            5, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 5, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
         await database.save_prediction(
@@ -550,7 +550,7 @@ class TestPartialPredictionApproval:
     ):
         service = AdminService(database)
         fixture_id = await database.create_fixture(
-            6, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 6, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
         await database.save_prediction(
@@ -589,7 +589,7 @@ class TestPartialPredictionApproval:
     ):
         service = AdminService(database)
         fixture_id = await database.create_fixture(
-            6, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 6, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
         await database.save_prediction(

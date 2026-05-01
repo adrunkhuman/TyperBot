@@ -13,7 +13,7 @@ class TestFullWorkflow:
         """End-to-end workflow produces correct standings."""
         games = ["Team A - Team B", "Team C - Team D", "Team E - Team F"]
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_id = await database.create_fixture(1, games, deadline)
+        fixture_id = await database.create_fixture("111111", 1, games, deadline)
         await database.update_fixture_announcement(
             fixture_id, message_id="789012", channel_id="123456"
         )
@@ -59,7 +59,7 @@ class TestFullWorkflow:
         """Late predictions receive 0 points (100% penalty)."""
         games = ["Team A - Team B", "Team C - Team D", "Team E - Team F"]
         deadline = datetime.now(UTC) - timedelta(hours=1)
-        fixture_id = await database.create_fixture(1, games, deadline)
+        fixture_id = await database.create_fixture("111111", 1, games, deadline)
 
         await database.save_prediction(fixture_id, "user1", "User1", ["2-1", "1-1", "0-2"], True)
 
@@ -94,7 +94,7 @@ class TestFullWorkflow:
         """Re-submitting a prediction replaces the existing one (upsert behavior)."""
         games = ["Team A - Team B", "Team C - Team D"]
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_id = await database.create_fixture(1, games, deadline)
+        fixture_id = await database.create_fixture("111111", 1, games, deadline)
 
         await database.save_prediction(fixture_id, "user1", "User1", ["2-1", "1-0"], False)
         await database.save_prediction(fixture_id, "user1", "User1", ["3-0", "2-1"], False)
@@ -112,7 +112,7 @@ class TestEdgeCases:
         """Cascading deletion removes predictions and results."""
         games = ["Team A - Team B"]
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_id = await database.create_fixture(1, games, deadline)
+        fixture_id = await database.create_fixture("111111", 1, games, deadline)
 
         await database.save_prediction(fixture_id, "user1", "User1", "2-1", False)
         await database.save_results(fixture_id, ["2-1"])
@@ -127,7 +127,7 @@ class TestEdgeCases:
         """Standings accumulate across multiple fixtures."""
         games = ["Team A - Team B"]
         deadline = datetime.now(UTC) - timedelta(days=2)
-        fixture1_id = await database.create_fixture(1, games, deadline)
+        fixture1_id = await database.create_fixture("111111", 1, games, deadline)
         await database.save_prediction(fixture1_id, "user1", "User1", "2-1", False)
         await database.save_results(fixture1_id, ["2-1"])
         await database.save_scores(
@@ -144,7 +144,7 @@ class TestEdgeCases:
         )
 
         deadline = datetime.now(UTC) - timedelta(days=1)
-        fixture2_id = await database.create_fixture(2, games, deadline)
+        fixture2_id = await database.create_fixture("111111", 2, games, deadline)
         await database.save_prediction(fixture2_id, "user1", "User1", "1-0", False)
         await database.save_results(fixture2_id, ["1-0"])
         await database.save_scores(
@@ -170,10 +170,10 @@ class TestEdgeCases:
         games = ["Team A - Team B"]
         deadline = datetime.now(UTC) + timedelta(days=1)
 
-        await database.create_fixture(5, games, deadline)
-        await database.create_fixture(3, games, deadline)
+        await database.create_fixture("111111", 5, games, deadline)
+        await database.create_fixture("111111", 3, games, deadline)
 
-        max_week = await database.get_max_week_number()
+        max_week = await database.get_max_week_number("111111")
         assert max_week == 5
 
     @pytest.mark.asyncio
@@ -182,8 +182,8 @@ class TestEdgeCases:
         games = ["Team A - Team B", "Team C - Team D"]
         deadline = datetime.now(UTC) + timedelta(days=1)
 
-        fixture_one_id = await database.create_fixture(1, games, deadline)
-        fixture_two_id = await database.create_fixture(2, games, deadline)
+        fixture_one_id = await database.create_fixture("111111", 1, games, deadline)
+        fixture_two_id = await database.create_fixture("111111", 2, games, deadline)
 
         await database.save_prediction(fixture_one_id, "user1", "User1", ["2-1", "1-1"], False)
         await database.save_results(fixture_one_id, ["2-1", "1-1"])
@@ -219,7 +219,7 @@ class TestDatabaseIntegrity:
         """One prediction per user per fixture - re-submission replaces existing."""
         games = ["Team A - Team B"]
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_id = await database.create_fixture(1, games, deadline)
+        fixture_id = await database.create_fixture("111111", 1, games, deadline)
 
         await database.save_prediction(fixture_id, "user1", "User1", ["2-1"], False)
         await database.save_prediction(fixture_id, "user1", "User1", ["1-0"], False)
@@ -238,7 +238,7 @@ class TestUsernameChangeHandling:
         games = ["Team A - Team B"]
         deadline = datetime.now(UTC) - timedelta(days=2)
 
-        fixture1_id = await database.create_fixture(1, games, deadline)
+        fixture1_id = await database.create_fixture("111111", 1, games, deadline)
         await database.save_prediction(fixture1_id, "user1", "st4chu", ["2-1"], False)
         await database.save_results(fixture1_id, ["2-1"])
         await database.save_scores(
@@ -255,7 +255,7 @@ class TestUsernameChangeHandling:
         )
 
         deadline = datetime.now(UTC) - timedelta(days=1)
-        fixture2_id = await database.create_fixture(2, games, deadline)
+        fixture2_id = await database.create_fixture("111111", 2, games, deadline)
         await database.save_prediction(fixture2_id, "user1", "Stachu", ["1-0"], False)
         await database.save_results(fixture2_id, ["1-0"])
         await database.save_scores(
@@ -282,7 +282,9 @@ class TestUsernameChangeHandling:
         """Should show the most recent username from latest fixture."""
         games = ["Team A - Team B"]
 
-        fixture1_id = await database.create_fixture(1, games, datetime.now(UTC) - timedelta(days=3))
+        fixture1_id = await database.create_fixture(
+            "111111", 1, games, datetime.now(UTC) - timedelta(days=3)
+        )
         await database.save_results(fixture1_id, ["2-1"])
         await database.save_scores(
             fixture1_id,
@@ -297,7 +299,9 @@ class TestUsernameChangeHandling:
             ],
         )
 
-        fixture2_id = await database.create_fixture(2, games, datetime.now(UTC) - timedelta(days=2))
+        fixture2_id = await database.create_fixture(
+            "111111", 2, games, datetime.now(UTC) - timedelta(days=2)
+        )
         await database.save_results(fixture2_id, ["2-1"])
         await database.save_scores(
             fixture2_id,
@@ -312,7 +316,9 @@ class TestUsernameChangeHandling:
             ],
         )
 
-        fixture3_id = await database.create_fixture(3, games, datetime.now(UTC) - timedelta(days=1))
+        fixture3_id = await database.create_fixture(
+            "111111", 3, games, datetime.now(UTC) - timedelta(days=1)
+        )
         await database.save_results(fixture3_id, ["2-1"])
         await database.save_scores(
             fixture3_id,

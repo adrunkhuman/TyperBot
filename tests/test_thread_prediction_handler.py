@@ -111,7 +111,7 @@ class TestOnMessage:
     async def test_marks_late_predictions(self, handler, database, mock_message, sample_games):
         """Should mark predictions as late when past deadline."""
         deadline = datetime.now(UTC) - timedelta(hours=1)
-        fixture_id = await database.create_fixture(1, sample_games, deadline)
+        fixture_id = await database.create_fixture("111111", 1, sample_games, deadline)
         await database.update_fixture_announcement(
             fixture_id, message_id="789012", channel_id="123456"
         )
@@ -153,7 +153,7 @@ class TestOnMessage:
         self, handler, database, mock_message, sample_games
     ):
         deadline = datetime.now(UTC) - timedelta(hours=1)
-        fixture_id = await database.create_fixture(1, sample_games, deadline)
+        fixture_id = await database.create_fixture("111111", 1, sample_games, deadline)
         await database.update_fixture_announcement(
             fixture_id, message_id="789012", channel_id="123456"
         )
@@ -454,7 +454,7 @@ class TestIntegration:
         from tests.conftest import MockMessage, MockUser
 
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_id = await database.create_fixture(1, sample_games, deadline)
+        fixture_id = await database.create_fixture("111111", 1, sample_games, deadline)
         await database.update_fixture_announcement(
             fixture_id, message_id="789012", channel_id="123456"
         )

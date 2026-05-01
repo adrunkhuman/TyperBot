@@ -113,6 +113,23 @@ async def _migrate_prediction_columns(db: aiosqlite.Connection) -> None:
         await db.execute("ALTER TABLE predictions ADD COLUMN public_message_kind TEXT")
 
 
+async def _validate_fixture_guild_ownership(db: aiosqlite.Connection) -> None:
+    columns = await _table_columns(db, "fixtures")
+    if "guild_id" not in columns:
+        raise RuntimeError(
+            "fixtures.guild_id is missing. Run the one-time v2.0.0 guild ownership migration before starting the bot."
+        )
+
+    async with db.execute(
+        "SELECT COUNT(*) FROM fixtures WHERE guild_id IS NULL OR TRIM(guild_id) = ''"
+    ) as cursor:
+        row = await cursor.fetchone()
+    if row and row[0] > 0:
+        raise RuntimeError(
+            "fixtures.guild_id has empty rows. Backfill every fixture with the owning Discord guild ID before starting the bot."
+        )
+
+
 class Database:
     """Composition root for SQLite setup and the bot's stable data facade.
 
@@ -148,6 +165,7 @@ class Database:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS fixtures (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
                     week_number INTEGER NOT NULL,
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
@@ -213,6 +231,8 @@ class Database:
                 logger.info("Adding channel_id column to fixtures table")
                 await db.execute("ALTER TABLE fixtures ADD COLUMN channel_id TEXT")
 
+            await _validate_fixture_guild_ownership(db)
+
             await _migrate_prediction_columns(db)
             await _migrate_results_table(db)
 
@@ -220,14 +240,20 @@ class Database:
             await db.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_results_fixture_id_unique ON results(fixture_id)"
             )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_fixtures_guild_status_week ON fixtures(guild_id, status, week_number)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_fixtures_guild_week ON fixtures(guild_id, week_number)"
+            )
 
             await db.commit()
 
-    async def create_fixture(self, week_number, games, deadline):
-        return await self._fixtures.create_fixture(week_number, games, deadline)
+    async def create_fixture(self, guild_id, week_number, games, deadline):
+        return await self._fixtures.create_fixture(guild_id, week_number, games, deadline)
 
-    async def create_next_fixture(self, games, deadline):
-        return await self._fixtures.create_next_fixture(games, deadline)
+    async def create_next_fixture(self, guild_id, games, deadline):
+        return await self._fixtures.create_next_fixture(guild_id, games, deadline)
 
     async def get_current_fixture(self):
         return await self._fixtures.get_current_fixture()
@@ -250,8 +276,8 @@ class Database:
     async def get_fixture_by_message_id(self, message_id):
         return await self._fixtures.get_fixture_by_message_id(message_id)
 
-    async def get_max_week_number(self):
-        return await self._fixtures.get_max_week_number()
+    async def get_max_week_number(self, guild_id):
+        return await self._fixtures.get_max_week_number(guild_id)
 
     async def delete_fixture(self, fixture_id):
         return await self._fixtures.delete_fixture(fixture_id)

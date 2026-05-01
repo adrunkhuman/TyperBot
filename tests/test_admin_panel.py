@@ -95,7 +95,9 @@ class TestAdminPanelCommand:
         mock_interaction_admin,
         sample_games,
     ):
-        await admin_cog.db.create_fixture(5, sample_games, datetime.now(UTC) + timedelta(days=1))
+        await admin_cog.db.create_fixture(
+            "111111", 5, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
         modal = CreateFixtureModal(
             admin_cog.db, mock_interaction_admin.channel, str(mock_interaction_admin.user.id)
         )
@@ -334,7 +336,9 @@ class TestAdminPanelCommand:
         modal.deadline_input._value = "2026-04-20 18:00"
 
         await modal.on_submit(mock_interaction_admin)
-        await admin_cog.db.create_fixture(1, sample_games, datetime.now(UTC) + timedelta(days=1))
+        await admin_cog.db.create_fixture(
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
 
         confirm_view = mock_interaction_admin.response_sent[-1]["view"]
         confirm_button = next(
@@ -456,7 +460,9 @@ class TestPredictionPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        await admin_cog.db.create_fixture(1, sample_games, datetime.now(UTC) + timedelta(days=1))
+        await admin_cog.db.create_fixture(
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
 
         unified_view = UnifiedAdminPanelView(
             admin_cog.db,
@@ -479,7 +485,7 @@ class TestPredictionPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -528,7 +534,7 @@ class TestPredictionPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            10, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 10, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
         view = PredictionsPanelView(
@@ -554,7 +560,7 @@ class TestPredictionPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            17, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 17, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         for index in range(30):
             await admin_cog.db.save_prediction(
@@ -592,7 +598,7 @@ class TestPredictionPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            19, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 19, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         for index in range(26):
             await admin_cog.db.save_prediction(
@@ -625,7 +631,7 @@ class TestPredictionPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            22, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 22, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         for index in range(26):
             await admin_cog.db.save_prediction(
@@ -666,7 +672,7 @@ class TestPredictionPanelFlows:
             for index in range(1, 21)
         ]
         fixture_id = await admin_cog.db.create_fixture(
-            20, games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 20, games, datetime.now(UTC) + timedelta(days=1)
         )
         for index in range(26):
             await admin_cog.db.save_prediction(
@@ -699,7 +705,7 @@ class TestPredictionPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -736,7 +742,7 @@ class TestPredictionPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            34, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 34, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -773,7 +779,7 @@ class TestPredictionPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            35, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 35, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -809,7 +815,7 @@ class TestPredictionPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            40, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 40, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -846,7 +852,7 @@ class TestPredictionPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            13, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 13, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -881,7 +887,7 @@ class TestPredictionPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            11, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 11, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -916,7 +922,7 @@ class TestPredictionPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            2, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 2, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -960,7 +966,7 @@ class TestPredictionPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            18, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 18, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -1003,7 +1009,9 @@ class TestFixturePanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        await admin_cog.db.create_fixture(4, sample_games, datetime.now(UTC) + timedelta(days=1))
+        await admin_cog.db.create_fixture(
+            "111111", 4, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
 
         view = UnifiedAdminPanelView(
             admin_cog.db,
@@ -1025,7 +1033,7 @@ class TestFixturePanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            5, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 5, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
         view = FixturesPanelView(
@@ -1050,7 +1058,7 @@ class TestFixturePanelFlows:
     ):
         """Deletion confirmation must show game list so admin can verify the right fixture."""
         fixture_id = await admin_cog.db.create_fixture(
-            6, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 6, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
         view = UnifiedAdminPanelView(
@@ -1144,7 +1152,7 @@ class TestFixturePanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            55, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 55, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -1175,7 +1183,7 @@ class TestFixturePanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            56, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 56, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -1212,10 +1220,10 @@ class TestFixturePanelFlows:
         sample_games,
     ):
         fixture_a = await admin_cog.db.create_fixture(
-            57, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 57, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         fixture_b = await admin_cog.db.create_fixture(
-            58, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 58, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_a,
@@ -1307,7 +1315,7 @@ class TestFixturePanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            44, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 44, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         view = UnifiedAdminPanelView(
             admin_cog.db,
@@ -1333,7 +1341,7 @@ class TestFixturePanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            46, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 46, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         view = UnifiedAdminPanelView(
@@ -1360,7 +1368,7 @@ class TestFixturePanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            45, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 45, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
         await admin_cog.db.save_prediction(
@@ -1405,7 +1413,7 @@ class TestFixturePanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            47, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 47, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         admin_cog.record_calculate_cooldown(
             str(mock_interaction_admin.user.id), current_time=now().timestamp()
@@ -1436,7 +1444,7 @@ class TestFixturePanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            48, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 48, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         admin_cog.service.calculate_fixture_scores = AsyncMock(
             side_effect=ValueError("No results entered")
@@ -1518,7 +1526,7 @@ class TestFixturePanelFlows:
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
         for week in range(1, 28):
-            await admin_cog.db.create_fixture(week, sample_games, deadline)
+            await admin_cog.db.create_fixture("111111", week, sample_games, deadline)
 
         view = UnifiedAdminPanelView(
             admin_cog.db,
@@ -1572,8 +1580,8 @@ class TestFixturePanelFlows:
         sample_games,
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        await admin_cog.db.create_fixture(5, sample_games, deadline)
-        await admin_cog.db.create_fixture(5, sample_games, deadline)
+        await admin_cog.db.create_fixture("111111", 5, sample_games, deadline)
+        await admin_cog.db.create_fixture("111111", 5, sample_games, deadline)
 
         view = UnifiedAdminPanelView(
             admin_cog.db,
@@ -1645,7 +1653,7 @@ class TestFixturePanelFlows:
     ):
         """Silent DB failures surface as a visible error instead of timing out the interaction."""
         fixture_id = await admin_cog.db.create_fixture(
-            7, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 7, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
         db_mock = AsyncMock(spec=Database)
@@ -1726,7 +1734,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            3, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 3, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
 
@@ -1756,7 +1764,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            4, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 4, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
 
@@ -1784,7 +1792,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            5, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 5, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
         view = ResultsPanelView(
@@ -1813,7 +1821,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            14, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 14, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
 
@@ -1840,7 +1848,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            23, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 23, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         view = ResultsPanelView(
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id)
@@ -1864,7 +1872,7 @@ class TestResultsPanelFlows:
             for index in range(1, 101)
         ]
         fixture_id = await admin_cog.db.create_fixture(
-            12, games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 12, games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0"] * len(games))
 
@@ -1887,7 +1895,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            32, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 32, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -1934,7 +1942,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            33, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 33, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -1975,7 +1983,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            50, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 50, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -2012,7 +2020,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            51, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 51, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -2056,7 +2064,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            52, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 52, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -2097,7 +2105,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            70, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 70, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.update_fixture_announcement(
             fixture_id,
@@ -2151,7 +2159,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            72, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 72, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.update_fixture_announcement(
             fixture_id,
@@ -2205,7 +2213,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            71, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 71, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.update_fixture_announcement(
             fixture_id,
@@ -2265,7 +2273,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            73, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 73, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.update_fixture_announcement(
             fixture_id,
@@ -2325,7 +2333,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            74, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 74, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.update_fixture_announcement(
             fixture_id,
@@ -2375,7 +2383,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            53, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 53, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
         await admin_cog.db.save_prediction(
@@ -2425,7 +2433,7 @@ class TestResultsPanelFlows:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            54, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 54, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
         await admin_cog.db.save_prediction(
@@ -2483,7 +2491,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            24, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 24, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
         assert fixture is not None
@@ -2502,7 +2510,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            25, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 25, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
         assert fixture is not None
@@ -2522,7 +2530,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            28, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 28, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
         assert fixture is not None
@@ -2544,7 +2552,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            26, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 26, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
         assert fixture is not None
@@ -2573,7 +2581,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            30, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 30, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
         assert fixture is not None
@@ -2601,7 +2609,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            31, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 31, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
         assert fixture is not None
@@ -2641,7 +2649,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            27, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 27, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
         assert fixture is not None
@@ -2668,7 +2676,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            29, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 29, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         fixture = await admin_cog.db.get_fixture_by_id(fixture_id)
         assert fixture is not None
@@ -2700,7 +2708,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            1, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -2741,7 +2749,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            9, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 9, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -2774,7 +2782,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            15, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 15, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -2818,7 +2826,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            36, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 36, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -2863,7 +2871,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            37, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 37, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -2909,7 +2917,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            41, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 41, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -2954,7 +2962,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            21, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 21, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_prediction(
             fixture_id,
@@ -2998,7 +3006,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            2, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 2, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         view = ResultsPanelView(
@@ -3027,7 +3035,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            6, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 6, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         view = ResultsPanelView(
@@ -3055,7 +3063,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            7, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 7, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         view = ResultsPanelView(
@@ -3081,7 +3089,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            16, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 16, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         view = ResultsPanelView(
@@ -3113,7 +3121,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            38, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 38, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         await admin_cog.db.save_prediction(
@@ -3151,7 +3159,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            39, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 39, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         await admin_cog.db.save_prediction(
@@ -3186,7 +3194,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            42, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 42, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         await admin_cog.db.save_prediction(
@@ -3224,7 +3232,7 @@ class TestAdminPanelModals:
         sample_games,
     ):
         fixture_id = await admin_cog.db.create_fixture(
-            43, sample_games, datetime.now(UTC) + timedelta(days=1)
+            "111111", 43, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         await admin_cog.db.save_prediction(

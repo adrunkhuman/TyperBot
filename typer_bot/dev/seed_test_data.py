@@ -27,6 +27,7 @@ SYNTHETIC_USERS = [
 
 logger = logging.getLogger(__name__)
 DEFAULT_MANUAL_TEST_DIR = Path(".local/manual-discord-test").resolve()
+DEFAULT_MANUAL_GUILD_ID = "manual-test-guild"
 
 
 def _build_argument_parser() -> argparse.ArgumentParser:
@@ -36,6 +37,11 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--tester-user-id",
         help="Real Discord user ID to include in seeded open-fixture predictions.",
+    )
+    parser.add_argument(
+        "--guild-id",
+        default=DEFAULT_MANUAL_GUILD_ID,
+        help="Discord guild ID to assign to seeded fixtures.",
     )
     parser.add_argument(
         "--force-reset",
@@ -81,6 +87,7 @@ async def seed_mixed_test_data(
     db_path: str,
     backup_dir: str,
     tester_user_id: str | None,
+    guild_id: str = DEFAULT_MANUAL_GUILD_ID,
     *,
     force_reset: bool = False,
 ) -> None:
@@ -90,6 +97,7 @@ async def seed_mixed_test_data(
         db_path: SQLite database file to recreate and seed.
         backup_dir: Backup directory removed before reseeding.
         tester_user_id: Real Discord user ID added only to the open-fixture seed data.
+        guild_id: Discord guild ID assigned to seeded fixtures.
         force_reset: Allows resetting paths outside ``./.local/manual-discord-test``.
 
     Raises:
@@ -112,6 +120,7 @@ async def seed_mixed_test_data(
     users = _build_seed_users()
 
     scored_fixture_id = await db.create_fixture(
+        guild_id,
         1,
         SAMPLE_GAMES,
         current_time - timedelta(days=7),
@@ -154,6 +163,7 @@ async def seed_mixed_test_data(
     await db.save_scores(scored_fixture_id, scored_scores)
 
     open_fixture_id = await db.create_fixture(
+        guild_id,
         2,
         SAMPLE_GAMES,
         current_time + timedelta(days=2),
@@ -179,6 +189,7 @@ async def seed_mixed_test_data(
         )
 
     late_fixture_id = await db.create_fixture(
+        guild_id,
         3,
         SAMPLE_GAMES,
         current_time - timedelta(hours=3),
@@ -192,15 +203,21 @@ async def seed_mixed_test_data(
     )
 
 
-async def _async_main(tester_user_id: str | None, force_reset: bool) -> None:
-    await seed_mixed_test_data(DB_PATH, BACKUP_DIR, tester_user_id, force_reset=force_reset)
+async def _async_main(tester_user_id: str | None, guild_id: str, force_reset: bool) -> None:
+    await seed_mixed_test_data(
+        DB_PATH,
+        BACKUP_DIR,
+        tester_user_id,
+        guild_id,
+        force_reset=force_reset,
+    )
     logger.info("Seeded mixed manual test data into %s", DB_PATH)
 
 
 def main() -> None:
     setup_logging()
     args = _build_argument_parser().parse_args()
-    asyncio.run(_async_main(args.tester_user_id, args.force_reset))
+    asyncio.run(_async_main(args.tester_user_id, args.guild_id, args.force_reset))
 
 
 if __name__ == "__main__":
