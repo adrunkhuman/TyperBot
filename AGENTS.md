@@ -6,7 +6,7 @@
 You are working on `TyperBot`, a Discord bot for football prediction leagues.
 - **Core Function:** Users predict scores -> Admins enter results -> Bot calculates points.
 - **Vibe:** Functional, simple, reliable. No bloat.
-- **Tech:** Python 3.10+, discord.py, aiosqlite, portable container hosting.
+- **Tech:** Python 3.13+, discord.py, aiosqlite, portable container hosting.
 
 ## 2. Critical Constraints
 - **Persistence:** The database defaults to `./data/typer.db` locally. On production, set `DATA_DIR=/app/data` so the live DB stays on the mounted data volume.
@@ -23,7 +23,7 @@ You are working on `TyperBot`, a Discord bot for football prediction leagues.
 - **Parsing:** Use `utils.prediction_parser.parse_line_predictions` for all score parsing. Do NOT write ad-hoc regex.
 - **Logging:** Use `typer_bot.utils.logger.setup_logging()` early. Do not use `print()`.
 - **Timezones:** All datetime operations use timezone-aware objects. Use `utils.timezone.now()` instead of `datetime.now()`. Configure via `TZ` env var (default: `UTC`).
-- **Permissions:** Bot requires `Send Messages`, `Read Message History`, `Add Reactions`, and `Create Public Threads`.
+- **Permissions:** Bot requires `Send Messages`, `Send Messages in Threads`, `Read Message History`, `Add Reactions`, `Create Public Threads`, and `Use Slash Commands`.
 
 ## 3. Database Schema
 SQLite. Tables are initialized in `typer_bot/database/connection.py`.
@@ -31,34 +31,60 @@ SQLite. Tables are initialized in `typer_bot/database/connection.py`.
 ```sql
 fixtures (
     id INTEGER PK,
+    guild_id TEXT,                   -- Discord guild/server ID owning the league state
     week_number INTEGER,
     games TEXT,                      -- Newline separated: "Team A - Team B\nTeam C - Team D"
     deadline DATETIME,
     status TEXT DEFAULT 'open',      -- 'open' or 'closed'
-    message_id TEXT                  -- Discord message ID (thread shares same snowflake ID)
+    message_id TEXT,                 -- Discord message ID (thread shares same snowflake ID)
+    channel_id TEXT,
+    created_at DATETIME
 )
 
 predictions (
     id INTEGER PK,
     fixture_id INTEGER FK,
     user_id TEXT,                    -- Discord ID
+    user_name TEXT,
     predictions TEXT,                -- Newline separated: "2-1\n1-1"
-    is_late BOOLEAN
+    submitted_at DATETIME,
+    is_late BOOLEAN,
+    late_penalty_waived BOOLEAN,
+    admin_edited_at DATETIME,
+    admin_edited_by TEXT,
+    predicted_game_indexes TEXT,     -- Sparse partial predictions map to fixture game indexes
+    pending_partial_approval BOOLEAN,
+    public_message_id TEXT,
+    public_message_kind TEXT,
+    UNIQUE(fixture_id, user_id)
 )
 
 results (
     id INTEGER PK,
     fixture_id INTEGER FK,
-    results TEXT                     -- Newline separated actual scores
+    results TEXT,                    -- Newline separated actual scores
+    calculated_at DATETIME,
+    updated_at DATETIME,
+    UNIQUE(fixture_id)
 )
 
 scores (
     id INTEGER PK,
     fixture_id INTEGER FK,
     user_id TEXT,
+    user_name TEXT,
     points INTEGER,                  -- 3 (exact), 1 (outcome), 0 (miss)
     exact_scores INTEGER,
-    correct_results INTEGER
+    correct_results INTEGER,
+    UNIQUE(fixture_id, user_id)
+)
+
+guild_config (
+    guild_id TEXT PK,
+    admin_role_id TEXT,
+    league_channel_id TEXT,
+    created_at DATETIME,
+    updated_at DATETIME
 )
 ```
 

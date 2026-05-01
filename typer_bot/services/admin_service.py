@@ -141,6 +141,12 @@ class AdminService:
         admin_user_id: str,
         guild_id: str,
     ) -> tuple[dict, dict, FixtureScoreResult | None]:
+        """Approve a late partial prediction and recalculate if scores already exist.
+
+        Raises:
+            FixtureNotFoundError: Fixture was deleted before the review action ran.
+            ValueError: The selected prediction is not pending review or the write failed.
+        """
         fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
@@ -168,6 +174,12 @@ class AdminService:
         user_id: str,
         guild_id: str,
     ) -> tuple[dict, dict, FixtureScoreResult | None]:
+        """Reject a late partial prediction and recalculate if scores already exist.
+
+        Raises:
+            FixtureNotFoundError: Fixture was deleted before the review action ran.
+            ValueError: The selected prediction is not pending review or the write failed.
+        """
         fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
@@ -274,7 +286,12 @@ class AdminService:
         results_lines: str,
         guild_id: str,
     ) -> tuple[dict, list[str], FixtureScoreResult | None]:
-        """Replace stored results and recalculate scored fixtures."""
+        """Replace stored results and recalculate scored fixtures.
+
+        Raises:
+            FixtureNotFoundError: Fixture was deleted before the admin action ran.
+            ValueError: Result parsing or write failures that should surface directly to admins.
+        """
         fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError

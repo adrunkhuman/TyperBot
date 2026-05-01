@@ -27,7 +27,7 @@ def _interaction_member(interaction: discord.Interaction) -> discord.Member | No
 
 
 def _has_admin_role(member: discord.Member, admin_role_id: str | None = None) -> bool:
-    """Check if member has an admin role."""
+    """Check configured admin role, or default admin role names when no config exists."""
     if admin_role_id is not None:
         return any(str(role.id) == admin_role_id for role in member.roles)
 
@@ -97,7 +97,7 @@ def is_admin_member(member: discord.Member | None, admin_role_id: str | None = N
 
 
 def has_setup_permission(interaction: discord.Interaction) -> bool:
-    """Only Discord-native server admins may configure TyperBot."""
+    """Setup requires Discord Administrator or Manage Server, not the TyperBot admin role."""
     if not interaction.guild:
         return False
 
