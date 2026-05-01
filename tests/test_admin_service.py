@@ -40,7 +40,7 @@ class TestLatePenaltyWaiver:
         await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
         await service.calculate_fixture_scores(fixture_id)
 
-        standings = await database.get_standings()
+        standings = await database.get_standings("111111")
         assert standings[0]["total_points"] == 0
 
         fixture, prediction, recalculation = await service.toggle_late_penalty_waiver(
@@ -52,7 +52,7 @@ class TestLatePenaltyWaiver:
         assert prediction["late_penalty_waived"] == 1
         assert recalculation is not None
 
-        standings = await database.get_standings()
+        standings = await database.get_standings("111111")
         assert standings[0]["total_points"] == 9
 
     @pytest.mark.asyncio
@@ -315,7 +315,7 @@ class TestPredictionReplacement:
         await database.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         await service.calculate_fixture_scores(fixture_id)
 
-        before = await database.get_standings()
+        before = await database.get_standings("111111")
         assert before[0]["total_points"] == 9
 
         _fixture, updated_prediction, recalculation = await service.replace_prediction(
@@ -328,7 +328,7 @@ class TestPredictionReplacement:
         assert updated_prediction["admin_edited_by"] == "admin-1"
         assert recalculation is not None
 
-        after = await database.get_standings()
+        after = await database.get_standings("111111")
         assert after[0]["total_points"] == 2
 
 
@@ -376,7 +376,7 @@ class TestResultCorrection:
         await database.save_results(fixture2_id, ["2-0", "0-0", "1-1"])
         await service.calculate_fixture_scores(fixture2_id)
 
-        before = await database.get_standings()
+        before = await database.get_standings("111111")
         assert before[0]["user_id"] == "user-1"
         assert before[0]["total_points"] == 18
         assert before[1]["total_points"] == 7
@@ -390,7 +390,7 @@ class TestResultCorrection:
         assert results == ["2-1", "1-1", "0-2"]
         assert recalculation is not None
 
-        after = await database.get_standings()
+        after = await database.get_standings("111111")
         assert after[0]["user_id"] == "user-1"
         assert after[0]["total_points"] == 16
         assert after[1]["user_id"] == "user-2"
@@ -475,6 +475,45 @@ class TestPartialPredictionApproval:
         assert [score["user_id"] for score in result.scores] == ["111"]
 
     @pytest.mark.asyncio
+    async def test_calculated_score_payload_uses_fixture_guild_standings(
+        self,
+        database,
+        sample_games,
+    ):
+        service = AdminService(database)
+        current_fixture_id = await database.create_fixture(
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        other_fixture_id = await database.create_fixture(
+            "guild-2", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await database.save_results(current_fixture_id, ["2-1", "1-1", "0-2"])
+        await database.save_prediction(
+            current_fixture_id,
+            "shared-user",
+            "Guild One",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        await database.save_results(other_fixture_id, ["2-1", "1-1", "0-2"])
+        await database.save_prediction(
+            other_fixture_id,
+            "shared-user",
+            "Guild Two",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+
+        await service.calculate_fixture_scores(other_fixture_id)
+        result = await service.calculate_fixture_scores(current_fixture_id)
+
+        assert [row["user_id"] for row in result.standings] == ["shared-user"]
+        assert result.standings[0]["user_name"] == "Guild One"
+        assert result.standings[0]["weeks_played"] == 1
+        assert result.last_fixture is not None
+        assert result.last_fixture["fixture_id"] == current_fixture_id
+
+    @pytest.mark.asyncio
     async def test_approved_partial_prediction_scores_only_selected_rows(
         self,
         database,
@@ -546,7 +585,7 @@ class TestPartialPredictionApproval:
 
         assert approved_prediction["pending_partial_approval"] is False
         assert recalculation is not None
-        standings = await database.get_standings()
+        standings = await database.get_standings("111111")
         assert {row["user_id"] for row in standings} == {"111", "222"}
 
     @pytest.mark.asyncio

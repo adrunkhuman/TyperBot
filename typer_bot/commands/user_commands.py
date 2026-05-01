@@ -719,8 +719,12 @@ Use these directly in Discord."""
     )
     async def standings(self, interaction: discord.Interaction):
         """Display overall standings."""
-        standings = await self.db.get_standings()
-        last_fixture = await self.db.get_last_fixture_scores()
+        guild_id = await _require_guild_id(interaction)
+        if guild_id is None:
+            return
+
+        standings = await self.db.get_standings(guild_id)
+        last_fixture = await self.db.get_last_fixture_scores(guild_id)
 
         message = format_standings(standings, last_fixture)
 

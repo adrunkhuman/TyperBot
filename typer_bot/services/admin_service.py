@@ -47,9 +47,10 @@ class AdminService:
         if not predictions:
             raise ValueError("No predictions found for this fixture")
 
+        effective_guild_id = guild_id or fixture["guild_id"]
         scores = await self.db.get_scores_for_fixture(fixture_id)
-        standings = await self.db.get_standings()
-        last_fixture = await self.db.get_last_fixture_scores()
+        standings = await self.db.get_standings(effective_guild_id)
+        last_fixture = await self.db.get_last_fixture_scores(effective_guild_id)
         return FixtureScoreResult(
             fixture=fixture,
             results=results,

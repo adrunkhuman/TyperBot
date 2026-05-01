@@ -157,6 +157,42 @@ class TestOpenFixturesQueries:
         assert await db.get_fixture_by_id(fixture_id) is None
 
     @pytest.mark.asyncio
+    async def test_pending_partial_predictions_are_guild_scoped(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        deadline = datetime.now(UTC) - timedelta(hours=1)
+        guild_one_fixture_id = await db.create_fixture(
+            "111111", 1, ["Team A - Team B", "Team C - Team D"], deadline
+        )
+        guild_two_fixture_id = await db.create_fixture(
+            "guild-2", 1, ["Team E - Team F", "Team G - Team H"], deadline
+        )
+        await db.save_prediction(
+            guild_one_fixture_id,
+            "guild-one-user",
+            "Guild One",
+            ["1-1"],
+            True,
+            predicted_game_indexes=[0],
+            pending_partial_approval=True,
+        )
+        await db.save_prediction(
+            guild_two_fixture_id,
+            "guild-two-user",
+            "Guild Two",
+            ["2-2"],
+            True,
+            predicted_game_indexes=[1],
+            pending_partial_approval=True,
+        )
+
+        guild_one_pending = await db.get_pending_partial_predictions("111111")
+        guild_two_pending = await db.get_pending_partial_predictions("guild-2")
+
+        assert [prediction["user_id"] for prediction in guild_one_pending] == ["guild-one-user"]
+        assert [prediction["user_id"] for prediction in guild_two_pending] == ["guild-two-user"]
+
+    @pytest.mark.asyncio
     async def test_create_next_fixture_allocates_incrementing_weeks(self, temp_db_path):
         """Atomic allocator should issue increasing week numbers."""
         db = Database(temp_db_path)

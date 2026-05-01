@@ -572,8 +572,8 @@ class PredictionRepository:
                 rows = await cursor.fetchall()
                 return [self._prediction_row_to_dict(row) for row in rows]
 
-    async def get_pending_partial_predictions(self) -> list[dict]:
-        """List all pending partial predictions with fixture metadata."""
+    async def get_pending_partial_predictions(self, guild_id: str) -> list[dict]:
+        """List pending partial predictions with fixture metadata for one guild."""
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
@@ -595,9 +595,10 @@ class PredictionRepository:
                     f.status
                 FROM predictions p
                 JOIN fixtures f ON f.id = p.fixture_id
-                WHERE p.pending_partial_approval = TRUE
+                WHERE p.pending_partial_approval = TRUE AND f.guild_id = ?
                 ORDER BY f.week_number ASC, p.user_name COLLATE NOCASE ASC
-                """
+                """,
+                (guild_id,),
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [
