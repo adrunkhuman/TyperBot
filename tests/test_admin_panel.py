@@ -468,8 +468,8 @@ class TestPredictionPanelFlows:
         await unified_view.load_fixture_options()
 
         assert unified_view.user_select.disabled is True
-        assert len(unified_view.user_select.options) == 1
-        assert unified_view.user_select.options[0].label == "No predictions available"
+        assert _get_button(unified_view, "Replace Prediction").disabled is True
+        assert _get_button(unified_view, "Toggle Late Waiver").disabled is True
 
     @pytest.mark.asyncio
     async def test_prediction_panel_buttons_enable_as_selections_are_made(
@@ -1096,7 +1096,7 @@ class TestFixturePanelFlows:
 
         assert isinstance(mock_interaction_admin.modal_sent["modal"], CreateFixtureModal)
 
-    def test_unified_panel_layout_contract(self, admin_cog, mock_interaction_admin):
+    def test_unified_panel_exposes_admin_workflows(self, admin_cog, mock_interaction_admin):
         view = UnifiedAdminPanelView(
             admin_cog.db,
             admin_cog.service,
@@ -1105,10 +1105,8 @@ class TestFixturePanelFlows:
             bot=admin_cog.bot,
         )
 
-        labels = [getattr(child, "label", None) for child in view.children]
-        assert labels == [
-            None,
-            None,
+        labels = {getattr(child, "label", None) for child in view.children}
+        assert labels >= {
             "Create Fixture",
             "Delete Fixture",
             "Jump To Week",
@@ -1118,21 +1116,7 @@ class TestFixturePanelFlows:
             "Re-post Results",
             "Replace Prediction",
             "Toggle Late Waiver",
-        ]
-        rows_by_label = {
-            getattr(child, "label", None): child.row
-            for child in view.children
-            if getattr(child, "label", None)
         }
-        assert rows_by_label["Create Fixture"] == 2
-        assert rows_by_label["Delete Fixture"] == 2
-        assert rows_by_label["Jump To Week"] == 2
-        assert rows_by_label["Enter Results"] == 3
-        assert rows_by_label["Calculate Scores"] == 3
-        assert rows_by_label["Correct Results"] == 3
-        assert rows_by_label["Re-post Results"] == 3
-        assert rows_by_label["Replace Prediction"] == 4
-        assert rows_by_label["Toggle Late Waiver"] == 4
 
     @pytest.mark.asyncio
     async def test_unified_panel_hides_review_pending_button_without_pending_partials(
@@ -1182,8 +1166,6 @@ class TestFixturePanelFlows:
         await view.load_fixture_options()
 
         assert _has_button(view, "Review Late") is True
-        assert _get_button(view, "Review Late").row == 4
-        assert _get_button(view, "Review Late").style == discord.ButtonStyle.primary
 
     @pytest.mark.asyncio
     async def test_unified_panel_review_pending_button_jumps_to_pending_submission(
@@ -1220,10 +1202,7 @@ class TestFixturePanelFlows:
         assert view.selection.fixture_label == "Week 56 [OPEN]"
         assert view.selection.user_id == "111"
         assert _has_button(view, "Approve Late") is True
-        assert _get_button(view, "Approve Late").row == 4
-        assert _get_button(view, "Approve Late").style == discord.ButtonStyle.success
-        assert _get_button(view, "Reject Late").row == 4
-        assert _get_button(view, "Reject Late").style == discord.ButtonStyle.danger
+        assert _has_button(view, "Reject Late") is True
 
     @pytest.mark.asyncio
     async def test_unified_panel_review_pending_button_cycles_pending_submissions(

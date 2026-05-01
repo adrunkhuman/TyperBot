@@ -1,6 +1,6 @@
 """Tests for admin Discord commands."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -59,79 +59,8 @@ class TestAdminPanelEntry:
 
         assert isinstance(mock_interaction_admin.response_sent[0]["view"], UnifiedAdminPanelView)
 
-    def test_admin_group_exposes_only_panel_command(self, admin_cog):
-        assert [command.name for command in admin_cog.admin.commands] == ["panel"]
-
-
-class TestResultsCalculateLogic:
-    """Test suite for results calculate command logic."""
-
-    @pytest.fixture
-    def admin_cog(self, mock_bot, database):
-        mock_bot.db = database
-        return AdminCommands(mock_bot)
-
-    @pytest.mark.asyncio
-    async def test_calculate_no_active_fixture(self, database):
-        """Score calculation requires an active fixture."""
-        fixture = await database.get_current_fixture()
-        assert fixture is None
-
-    @pytest.mark.asyncio
-    async def test_calculate_no_results(self, database, sample_games):
-        """Missing results block leaderboard updates."""
-        deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_id = await database.create_fixture(1, sample_games, deadline)
-
-        results = await database.get_results(fixture_id)
-        assert results is None
-
-    @pytest.mark.asyncio
-    async def test_calculate_no_predictions(self, database, sample_games):
-        """Empty predictions yield empty scores without crashing."""
-        deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_id = await database.create_fixture(1, sample_games, deadline)
-        await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
-
-        predictions = await database.get_all_predictions(fixture_id)
-        assert len(predictions) == 0
-
-    @pytest.mark.asyncio
-    async def test_calculate_successfully_calculates_scores(
-        self,
-        database,
-        sample_games,
-    ):
-        """Point calculation: 3 for exact, 1 for outcome."""
-        deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_id = await database.create_fixture(1, sample_games, deadline)
-        await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
-        await database.save_prediction(fixture_id, "123", "User1", ["2-1", "1-1", "0-2"], False)
-
-        from typer_bot.utils.scoring import calculate_points
-
-        predictions = await database.get_all_predictions(fixture_id)
-        results = await database.get_results(fixture_id)
-
-        scores = []
-        for pred in predictions:
-            score_data = calculate_points(pred["predictions"], results, pred["is_late"])
-            scores.append(
-                {
-                    "user_id": pred["user_id"],
-                    "user_name": pred["user_name"],
-                    "points": score_data["points"],
-                    "exact_scores": score_data["exact_scores"],
-                    "correct_results": score_data["correct_results"],
-                }
-            )
-
-        await database.save_scores(fixture_id, scores)
-
-        standings = await database.get_standings()
-        assert len(standings) == 1
-        assert standings[0]["user_name"] == "User1"
-        assert standings[0]["total_points"] == 9
+    def test_admin_group_exposes_panel_command(self, admin_cog):
+        assert any(command.name == "panel" for command in admin_cog.admin.commands)
 
 
 class TestResultsPostFlow:

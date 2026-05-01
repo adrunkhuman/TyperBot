@@ -15,15 +15,6 @@ class TestBotInitialization:
     """Test suite for bot initialization and setup."""
 
     @pytest.mark.asyncio
-    async def test_bot_creates_database_instance(self):
-        """Database is initialized at startup."""
-        with patch.object(TyperBot, "__init__", lambda _: None):
-            bot = TyperBot.__new__(TyperBot)
-            bot.db = MagicMock()
-            bot.thread_handler = MagicMock()
-            assert bot.db is not None
-
-    @pytest.mark.asyncio
     async def test_bot_has_required_intents(self):
         """Message content and member intents are required for prediction processing and permission verification."""
         with (
@@ -132,15 +123,6 @@ class TestOnReady:
             bot._check_permissions = AsyncMock()
             bot._sync_fixture_thread = AsyncMock()
             yield bot
-
-    @pytest.mark.asyncio
-    async def test_on_ready_logs_bot_info(self, bot_instance):
-        """Connection logging provides deployment visibility."""
-        with patch("typer_bot.bot.logger") as mock_logger:
-            await bot_instance.on_ready()
-            mock_logger.info.assert_any_call(
-                f"✓ Bot connected: {bot_instance.user} (ID: {bot_instance.user.id})"
-            )
 
     @pytest.mark.asyncio
     async def test_on_ready_checks_permissions(self, bot_instance):

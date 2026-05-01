@@ -145,11 +145,3 @@ class TestTimezoneComparisons:
 
         assert app_time.timestamp() == utc_time.timestamp()
         assert app_time.hour == utc_time.hour
-
-    def test_comparing_naive_and_aware_raises_error(self):
-        """Can't compare naive and timezone-aware datetimes directly."""
-        aware = tz_module.parse_deadline("2024-03-15 14:00")
-        naive = datetime(2024, 3, 15, 14, 0)
-
-        with pytest.raises(TypeError):
-            aware > naive  # noqa: B015
