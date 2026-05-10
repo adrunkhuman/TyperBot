@@ -22,6 +22,26 @@ def temp_db_path():
     Path(path).unlink(missing_ok=True)
 
 
+async def _start_new_active_season(db_path: str, guild_id: str, name: str = "Next Season") -> int:
+    async with aiosqlite.connect(db_path) as conn:
+        await conn.execute(
+            "UPDATE seasons SET status = 'archived' WHERE guild_id = ? AND status = 'active'",
+            (guild_id,),
+        )
+        cursor = await conn.execute(
+            "INSERT INTO seasons (guild_id, name, status) VALUES (?, ?, 'active')",
+            (guild_id, name),
+        )
+        if cursor.lastrowid is None:
+            raise RuntimeError("Failed to create test season")
+        await conn.execute(
+            "UPDATE guild_config SET active_season_id = ? WHERE guild_id = ?",
+            (cursor.lastrowid, guild_id),
+        )
+        await conn.commit()
+        return cursor.lastrowid
+
+
 class TestGetMaxWeekNumber:
     """Test suite for get_max_week_number method."""
 
@@ -71,6 +91,19 @@ class TestGetMaxWeekNumber:
 
         result = await db.get_max_week_number("111111")
         assert result == 10
+
+    @pytest.mark.asyncio
+    async def test_get_max_week_number_is_active_season_scoped(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.create_fixture("111111", 10, ["Team A - Team B"], datetime.now(UTC))
+        await _start_new_active_season(temp_db_path, "111111")
+
+        assert await db.get_max_week_number("111111") == 0
+
+        await db.create_fixture("111111", 1, ["Team C - Team D"], datetime.now(UTC))
+
+        assert await db.get_max_week_number("111111") == 1
 
 
 class TestGuildConfig:
@@ -181,6 +214,203 @@ class TestSeasons:
         assert active_season["id"] == fixture["season_id"]
         assert config["active_season_id"] == active_season["id"]
 
+    @pytest.mark.asyncio
+    async def test_create_next_fixture_restarts_week_numbers_per_active_season(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        _old_fixture_id, old_week = await db.create_next_fixture(
+            "111111", ["Team A - Team B"], datetime.now(UTC)
+        )
+        await _start_new_active_season(temp_db_path, "111111")
+
+        new_fixture_id, new_week = await db.create_next_fixture(
+            "111111", ["Team C - Team D"], datetime.now(UTC)
+        )
+        new_fixture = await db.get_fixture_by_id(new_fixture_id, "111111")
+        active_season = await db.get_active_season("111111")
+
+        assert old_week == 1
+        assert new_week == 1
+        assert new_fixture["season_id"] == active_season["id"]
+
+    @pytest.mark.asyncio
+    async def test_fixture_queries_default_to_active_season(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        old_fixture_id = await db.create_fixture(
+            "111111", 1, ["Old Team A - Old Team B"], datetime.now(UTC)
+        )
+        await db.update_fixture_announcement(old_fixture_id, "old-message", "channel-1")
+        await _start_new_active_season(temp_db_path, "111111")
+        active_fixture_id = await db.create_fixture(
+            "111111", 1, ["New Team A - New Team B"], datetime.now(UTC)
+        )
+        await db.update_fixture_announcement(active_fixture_id, "new-message", "channel-1")
+
+        current_fixture = await db.get_current_fixture("111111")
+        open_fixtures = await db.get_open_fixtures("111111")
+        recent_fixtures = await db.get_recent_fixtures("111111")
+        week_fixture = await db.get_open_fixture_by_week("111111", 1)
+        any_status_week_fixture = await db.get_fixture_by_week("111111", 1)
+        message_fixture = await db.get_fixture_by_message_id("new-message", "111111")
+        global_message_fixture = await db.get_fixture_by_message_id("new-message")
+
+        assert await db.get_fixture_by_id(old_fixture_id, "111111") is None
+        assert current_fixture["id"] == active_fixture_id
+        assert [fixture["id"] for fixture in open_fixtures] == [active_fixture_id]
+        assert [fixture["id"] for fixture in recent_fixtures] == [active_fixture_id]
+        assert week_fixture["id"] == active_fixture_id
+        assert any_status_week_fixture["id"] == active_fixture_id
+        assert message_fixture["id"] == active_fixture_id
+        assert global_message_fixture["id"] == active_fixture_id
+        assert await db.get_fixture_by_message_id("old-message", "111111") is None
+        assert await db.get_fixture_by_message_id("old-message") is None
+
+    @pytest.mark.asyncio
+    async def test_all_open_fixtures_only_returns_active_season_fixtures(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.create_fixture("111111", 1, ["Old Team A - Old Team B"], datetime.now(UTC))
+        await _start_new_active_season(temp_db_path, "111111")
+        active_fixture_id = await db.create_fixture(
+            "111111", 1, ["New Team A - New Team B"], datetime.now(UTC)
+        )
+        other_guild_fixture_id = await db.create_fixture(
+            "222222", 1, ["Other Team A - Other Team B"], datetime.now(UTC)
+        )
+
+        open_fixture_ids = [fixture["id"] for fixture in await db.get_all_open_fixtures()]
+
+        assert set(open_fixture_ids) == {active_fixture_id, other_guild_fixture_id}
+
+    @pytest.mark.asyncio
+    async def test_archived_fixture_prediction_writes_are_rejected(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        old_fixture_id = await db.create_fixture(
+            "111111", 1, ["Old Team A - Old Team B"], datetime.now(UTC)
+        )
+        await db.save_prediction(old_fixture_id, "user-1", "User One", ["1-0"], False)
+        await _start_new_active_season(temp_db_path, "111111")
+
+        first_write = await db.try_save_prediction(old_fixture_id, "user-2", "User Two", ["2-0"])
+        guarded_write = await db.save_prediction_guarded(
+            old_fixture_id, "user-1", "User One", ["9-9"]
+        )
+        admin_write = await db.admin_update_prediction_with_recalc(
+            old_fixture_id, "user-1", ["8-8"], "admin-1"
+        )
+
+        assert first_write == SaveResult.FIXTURE_CLOSED
+        assert guarded_write == SaveResult.FIXTURE_CLOSED
+        assert admin_write is False
+        assert await db.get_prediction(old_fixture_id, "user-1", "111111") is None
+        async with (
+            aiosqlite.connect(temp_db_path) as conn,
+            conn.execute(
+                "SELECT predictions FROM predictions WHERE fixture_id = ? AND user_id = ?",
+                (old_fixture_id, "user-1"),
+            ) as cursor,
+        ):
+            row = await cursor.fetchone()
+        assert row == ("1-0",)
+
+    @pytest.mark.asyncio
+    async def test_archived_pending_partials_are_hidden_and_not_mutated(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        old_fixture_id = await db.create_fixture(
+            "111111", 1, ["Old Team A - Old Team B"], datetime.now(UTC)
+        )
+        await db.save_prediction(
+            old_fixture_id,
+            "user-1",
+            "User One",
+            ["1-0"],
+            True,
+            pending_partial_approval=True,
+        )
+        await _start_new_active_season(temp_db_path, "111111")
+
+        approved = await db.approve_partial_prediction(old_fixture_id, "user-1", "admin-1")
+        rejected = await db.reject_partial_prediction(old_fixture_id, "user-1")
+        pending = await db.get_pending_partial_predictions("111111")
+
+        assert approved is False
+        assert rejected is False
+        assert pending == []
+        async with (
+            aiosqlite.connect(temp_db_path) as conn,
+            conn.execute(
+                "SELECT pending_partial_approval FROM predictions WHERE fixture_id = ? AND user_id = ?",
+                (old_fixture_id, "user-1"),
+            ) as cursor,
+        ):
+            row = await cursor.fetchone()
+        assert row == (1,)
+
+    @pytest.mark.asyncio
+    async def test_archived_fixture_result_and_score_writes_are_rejected(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        old_fixture_id = await db.create_fixture(
+            "111111", 1, ["Old Team A - Old Team B"], datetime.now(UTC)
+        )
+        await db.save_results(old_fixture_id, ["0-0"])
+        await db.save_scores(
+            old_fixture_id,
+            [
+                {
+                    "user_id": "old-user",
+                    "user_name": "Old User",
+                    "points": 30,
+                    "exact_scores": 10,
+                    "correct_results": 0,
+                }
+            ],
+        )
+        await _start_new_active_season(temp_db_path, "111111")
+
+        with pytest.raises(ValueError):
+            await db.save_results(old_fixture_id, ["1-0"])
+        with pytest.raises(ValueError):
+            await db.save_results_with_recalc(old_fixture_id, ["1-0"])
+        with pytest.raises(ValueError):
+            await db.recalculate_fixture_scores(old_fixture_id)
+        with pytest.raises(ValueError):
+            await db.save_scores(
+                old_fixture_id,
+                [
+                    {
+                        "user_id": "new-user",
+                        "user_name": "New User",
+                        "points": 1,
+                        "exact_scores": 0,
+                        "correct_results": 1,
+                    }
+                ],
+            )
+
+        assert await db.get_results(old_fixture_id) == ["0-0"]
+        scores = await db.get_scores_for_fixture(old_fixture_id)
+        assert [(score["user_id"], score["points"]) for score in scores] == [("old-user", 30)]
+
+    @pytest.mark.asyncio
+    async def test_archived_fixture_delete_requires_active_season(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        old_fixture_id = await db.create_fixture(
+            "111111", 1, ["Old Team A - Old Team B"], datetime.now(UTC)
+        )
+        await _start_new_active_season(temp_db_path, "111111")
+
+        assert await db.delete_fixture(old_fixture_id, "111111") is False
+        async with (
+            aiosqlite.connect(temp_db_path) as conn,
+            conn.execute("SELECT 1 FROM fixtures WHERE id = ?", (old_fixture_id,)) as cursor,
+        ):
+            assert await cursor.fetchone() == (1,)
+
 
 class TestScores:
     @pytest.mark.asyncio
@@ -250,7 +480,20 @@ class TestScores:
             ],
         )
 
-        with pytest.raises(aiosqlite.IntegrityError):
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute(
+                """
+                CREATE TRIGGER fail_second_score_insert
+                BEFORE INSERT ON scores
+                WHEN NEW.user_id = 'user-3'
+                BEGIN
+                    SELECT RAISE(FAIL, 'forced score insert failure');
+                END
+                """
+            )
+            await conn.commit()
+
+        with pytest.raises(aiosqlite.IntegrityError, match="forced score insert failure"):
             await db.save_scores(
                 fixture_id,
                 [
@@ -262,8 +505,8 @@ class TestScores:
                         "correct_results": 3,
                     },
                     {
-                        "user_id": "user-2",
-                        "user_name": "Duplicate User Two",
+                        "user_id": "user-3",
+                        "user_name": "User Three",
                         "points": 0,
                         "exact_scores": 0,
                         "correct_results": 0,
@@ -272,9 +515,17 @@ class TestScores:
             )
 
         scores = await db.get_scores_for_fixture(fixture_id)
-        assert len(scores) == 1
-        assert scores[0]["user_id"] == "user-1"
-        assert scores[0]["points"] == 3
+        fixture = await db.get_fixture_by_id(fixture_id, "111111")
+        assert scores == [
+            {
+                "user_id": "user-1",
+                "user_name": "User One",
+                "points": 3,
+                "exact_scores": 1,
+                "correct_results": 0,
+            }
+        ]
+        assert fixture["status"] == "closed"
 
     @pytest.mark.asyncio
     async def test_recalculate_fixture_scores_rolls_back_after_partial_write_failure(
@@ -378,6 +629,100 @@ class TestScores:
             "alpha",
             "beta",
         ]
+
+    @pytest.mark.asyncio
+    async def test_standings_are_active_season_scoped(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        old_fixture_id = await db.create_fixture(
+            "111111", 1, ["Old Team A - Old Team B"], datetime.now(UTC)
+        )
+        await db.save_scores(
+            old_fixture_id,
+            [
+                {
+                    "user_id": "shared-user",
+                    "user_name": "Old Shared User",
+                    "points": 30,
+                    "exact_scores": 10,
+                    "correct_results": 0,
+                }
+            ],
+        )
+        await _start_new_active_season(temp_db_path, "111111")
+        active_fixture_id = await db.create_fixture(
+            "111111", 1, ["New Team A - New Team B"], datetime.now(UTC)
+        )
+        await db.save_scores(
+            active_fixture_id,
+            [
+                {
+                    "user_id": "shared-user",
+                    "user_name": "Active Shared User",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+
+        standings = await db.get_standings("111111")
+
+        assert [row["user_id"] for row in standings] == ["shared-user"]
+        assert standings[0]["user_name"] == "Active Shared User"
+        assert standings[0]["total_points"] == 3
+
+    @pytest.mark.asyncio
+    async def test_last_fixture_scores_are_active_season_scoped(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await _start_new_active_season(temp_db_path, "111111")
+        active_fixture_id = await db.create_fixture(
+            "111111", 1, ["New Team A - New Team B"], datetime.now(UTC)
+        )
+        await db.save_scores(
+            active_fixture_id,
+            [
+                {
+                    "user_id": "active-user",
+                    "user_name": "Active User",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+        await _start_new_active_season(temp_db_path, "111111", "Archived Later Season")
+        later_archived_fixture_id = await db.create_fixture(
+            "111111", 1, ["Archived Team A - Archived Team B"], datetime.now(UTC)
+        )
+        await db.save_scores(
+            later_archived_fixture_id,
+            [
+                {
+                    "user_id": "archived-user",
+                    "user_name": "Archived User",
+                    "points": 30,
+                    "exact_scores": 10,
+                    "correct_results": 0,
+                }
+            ],
+        )
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute(
+                "UPDATE seasons SET status = 'archived' WHERE id = (SELECT season_id FROM fixtures WHERE id = ?)",
+                (later_archived_fixture_id,),
+            )
+            await conn.execute(
+                "UPDATE seasons SET status = 'active' WHERE id = (SELECT season_id FROM fixtures WHERE id = ?)",
+                (active_fixture_id,),
+            )
+            await conn.commit()
+
+        last_fixture = await db.get_last_fixture_scores("111111")
+
+        assert last_fixture["fixture_id"] == active_fixture_id
+        assert [score["user_id"] for score in last_fixture["scores"]] == ["active-user"]
 
 
 class TestOpenFixturesQueries:
@@ -1254,11 +1599,12 @@ class TestRowToFixture:
         """Empty games column must deserialize to [] not [''] (split artefact)."""
         db = Database(temp_db_path)
         await db.initialize()
+        season = await db.get_or_create_active_season("111111")
 
         async with aiosqlite.connect(temp_db_path) as conn:
             await conn.execute(
-                "INSERT INTO fixtures (guild_id, week_number, games, deadline, status) VALUES (?, ?, ?, ?, ?)",
-                ("111111", 99, "", "2030-01-01T00:00:00+00:00", "open"),
+                "INSERT INTO fixtures (guild_id, season_id, week_number, games, deadline, status) VALUES (?, ?, ?, ?, ?, ?)",
+                ("111111", season["id"], 99, "", "2030-01-01T00:00:00+00:00", "open"),
             )
             await conn.commit()
 
