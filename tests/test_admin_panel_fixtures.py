@@ -411,6 +411,8 @@ class TestFixturePanelFlows:
             bot=admin_cog.bot,
         )
         await view.load_fixture_options()
+        assert _has_button(view, "Scoring Rules") is False
+
         modal = ScoringRulesModal(view)
         modal.exact_input._value = "5"
         modal.outcome_input._value = "2"

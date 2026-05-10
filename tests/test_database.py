@@ -807,10 +807,13 @@ class TestScores:
     async def test_scoring_rule_changes_are_blocked_after_scores_exist(self, temp_db_path):
         db = Database(temp_db_path)
         await db.initialize()
+        assert await db.active_season_has_scores("111111") is False
         fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
         await db.save_results(fixture_id, ["2-1"])
         await db.save_prediction(fixture_id, "user-1", "User One", ["2-1"], False)
         await db.recalculate_fixture_scores(fixture_id)
+
+        assert await db.active_season_has_scores("111111") is True
 
         with pytest.raises(ValueError, match="Cannot change scoring rules"):
             await db.update_active_scoring_rules("111111", {"exact_score_points": 5})

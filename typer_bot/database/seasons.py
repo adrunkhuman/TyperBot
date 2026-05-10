@@ -205,6 +205,26 @@ class SeasonRepository:
         season = await self.get_active_season(guild_id)
         return season["scoring_rules"] if season else None
 
+    async def active_season_has_scores(self, guild_id: str) -> bool:
+        """Return whether the active season has calculated scores."""
+        _validate_guild_id(guild_id)
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            active_season = await _get_active_season_in_connection(db, guild_id)
+            if active_season is None:
+                return False
+            async with db.execute(
+                """
+                SELECT 1
+                FROM scores score
+                JOIN fixtures fixture ON fixture.id = score.fixture_id
+                WHERE fixture.guild_id = ? AND fixture.season_id = ?
+                LIMIT 1
+                """,
+                (guild_id, active_season["id"]),
+            ) as cursor:
+                return await cursor.fetchone() is not None
+
     async def update_active_scoring_rules(self, guild_id: str, rules: dict) -> dict:
         """Update active-season scoring rules unless stored scores already exist."""
         _validate_guild_id(guild_id)

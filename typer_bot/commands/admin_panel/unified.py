@@ -95,6 +95,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.selection = PanelSelectionState()
         self.has_user_overflow = False
         self.has_pending_partials = False
+        self.active_season_has_scores = False
         self.current_prediction: dict | None = None
         self.active_season: dict | None = None
         self.fixture_select = FixtureSelect(self)
@@ -145,12 +146,14 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
             self.add_item(ReviewPendingPartialsButton(self, row=3))
 
         self.add_item(JumpToWeekButton(self, row=4))
-        self.add_item(ScoringRulesButton(self, row=4))
+        if not self.active_season_has_scores:
+            self.add_item(ScoringRulesButton(self, row=4))
         self.add_item(NewSeasonButton(self, row=4))
         self.add_item(SetupBotButton(self, row=4))
 
     async def load_fixture_options(self) -> None:
         self.active_season = await self.db.get_or_create_active_season(self.guild_id)
+        self.active_season_has_scores = await self.db.active_season_has_scores(self.guild_id)
         fixtures = await self.db.get_recent_fixtures(self.guild_id, MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
         self.has_pending_partials = bool(
