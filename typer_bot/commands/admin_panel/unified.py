@@ -98,6 +98,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.active_season_has_scores = False
         self.current_prediction: dict | None = None
         self.active_season: dict | None = None
+        self.guild_config: dict | None = None
         self.fixture_select = FixtureSelect(self)
         self.user_select = PredictionUserSelect(self)
         self.user_select.update_options([])
@@ -152,6 +153,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.add_item(SetupBotButton(self, row=4))
 
     async def load_fixture_options(self) -> None:
+        self.guild_config = await self.db.get_guild_config(self.guild_id)
         self.active_season = await self.db.get_or_create_active_season(self.guild_id)
         self.active_season_has_scores = await self.db.active_season_has_scores(self.guild_id)
         fixtures = await self.db.get_recent_fixtures(self.guild_id, MAX_SELECT_OPTIONS)
@@ -197,6 +199,9 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
 
     def render_content(self) -> str:
         lines = ["**Admin Panel**"]
+        if self.guild_config is not None:
+            lines.append(f"Admin role: <@&{self.guild_config['admin_role_id']}>")
+            lines.append(f"League channel: <#{self.guild_config['league_channel_id']}>")
         if self.active_season is not None:
             lines.append(f"Active season: {self.active_season['name']}")
             lines.append(_format_scoring_rules(self.active_season["scoring_rules"]))

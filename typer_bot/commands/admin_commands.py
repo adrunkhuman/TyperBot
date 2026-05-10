@@ -54,7 +54,21 @@ async def _save_guild_config(
 
 
 def _setup_saved_message(admin_role: discord.Role, league_channel: discord.TextChannel) -> str:
-    return f"TyperBot setup saved. Admin role: {admin_role.mention}. League channel: {league_channel.mention}."
+    return (
+        "TyperBot setup saved for this server's league. "
+        f"Admin role: {admin_role.mention}. League channel: {league_channel.mention}."
+    )
+
+
+def _setup_permission_message() -> str:
+    return "Only someone with Administrator or Manage Server can configure TyperBot."
+
+
+def _setup_prompt_message() -> str:
+    return (
+        "Choose the TyperBot admin role and league channel for this server's league. "
+        "Fixtures, reminders, results, and standings will be posted there."
+    )
 
 
 class EveryoneRoleConfirmView(discord.ui.View):
@@ -78,9 +92,7 @@ class EveryoneRoleConfirmView(discord.ui.View):
             )
             return False
         if not has_setup_permission(interaction):
-            await interaction.response.send_message(
-                "Only a server admin can configure TyperBot for this server.", ephemeral=True
-            )
+            await interaction.response.send_message(_setup_permission_message(), ephemeral=True)
             return False
         return True
 
@@ -191,9 +203,7 @@ class GuildSetupPromptView(discord.ui.View):
             )
             return False
         if not has_setup_permission(interaction):
-            await interaction.response.send_message(
-                "Only a server admin can configure TyperBot for this server.", ephemeral=True
-            )
+            await interaction.response.send_message(_setup_permission_message(), ephemeral=True)
             return False
         return True
 
@@ -208,13 +218,11 @@ class StartSetupButton(discord.ui.Button):
 
     async def callback(self, interaction: discord.Interaction):
         if not has_setup_permission(interaction):
-            await interaction.response.send_message(
-                "Only a server admin can configure TyperBot for this server.", ephemeral=True
-            )
+            await interaction.response.send_message(_setup_permission_message(), ephemeral=True)
             return
 
         await interaction.response.edit_message(
-            content="Choose the TyperBot admin role and league channel below.",
+            content=_setup_prompt_message(),
             view=GuildSetupPromptView(self.parent_view.db, str(interaction.user.id)),
         )
 

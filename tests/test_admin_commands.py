@@ -105,9 +105,16 @@ class TestAdminPanelEntry:
 
     @pytest.mark.asyncio
     async def test_admin_panel_opens_unified_view(self, admin_cog, mock_interaction_admin):
+        await admin_cog.db.upsert_guild_config("111111", "987654", "123456")
+        member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+        member.roles = [MockRole("League Admin", role_id=987654)]
+
         await admin_cog.panel.callback(admin_cog, mock_interaction_admin)
 
         assert isinstance(mock_interaction_admin.response_sent[0]["view"], UnifiedAdminPanelView)
+        content = mock_interaction_admin.response_sent[0]["content"]
+        assert "Admin role: <@&987654>" in content
+        assert "League channel: <#123456>" in content
 
     def test_admin_group_exposes_panel_command(self, admin_cog):
         assert any(command.name == "panel" for command in admin_cog.admin.commands)
@@ -165,6 +172,11 @@ class TestAdminPanelEntry:
         await setup_button.callback(mock_interaction_admin)
 
         assert isinstance(mock_interaction_admin.response_sent[-1]["view"], GuildSetupPromptView)
+        assert "this server's league" in mock_interaction_admin.response_sent[-1]["content"]
+        assert (
+            "Fixtures, reminders, results, and standings"
+            in mock_interaction_admin.response_sent[-1]["content"]
+        )
 
     @pytest.mark.asyncio
     async def test_configured_panel_setup_button_opens_reconfigure_flow(
@@ -183,6 +195,9 @@ class TestAdminPanelEntry:
         await setup_button.callback(mock_interaction_admin)
 
         assert isinstance(mock_interaction_admin.response_sent[-1]["view"], GuildSetupPromptView)
+        assert (
+            "admin role and league channel" in mock_interaction_admin.response_sent[-1]["content"]
+        )
 
     @pytest.mark.asyncio
     async def test_inline_setup_button_blocks_owner_without_setup_permission(
@@ -200,6 +215,9 @@ class TestAdminPanelEntry:
         await setup_button.callback(mock_interaction_admin)
 
         assert mock_interaction_admin.response_sent[-1].get("view") is None
+        assert (
+            "Administrator or Manage Server" in mock_interaction_admin.response_sent[-1]["content"]
+        )
 
     @pytest.mark.asyncio
     async def test_inline_setup_selector_rechecks_setup_permission(
@@ -234,6 +252,7 @@ class TestAdminPanelEntry:
         config = await database.get_guild_config("111111")
         assert config["admin_role_id"] == "987654"
         assert config["league_channel_id"] == "765432"
+        assert "this server's league" in mock_interaction_admin.response_sent[-1]["content"]
 
     @pytest.mark.asyncio
     async def test_inline_setup_prompt_requires_confirmation_for_everyone_role(
