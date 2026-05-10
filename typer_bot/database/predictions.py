@@ -87,6 +87,17 @@ def _deserialize_game_indexes(raw: str | None, prediction_count: int) -> list[in
     return [int(part) for part in raw.split(",") if part != ""]
 
 
+_ACTIVE_FIXTURE_EXISTS_SQL = """
+EXISTS (
+    SELECT 1
+    FROM fixtures f
+    JOIN seasons s ON s.id = f.season_id AND s.guild_id = f.guild_id
+    WHERE f.id = predictions.fixture_id
+      AND s.status = 'active'
+)
+"""
+
+
 class SaveResult(StrEnum):
     """Result of an atomic prediction save attempt."""
 
@@ -204,7 +215,13 @@ class PredictionRepository:
             await db.execute("BEGIN IMMEDIATE")
             try:
                 async with db.execute(
-                    "SELECT 1 FROM fixtures WHERE id = ? AND status = 'open'", (fixture_id,)
+                    """
+                    SELECT 1
+                    FROM fixtures f
+                    JOIN seasons s ON s.id = f.season_id AND s.guild_id = f.guild_id
+                    WHERE f.id = ? AND f.status = 'open' AND s.status = 'active'
+                    """,
+                    (fixture_id,),
                 ) as cursor:
                     if await cursor.fetchone() is None:
                         await db.rollback()
@@ -286,7 +303,13 @@ class PredictionRepository:
             await db.execute("BEGIN IMMEDIATE")
             try:
                 async with db.execute(
-                    "SELECT 1 FROM fixtures WHERE id = ? AND status = 'open'", (fixture_id,)
+                    """
+                    SELECT 1
+                    FROM fixtures f
+                    JOIN seasons s ON s.id = f.season_id AND s.guild_id = f.guild_id
+                    WHERE f.id = ? AND f.status = 'open' AND s.status = 'active'
+                    """,
+                    (fixture_id,),
                 ) as cursor:
                     if await cursor.fetchone() is None:
                         await db.rollback()
@@ -334,7 +357,8 @@ class PredictionRepository:
                 SELECT p.*
                 FROM predictions p
                 JOIN fixtures f ON f.id = p.fixture_id
-                WHERE p.fixture_id = ? AND p.user_id = ? AND f.guild_id = ?
+                JOIN seasons s ON s.id = f.season_id AND s.guild_id = f.guild_id
+                WHERE p.fixture_id = ? AND p.user_id = ? AND f.guild_id = ? AND s.status = 'active'
                 """,
                 (fixture_id, user_id, guild_id),
             ) as cursor:
@@ -353,12 +377,13 @@ class PredictionRepository:
         """Replace a stored prediction without changing original submission timing."""
         async with aiosqlite.connect(self.db_path) as db:
             cursor = await db.execute(
-                """
+                f"""
                 UPDATE predictions
                 SET predictions = ?,
                     admin_edited_at = CURRENT_TIMESTAMP,
                     admin_edited_by = ?
                 WHERE fixture_id = ? AND user_id = ?
+                  AND {_ACTIVE_FIXTURE_EXISTS_SQL}
                 """,
                 ("\n".join(predictions), admin_user_id, fixture_id, user_id),
             )
@@ -377,7 +402,7 @@ class PredictionRepository:
             await db.execute("BEGIN IMMEDIATE")
             try:
                 cursor = await db.execute(
-                    """
+                    f"""
                     UPDATE predictions
                     SET predictions = ?,
                         predicted_game_indexes = ?,
@@ -385,6 +410,7 @@ class PredictionRepository:
                         admin_edited_at = CURRENT_TIMESTAMP,
                         admin_edited_by = ?
                     WHERE fixture_id = ? AND user_id = ?
+                      AND {_ACTIVE_FIXTURE_EXISTS_SQL}
                     """,
                     (
                         "\n".join(predictions),
@@ -437,7 +463,12 @@ class PredictionRepository:
             await db.execute("BEGIN IMMEDIATE")
             try:
                 async with db.execute(
-                    "SELECT late_penalty_waived FROM predictions WHERE fixture_id = ? AND user_id = ?",
+                    f"""
+                    SELECT late_penalty_waived
+                    FROM predictions
+                    WHERE fixture_id = ? AND user_id = ?
+                      AND {_ACTIVE_FIXTURE_EXISTS_SQL}
+                    """,
                     (fixture_id, user_id),
                 ) as cursor:
                     row = await cursor.fetchone()
@@ -448,10 +479,11 @@ class PredictionRepository:
 
                 waived = not bool(row["late_penalty_waived"])
                 cursor = await db.execute(
-                    """
+                    f"""
                     UPDATE predictions
                     SET late_penalty_waived = ?
                     WHERE fixture_id = ? AND user_id = ?
+                      AND {_ACTIVE_FIXTURE_EXISTS_SQL}
                     """,
                     (waived, fixture_id, user_id),
                 )
@@ -509,7 +541,7 @@ class PredictionRepository:
             await db.execute("BEGIN IMMEDIATE")
             try:
                 cursor = await db.execute(
-                    """
+                    f"""
                     UPDATE predictions
                     SET pending_partial_approval = FALSE,
                         is_late = FALSE,
@@ -517,6 +549,7 @@ class PredictionRepository:
                         admin_edited_at = CURRENT_TIMESTAMP,
                         admin_edited_by = ?
                     WHERE fixture_id = ? AND user_id = ? AND pending_partial_approval = TRUE
+                      AND {_ACTIVE_FIXTURE_EXISTS_SQL}
                     """,
                     (admin_user_id, fixture_id, user_id),
                 )
@@ -547,7 +580,11 @@ class PredictionRepository:
             await db.execute("BEGIN IMMEDIATE")
             try:
                 cursor = await db.execute(
-                    "DELETE FROM predictions WHERE fixture_id = ? AND user_id = ? AND pending_partial_approval = TRUE",
+                    f"""
+                    DELETE FROM predictions
+                    WHERE fixture_id = ? AND user_id = ? AND pending_partial_approval = TRUE
+                      AND {_ACTIVE_FIXTURE_EXISTS_SQL}
+                    """,
                     (fixture_id, user_id),
                 )
                 if cursor.rowcount <= 0:
@@ -607,7 +644,8 @@ class PredictionRepository:
                     f.status
                 FROM predictions p
                 JOIN fixtures f ON f.id = p.fixture_id
-                WHERE p.pending_partial_approval = TRUE AND f.guild_id = ?
+                JOIN seasons s ON s.id = f.season_id AND s.guild_id = f.guild_id
+                WHERE p.pending_partial_approval = TRUE AND f.guild_id = ? AND s.status = 'active'
                 ORDER BY f.week_number ASC, p.user_name COLLATE NOCASE ASC
                 """,
                 (guild_id,),

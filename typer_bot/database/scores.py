@@ -41,10 +41,18 @@ async def _recalculate_scores_in_connection(db: aiosqlite.Connection, fixture_id
     prior_row_factory = db.row_factory
     db.row_factory = aiosqlite.Row
     try:
-        async with db.execute("SELECT * FROM fixtures WHERE id = ?", (fixture_id,)) as cursor:
+        async with db.execute(
+            """
+            SELECT f.*
+            FROM fixtures f
+            JOIN seasons s ON s.id = f.season_id AND s.guild_id = f.guild_id
+            WHERE f.id = ? AND s.status = 'active'
+            """,
+            (fixture_id,),
+        ) as cursor:
             fixture_row = await cursor.fetchone()
         if fixture_row is None:
-            raise ValueError("Fixture not found")
+            raise ValueError("Fixture not found in active season")
 
         async with db.execute(
             "SELECT results FROM results WHERE fixture_id = ? ORDER BY id DESC LIMIT 1",
@@ -152,6 +160,18 @@ class ScoreRepository:
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("BEGIN IMMEDIATE")
             try:
+                async with db.execute(
+                    """
+                    SELECT 1
+                    FROM fixtures f
+                    JOIN seasons s ON s.id = f.season_id AND s.guild_id = f.guild_id
+                    WHERE f.id = ? AND s.status = 'active'
+                    """,
+                    (fixture_id,),
+                ) as cursor:
+                    if await cursor.fetchone() is None:
+                        raise ValueError("Fixture not found in active season")
+
                 await db.execute("DELETE FROM scores WHERE fixture_id = ?", (fixture_id,))
                 for score in scores:
                     await db.execute(
@@ -229,7 +249,8 @@ class ScoreRepository:
                            SELECT s.*
                            FROM scores s
                            JOIN fixtures f ON f.id = s.fixture_id
-                           WHERE f.guild_id = ?
+                           JOIN seasons season ON season.id = f.season_id AND season.guild_id = f.guild_id
+                           WHERE f.guild_id = ? AND season.status = 'active'
                        ),
                        latest_names AS (
                            SELECT user_id, user_name
@@ -279,7 +300,8 @@ class ScoreRepository:
                 """SELECT s.*, f.week_number
                    FROM scores s
                    JOIN fixtures f ON s.fixture_id = f.id
-                   WHERE f.status = 'closed' AND f.guild_id = ?
+                   JOIN seasons season ON season.id = f.season_id AND season.guild_id = f.guild_id
+                   WHERE f.status = 'closed' AND f.guild_id = ? AND season.status = 'active'
                    ORDER BY f.id DESC
                    LIMIT 1""",
                 (guild_id,),
@@ -292,7 +314,8 @@ class ScoreRepository:
                          SELECT s.*
                          FROM scores s
                          JOIN fixtures f ON f.id = s.fixture_id
-                         WHERE s.fixture_id = ? AND f.guild_id = ?
+                          JOIN seasons season ON season.id = f.season_id AND season.guild_id = f.guild_id
+                          WHERE s.fixture_id = ? AND f.guild_id = ? AND season.status = 'active'
                          ORDER BY points DESC, exact_scores DESC, correct_results DESC, user_name ASC
                          """,
                         (fixture_id, guild_id),

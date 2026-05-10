@@ -8,7 +8,7 @@ import aiosqlite
 from typer_bot.utils import parse_iso
 from typer_bot.utils.config import DB_PATH
 
-from .seasons import _get_or_create_active_season_in_connection
+from .seasons import _get_active_season_in_connection, _get_or_create_active_season_in_connection
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,10 @@ class FixtureRepository:
 
     def __init__(self, db_path: str | None = None) -> None:
         self.db_path = db_path or DB_PATH
+
+    async def _active_season_id(self, db: aiosqlite.Connection, guild_id: str) -> int | None:
+        season = await _get_active_season_in_connection(db, guild_id)
+        return season["id"] if season else None
 
     def _row_to_fixture(self, row: aiosqlite.Row) -> dict:
         row_dict = dict(row)
@@ -112,14 +116,14 @@ class FixtureRepository:
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("BEGIN IMMEDIATE")
             try:
+                season = await _get_or_create_active_season_in_connection(db, guild_id)
                 async with db.execute(
-                    "SELECT COALESCE(MAX(week_number), 0) FROM fixtures WHERE guild_id = ?",
-                    (guild_id,),
+                    "SELECT COALESCE(MAX(week_number), 0) FROM fixtures WHERE guild_id = ? AND season_id = ?",
+                    (guild_id, season["id"]),
                 ) as cursor:
                     row = await cursor.fetchone()
                     next_week = int(row[0]) + 1 if row else 1
 
-                season = await _get_or_create_active_season_in_connection(db, guild_id)
                 insert_cursor = await db.execute(
                     "INSERT INTO fixtures (guild_id, season_id, week_number, games, deadline) VALUES (?, ?, ?, ?, ?)",
                     (guild_id, season["id"], next_week, "\n".join(games), deadline.isoformat()),
@@ -149,9 +153,12 @@ class FixtureRepository:
         _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
+            season_id = await self._active_season_id(db, guild_id)
+            if season_id is None:
+                return None
             async with db.execute(
-                "SELECT * FROM fixtures WHERE guild_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1",
-                (guild_id,),
+                "SELECT * FROM fixtures WHERE guild_id = ? AND season_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1",
+                (guild_id, season_id),
             ) as cursor:
                 row = await cursor.fetchone()
                 return self._row_to_fixture(row) if row else None
@@ -160,9 +167,12 @@ class FixtureRepository:
         _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
+            season_id = await self._active_season_id(db, guild_id)
+            if season_id is None:
+                return []
             async with db.execute(
-                "SELECT * FROM fixtures WHERE guild_id = ? AND status = 'open' ORDER BY week_number ASC, id ASC",
-                (guild_id,),
+                "SELECT * FROM fixtures WHERE guild_id = ? AND season_id = ? AND status = 'open' ORDER BY week_number ASC, id ASC",
+                (guild_id, season_id),
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [self._row_to_fixture(row) for row in rows]
@@ -172,7 +182,13 @@ class FixtureRepository:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                "SELECT * FROM fixtures WHERE status = 'open' ORDER BY guild_id ASC, week_number ASC, id ASC"
+                """
+                SELECT f.*
+                FROM fixtures f
+                JOIN seasons s ON s.id = f.season_id AND s.guild_id = f.guild_id
+                WHERE f.status = 'open' AND s.status = 'active'
+                ORDER BY f.guild_id ASC, f.week_number ASC, f.id ASC
+                """
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [self._row_to_fixture(row) for row in rows]
@@ -181,9 +197,12 @@ class FixtureRepository:
         _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
+            season_id = await self._active_season_id(db, guild_id)
+            if season_id is None:
+                return None
             async with db.execute(
-                "SELECT * FROM fixtures WHERE guild_id = ? AND status = 'open' AND week_number = ? ORDER BY id DESC LIMIT 1",
-                (guild_id, week_number),
+                "SELECT * FROM fixtures WHERE guild_id = ? AND season_id = ? AND status = 'open' AND week_number = ? ORDER BY id DESC LIMIT 1",
+                (guild_id, season_id, week_number),
             ) as cursor:
                 row = await cursor.fetchone()
                 return self._row_to_fixture(row) if row else None
@@ -192,9 +211,12 @@ class FixtureRepository:
         _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
+            season_id = await self._active_season_id(db, guild_id)
+            if season_id is None:
+                return None
             async with db.execute(
-                "SELECT * FROM fixtures WHERE id = ? AND guild_id = ?",
-                (fixture_id, guild_id),
+                "SELECT * FROM fixtures WHERE id = ? AND guild_id = ? AND season_id = ?",
+                (fixture_id, guild_id, season_id),
             ) as cursor:
                 row = await cursor.fetchone()
                 return self._row_to_fixture(row) if row else None
@@ -211,9 +233,12 @@ class FixtureRepository:
         _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
+            season_id = await self._active_season_id(db, guild_id)
+            if season_id is None:
+                return None
             async with db.execute(
-                "SELECT * FROM fixtures WHERE guild_id = ? AND week_number = ? ORDER BY id DESC LIMIT 1",
-                (guild_id, week_number),
+                "SELECT * FROM fixtures WHERE guild_id = ? AND season_id = ? AND week_number = ? ORDER BY id DESC LIMIT 1",
+                (guild_id, season_id, week_number),
             ) as cursor:
                 row = await cursor.fetchone()
                 return self._row_to_fixture(row) if row else None
@@ -222,9 +247,12 @@ class FixtureRepository:
         _validate_guild_id(guild_id)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
+            season_id = await self._active_season_id(db, guild_id)
+            if season_id is None:
+                return []
             async with db.execute(
-                "SELECT * FROM fixtures WHERE guild_id = ? ORDER BY id DESC LIMIT ?",
-                (guild_id, limit),
+                "SELECT * FROM fixtures WHERE guild_id = ? AND season_id = ? ORDER BY id DESC LIMIT ?",
+                (guild_id, season_id, limit),
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [self._row_to_fixture(row) for row in rows]
@@ -241,45 +269,82 @@ class FixtureRepository:
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             if guild_id is None:
-                query = "SELECT * FROM fixtures WHERE message_id = ? AND status = 'open'"
+                query = """
+                    SELECT f.*
+                    FROM fixtures f
+                    JOIN seasons s ON s.id = f.season_id AND s.guild_id = f.guild_id
+                    WHERE f.message_id = ? AND f.status = 'open' AND s.status = 'active'
+                """
                 params = (message_id,)
             else:
                 _validate_guild_id(guild_id)
-                query = "SELECT * FROM fixtures WHERE guild_id = ? AND message_id = ? AND status = 'open'"
-                params = (guild_id, message_id)
+                season_id = await self._active_season_id(db, guild_id)
+                if season_id is None:
+                    return None
+                query = "SELECT * FROM fixtures WHERE guild_id = ? AND season_id = ? AND message_id = ? AND status = 'open'"
+                params = (guild_id, season_id, message_id)
             async with db.execute(query, params) as cursor:
                 row = await cursor.fetchone()
                 return self._row_to_fixture(row) if row else None
 
     async def get_max_week_number(self, guild_id: str) -> int:
         _validate_guild_id(guild_id)
-        async with (
-            aiosqlite.connect(self.db_path) as db,
-            db.execute(
-                "SELECT MAX(week_number) FROM fixtures WHERE guild_id = ?",
-                (guild_id,),
-            ) as cursor,
-        ):
-            row = await cursor.fetchone()
-            return row[0] if row and row[0] is not None else 0
+        async with aiosqlite.connect(self.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            season_id = await self._active_season_id(db, guild_id)
+            if season_id is None:
+                return 0
+            async with db.execute(
+                "SELECT MAX(week_number) FROM fixtures WHERE guild_id = ? AND season_id = ?",
+                (guild_id, season_id),
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row and row[0] is not None else 0
 
     async def delete_fixture(self, fixture_id: int, guild_id: str | None = None) -> bool:
         """Delete a fixture and all associated data, optionally requiring guild ownership."""
         async with aiosqlite.connect(self.db_path) as db:
-            if guild_id is not None:
-                _validate_guild_id(guild_id)
-                async with db.execute(
-                    "SELECT 1 FROM fixtures WHERE id = ? AND guild_id = ?",
-                    (fixture_id, guild_id),
-                ) as cursor:
-                    if await cursor.fetchone() is None:
-                        return False
-            await db.execute("DELETE FROM scores WHERE fixture_id = ?", (fixture_id,))
-            await db.execute("DELETE FROM results WHERE fixture_id = ?", (fixture_id,))
-            await db.execute("DELETE FROM predictions WHERE fixture_id = ?", (fixture_id,))
-            cursor = await db.execute("DELETE FROM fixtures WHERE id = ?", (fixture_id,))
-            await db.commit()
-            return cursor.rowcount > 0
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                if guild_id is not None:
+                    _validate_guild_id(guild_id)
+                    async with db.execute(
+                        """
+                        SELECT 1
+                        FROM fixtures f
+                        JOIN seasons s ON s.id = f.season_id AND s.guild_id = f.guild_id
+                        WHERE f.id = ? AND f.guild_id = ? AND s.status = 'active'
+                        """,
+                        (fixture_id, guild_id),
+                    ) as cursor:
+                        if await cursor.fetchone() is None:
+                            await db.rollback()
+                            return False
+                await db.execute("DELETE FROM scores WHERE fixture_id = ?", (fixture_id,))
+                await db.execute("DELETE FROM results WHERE fixture_id = ?", (fixture_id,))
+                await db.execute("DELETE FROM predictions WHERE fixture_id = ?", (fixture_id,))
+                if guild_id is None:
+                    cursor = await db.execute("DELETE FROM fixtures WHERE id = ?", (fixture_id,))
+                else:
+                    cursor = await db.execute(
+                        """
+                        DELETE FROM fixtures
+                        WHERE id = ? AND guild_id = ?
+                          AND EXISTS (
+                              SELECT 1
+                              FROM seasons s
+                              WHERE s.id = fixtures.season_id
+                                AND s.guild_id = fixtures.guild_id
+                                AND s.status = 'active'
+                          )
+                        """,
+                        (fixture_id, guild_id),
+                    )
+                await db.commit()
+                return cursor.rowcount > 0
+            except Exception:
+                await db.rollback()
+                raise
 
     async def update_fixture_announcement(
         self,

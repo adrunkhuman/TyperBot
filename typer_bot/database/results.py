@@ -27,7 +27,13 @@ class ResultsRepository:
             await db.execute("BEGIN IMMEDIATE")
             try:
                 async with db.execute(
-                    "SELECT status FROM fixtures WHERE id = ?", (fixture_id,)
+                    """
+                    SELECT f.status
+                    FROM fixtures f
+                    JOIN seasons s ON s.id = f.season_id AND s.guild_id = f.guild_id
+                    WHERE f.id = ? AND s.status = 'active'
+                    """,
+                    (fixture_id,),
                 ) as cur:
                     row = await cur.fetchone()
                 if row is None or row[0] == "closed":
@@ -65,6 +71,18 @@ class ResultsRepository:
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("BEGIN IMMEDIATE")
             try:
+                async with db.execute(
+                    """
+                    SELECT 1
+                    FROM fixtures f
+                    JOIN seasons s ON s.id = f.season_id AND s.guild_id = f.guild_id
+                    WHERE f.id = ? AND s.status = 'active'
+                    """,
+                    (fixture_id,),
+                ) as cursor:
+                    if await cursor.fetchone() is None:
+                        raise ValueError("Fixture is not in the active season.")
+
                 await db.execute(
                     """
                     INSERT INTO results (fixture_id, results)
