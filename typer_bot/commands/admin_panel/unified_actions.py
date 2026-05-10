@@ -477,13 +477,33 @@ class PostResultsButton(discord.ui.Button):
                 "No completed fixtures found with scores!", ephemeral=True
             )
             return
-        if not isinstance(interaction.channel, discord.TextChannel):
+
+        config = await self.parent_view.db.get_guild_config(self.parent_view.guild_id)
+        channel = None
+        if config is not None and self.parent_view.bot is not None:
+            try:
+                channel_id = int(config["league_channel_id"])
+            except (TypeError, ValueError):
+                channel_id = None
+            if channel_id is not None:
+                channel = self.parent_view.bot.get_channel(channel_id)
+                if channel is None:
+                    fetch_channel = getattr(self.parent_view.bot, "fetch_channel", None)
+                    if fetch_channel is not None:
+                        try:
+                            channel = await fetch_channel(channel_id)
+                        except discord.DiscordException:
+                            channel = None
+
+        if not isinstance(channel, discord.TextChannel):
             await interaction.response.send_message(
-                "This action can only be used in text channels.", ephemeral=True
+                "Configured league channel is unavailable. Run `/admin panel` again to update setup.",
+                ephemeral=True,
             )
             return
+
         preview = format_standings(standings, fixture_data)
-        view = PostResultsConfirmView(fixture_data, standings, interaction.channel)
+        view = PostResultsConfirmView(fixture_data, standings, channel)
         await interaction.response.send_message(
             f"{preview}\n\nMention users in this post?",
             view=view,
