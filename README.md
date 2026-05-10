@@ -75,6 +75,8 @@ uv run python -m typer_bot.dev.seed_test_data --tester-user-id "your_discord_use
 uv run python -m typer_bot
 ```
 
+Disposable non-production deployments can auto-seed an empty database by setting `SEED_TEST_DATA=true` and `TEST_GUILD_ID`.
+
 Run checks:
 
 ```bash

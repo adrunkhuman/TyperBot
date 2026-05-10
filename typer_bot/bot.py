@@ -11,6 +11,7 @@ from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 from typer_bot.database import Database
+from typer_bot.dev.seed_test_data import maybe_auto_seed_test_data
 from typer_bot.handlers.thread_prediction_handler import ThreadPredictionHandler
 from typer_bot.utils import format_for_discord, now
 from typer_bot.utils.logger import set_log_context, set_trace_id
@@ -91,6 +92,7 @@ class TyperBot(commands.Bot):
         try:
             await self.db.initialize()
             logger.info("Database initialized successfully")
+            await maybe_auto_seed_test_data(self.db.db_path)
         except Exception:
             logger.exception("Database initialization failed")
             raise

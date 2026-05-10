@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from typer_bot.dev.seed_test_data import DEFAULT_MANUAL_GUILD_ID, seed_mixed_test_data
+from typer_bot.dev.seed_test_data import (
+    DEFAULT_MANUAL_GUILD_ID,
+    maybe_auto_seed_test_data,
+    seed_mixed_test_data,
+)
+from typer_bot.utils import now
 
 
 def _write_cleanup_artifacts(temp_db_path: str, backup_dir: Path) -> None:
@@ -134,3 +139,96 @@ async def test_seed_mixed_data_refuses_non_default_reset_without_force(tmp_path)
 
     with pytest.raises(ValueError, match="--force-reset"):
         await seed_mixed_test_data(str(db_path), str(backup_dir), None)
+
+
+@pytest.mark.asyncio
+async def test_auto_seed_skips_when_disabled(tmp_path):
+    db_path = tmp_path / "preview.db"
+
+    seeded = await maybe_auto_seed_test_data(str(db_path), enabled=False)
+
+    assert seeded is False
+    assert not db_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_auto_seed_skips_in_production(tmp_path):
+    db_path = tmp_path / "preview.db"
+
+    seeded = await maybe_auto_seed_test_data(
+        str(db_path),
+        enabled=True,
+        is_production=True,
+        environment="production",
+        guild_id="111111",
+    )
+
+    assert seeded is False
+    assert not db_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_auto_seed_requires_guild_id(temp_db_path):
+    from typer_bot.database import Database
+
+    db = Database(temp_db_path)
+    await db.initialize()
+
+    with pytest.raises(RuntimeError, match="TEST_GUILD_ID"):
+        await maybe_auto_seed_test_data(
+            temp_db_path,
+            enabled=True,
+            is_production=False,
+            environment="preview",
+            guild_id=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_auto_seed_populates_empty_non_production_database(temp_db_path):
+    from typer_bot.database import Database
+
+    db = Database(temp_db_path)
+    await db.initialize()
+
+    seeded = await maybe_auto_seed_test_data(
+        temp_db_path,
+        enabled=True,
+        is_production=False,
+        environment="preview",
+        guild_id="111111",
+        tester_user_id="tester-1",
+    )
+
+    seeded_db = Database(temp_db_path)
+    open_fixtures = await seeded_db.get_open_fixtures("111111")
+    week_two = await seeded_db.get_fixture_by_week("111111", 2)
+
+    assert seeded is True
+    assert [fixture["week_number"] for fixture in open_fixtures] == [2, 3]
+    assert week_two is not None
+    assert await seeded_db.get_prediction(week_two["id"], "tester-1", "111111") is not None
+
+
+@pytest.mark.asyncio
+async def test_auto_seed_does_not_reset_non_empty_database(temp_db_path):
+    from typer_bot.database import Database
+
+    db = Database(temp_db_path)
+    await db.initialize()
+    fixture_id = await db.create_fixture("111111", 99, ["Existing A - Existing B"], now())
+
+    seeded = await maybe_auto_seed_test_data(
+        temp_db_path,
+        enabled=True,
+        is_production=False,
+        environment="preview",
+        guild_id="111111",
+    )
+
+    existing_fixture = await db.get_fixture_by_id(fixture_id, "111111")
+    open_fixtures = await db.get_open_fixtures("111111")
+
+    assert seeded is False
+    assert existing_fixture is not None
+    assert [fixture["week_number"] for fixture in open_fixtures] == [99]
