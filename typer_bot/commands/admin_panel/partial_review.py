@@ -18,9 +18,9 @@ if TYPE_CHECKING:
 
 
 class ApprovePartialButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
-        super().__init__(label="Approve Late", style=discord.ButtonStyle.success, row=4)
+        super().__init__(label="Approve Late", style=discord.ButtonStyle.success, row=row)
 
     async def callback(self, interaction: discord.Interaction):
         fixture_id = self.parent_view.selection.fixture_id
@@ -84,9 +84,9 @@ class ApprovePartialButton(discord.ui.Button):
 
 
 class RejectPartialButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
-        super().__init__(label="Reject Late", style=discord.ButtonStyle.danger, row=4)
+        super().__init__(label="Reject Late", style=discord.ButtonStyle.danger, row=row)
 
     async def callback(self, interaction: discord.Interaction):
         fixture_id = self.parent_view.selection.fixture_id
@@ -144,9 +144,9 @@ class RejectPartialButton(discord.ui.Button):
 
 
 class ReviewPendingPartialsButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
-        super().__init__(label="Review Late", style=discord.ButtonStyle.primary, row=4)
+        super().__init__(label="Review Late", style=discord.ButtonStyle.primary, row=row)
 
     async def callback(self, interaction: discord.Interaction):
         pending_predictions = await self.parent_view.db.get_pending_partial_predictions(

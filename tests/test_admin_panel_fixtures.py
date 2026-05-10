@@ -193,6 +193,43 @@ class TestFixturePanelFlows:
         assert _has_button(view, "New Season") is True
 
     @pytest.mark.asyncio
+    async def test_unified_panel_hides_contextual_actions_until_fixture_selection(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+
+        assert _has_button(view, "Enter Results") is False
+        assert _has_button(view, "Calculate Scores") is False
+        assert _has_button(view, "Correct Results") is False
+        assert _has_button(view, "Delete Fixture") is False
+        assert _has_button(view, "Replace Prediction") is False
+        assert _has_button(view, "Toggle Late Waiver") is False
+
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+
+        assert _has_button(view, "Enter Results") is True
+        assert _has_button(view, "Calculate Scores") is True
+        assert _has_button(view, "Correct Results") is True
+        assert _has_button(view, "Delete Fixture") is True
+        assert _has_button(view, "Replace Prediction") is False
+        assert _has_button(view, "Toggle Late Waiver") is False
+
+    @pytest.mark.asyncio
     async def test_unified_panel_new_season_button_opens_modal(
         self,
         admin_cog,

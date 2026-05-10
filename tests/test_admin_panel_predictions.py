@@ -75,8 +75,8 @@ class TestPredictionPanelFlows:
         await unified_view.load_fixture_options()
 
         assert unified_view.user_select.disabled is True
-        assert _get_button(unified_view, "Replace Prediction").disabled is True
-        assert _get_button(unified_view, "Toggle Late Waiver").disabled is True
+        assert _has_button(unified_view, "Replace Prediction") is False
+        assert _has_button(unified_view, "Toggle Late Waiver") is False
 
     @pytest.mark.asyncio
     async def test_prediction_panel_buttons_enable_as_selections_are_made(

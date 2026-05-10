@@ -15,9 +15,9 @@ if TYPE_CHECKING:
 
 
 class SetupBotButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
-        super().__init__(label="Setup TyperBot", style=discord.ButtonStyle.secondary, row=2)
+        super().__init__(label="Setup TyperBot", style=discord.ButtonStyle.secondary, row=row)
 
     async def callback(self, interaction: discord.Interaction):
         from typer_bot.commands.admin_commands import GuildSetupPromptView
@@ -36,9 +36,9 @@ class SetupBotButton(discord.ui.Button):
 
 
 class CreateFixtureButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
-        super().__init__(label="Create Fixture", style=discord.ButtonStyle.success, row=2)
+        super().__init__(label="Create Fixture", style=discord.ButtonStyle.success, row=row)
 
     async def callback(self, interaction: discord.Interaction):
         channel = interaction.channel
@@ -124,9 +124,9 @@ class NewSeasonModal(discord.ui.Modal):
 
 
 class NewSeasonButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
-        super().__init__(label="New Season", style=discord.ButtonStyle.secondary, row=2)
+        super().__init__(label="New Season", style=discord.ButtonStyle.secondary, row=row)
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.send_modal(NewSeasonModal(self.parent_view))
@@ -187,22 +187,22 @@ class JumpToWeekModal(discord.ui.Modal):
 
 
 class JumpToWeekButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
-        super().__init__(label="Jump To Week", style=discord.ButtonStyle.secondary, row=2)
+        super().__init__(label="Jump To Week", style=discord.ButtonStyle.secondary, row=row)
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.send_modal(JumpToWeekModal(self.parent_view))
 
 
 class EnterResultsButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
         super().__init__(
             label="Enter Results",
             style=discord.ButtonStyle.secondary,
             disabled=parent_view.selection.fixture_id is None,
-            row=3,
+            row=row,
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -227,13 +227,13 @@ class EnterResultsButton(discord.ui.Button):
 
 
 class CalculateScoresButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
         super().__init__(
             label="Calculate Scores",
             style=discord.ButtonStyle.secondary,
             disabled=parent_view.selection.fixture_id is None,
-            row=3,
+            row=row,
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -327,9 +327,9 @@ class PostResultsConfirmView(discord.ui.View):
 
 
 class PostResultsButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
-        super().__init__(label="Re-post Results", style=discord.ButtonStyle.secondary, row=3)
+        super().__init__(label="Re-post Results", style=discord.ButtonStyle.secondary, row=row)
 
     async def callback(self, interaction: discord.Interaction):
         fixture_data = await self.parent_view.db.get_last_fixture_scores(self.parent_view.guild_id)

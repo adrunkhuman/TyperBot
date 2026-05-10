@@ -92,39 +92,42 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.clear_items()
         self.add_item(self.fixture_select)
         self.add_item(self.user_select)
-        self.add_item(CreateFixtureButton(self))
-        self.add_item(FixturesDeleteButton(self, disabled=self.selection.fixture_id is None, row=2))
-        self.add_item(SetupBotButton(self))
-        self.add_item(JumpToWeekButton(self))
-        self.add_item(NewSeasonButton(self))
-        if self.has_pending_partials:
-            self.add_item(ReviewPendingPartialsButton(self))
-        self.add_item(EnterResultsButton(self))
-        self.add_item(CalculateScoresButton(self))
-        self.add_item(CorrectResultsButton(self, disabled=self.selection.fixture_id is None, row=3))
-        self.add_item(PostResultsButton(self))
+
+        self.add_item(CreateFixtureButton(self, row=2))
+        if self.selection.fixture_id is not None:
+            self.add_item(EnterResultsButton(self, row=2))
+            self.add_item(CalculateScoresButton(self, row=2))
+            self.add_item(CorrectResultsButton(self, row=2))
+        self.add_item(PostResultsButton(self, row=2))
+
         if self.current_prediction and self.current_prediction.get("pending_partial_approval"):
-            self.add_item(ApprovePartialButton(self))
-            self.add_item(RejectPartialButton(self))
-        else:
+            self.add_item(ApprovePartialButton(self, row=3))
+            self.add_item(RejectPartialButton(self, row=3))
+        elif self.selection.fixture_id is not None and self.selection.user_id is not None:
             self.add_item(
                 ReplacePredictionButton(
                     self,
-                    disabled=self.selection.fixture_id is None or self.selection.user_id is None,
-                    row=4,
+                    row=3,
                 )
             )
             self.add_item(
                 ToggleWaiverButton(
                     self,
-                    disabled=self.selection.fixture_id is None or self.selection.user_id is None,
-                    row=4,
+                    row=3,
                 )
             )
         if self.has_user_overflow:
             self.add_item(
-                ViewPredictionsButton(self, disabled=self.selection.fixture_id is None, row=4)
+                ViewPredictionsButton(self, disabled=self.selection.fixture_id is None, row=3)
             )
+        if self.selection.fixture_id is not None:
+            self.add_item(FixturesDeleteButton(self, row=3))
+        if self.has_pending_partials:
+            self.add_item(ReviewPendingPartialsButton(self, row=3))
+
+        self.add_item(JumpToWeekButton(self, row=4))
+        self.add_item(NewSeasonButton(self, row=4))
+        self.add_item(SetupBotButton(self, row=4))
 
     async def load_fixture_options(self) -> None:
         self.active_season = await self.db.get_or_create_active_season(self.guild_id)
@@ -180,9 +183,6 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
                 lines.extend(["", self.selection.status_message])
             if self.selection.detail_lines:
                 lines.extend(["", *self.selection.detail_lines])
-            else:
-                guidance = "Top row: fixture management. Middle row: results workflow. Bottom row: prediction and late-review actions. Use Jump To Week when the older open week you want is not in the quick list."
-                lines.extend(["", guidance])
 
             if self.has_user_overflow:
                 lines.extend(
@@ -192,9 +192,6 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
                     ]
                 )
         else:
-            lines.append(
-                "Use the top row for fixture management, the middle row for results, and the bottom row for prediction and late-review actions."
-            )
             if self.selection.status_message:
                 lines.extend(["", self.selection.status_message])
         return _render_panel_content(lines)
