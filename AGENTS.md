@@ -24,6 +24,7 @@ You are working on `TyperBot`, a Discord bot for football prediction leagues.
 - **Logging:** Use `typer_bot.utils.logger.setup_logging()` early. Do not use `print()`.
 - **Timezones:** All datetime operations use timezone-aware objects. Use `utils.timezone.now()` instead of `datetime.now()`. Configure via `TZ` env var (default: `UTC`).
 - **Permissions:** Bot requires `Send Messages`, `Send Messages in Threads`, `Read Message History`, `Add Reactions`, `Create Public Threads`, and `Use Slash Commands`.
+- **Discord Application:** Production application needs `Message Content Intent` and `Server Members Intent` enabled in the Discord Developer Portal.
 
 ## 3. Database Schema
 SQLite. Tables are initialized in `typer_bot/database/connection.py`.
@@ -203,4 +204,6 @@ prek run ruff            # Run specific hook
 - **Runtime:** The bot still connects to Discord in non-production environments; use a separate token for manual testing and previews
 - **Token Safety:** Any deployment with a valid token will connect; never run multiple environments against the same live token
 - **Production:** Set `ENVIRONMENT=production` in deployment variables for production deployments
+- **Production Data:** Set `DATA_DIR=/app/data` on the persistent volume. `DB_PATH` defaults to `{DATA_DIR}/typer.db`; `BACKUP_DIR` defaults to `{DATA_DIR}/backups`.
+- **Backups:** Automatic SQL backups are named `backup_YYYY-MM-DD_HH-MM-SS-ms.sql`. `scripts/restore_db.py` accepts one explicit backup file path, not a wildcard.
 - **Portability:** Works on any platform (Coolify, Railway, local, etc.) - just set the variable accordingly

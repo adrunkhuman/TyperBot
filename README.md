@@ -14,7 +14,7 @@ Server admins invite and configure the bot. They do not self-host it.
 
 ## Server Admin Setup
 
-Ask the bot operator for the invite link. The bot needs:
+Ask the repo owner for the invite link. The bot needs:
 
 - `Send Messages`
 - `Send Messages in Threads`
@@ -22,8 +22,6 @@ Ask the bot operator for the invite link. The bot needs:
 - `Add Reactions`
 - `Create Public Threads`
 - `Use Slash Commands`
-
-The bot application also needs `Message Content Intent` and `Server Members Intent` enabled by the operator.
 
 After inviting TyperBot, run `/admin panel`. First-time setup requires Discord `Administrator` or `Manage Server` permission and stores:
 
@@ -59,39 +57,6 @@ Each server has one active season. Starting a new season archives the old active
 - late full prediction: 0 unless waived
 
 Admins can edit scoring rules before scores exist in the active season. Rule values must be whole numbers greater than or equal to zero.
-
-## Operator Notes
-
-Run one bot process per Discord bot token. One process can serve many servers because all league state is guild-scoped. Do not run production and preview deployments against the same token.
-
-Required environment variable:
-
-- `DISCORD_TOKEN`
-
-Common optional variables:
-
-- `ENVIRONMENT` - default `development`; use `production` for production deploys
-- `DATA_DIR` - default `./data`; use `/app/data` in production
-- `DB_PATH` - default `{DATA_DIR}/typer.db`
-- `BACKUP_DIR` - default `{DATA_DIR}/backups`
-- `TZ` - default `UTC`
-- `LOG_LEVEL` - default `INFO`
-
-Production data must live on a persistent volume. Typical production values:
-
-```text
-ENVIRONMENT=production
-DATA_DIR=/app/data
-```
-
-For Coolify, use the Dockerfile as a worker/background service, mount `/app/data`, and disable HTTP health checks if Coolify enables them for the service.
-
-Routine host migration is a direct copy of the SQLite file at `DB_PATH`. Manual restore uses one backup file:
-
-```bash
-ls /app/data/backups/
-python scripts/restore_db.py /app/data/backups/backup_YYYY-MM-DD_HH-MM-SS-ms.sql
-```
 
 ## Local Development
 
