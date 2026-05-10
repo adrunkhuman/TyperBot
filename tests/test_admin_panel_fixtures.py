@@ -913,9 +913,15 @@ class TestFixturePanelFlows:
             ["2-1", "1-1", "0-2"],
             False,
         )
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.send = AsyncMock()
-        mock_interaction_admin.channel = channel
+        command_channel = MagicMock(spec=discord.TextChannel)
+        command_channel.id = 999999
+        command_channel.send = AsyncMock()
+        league_channel = MagicMock(spec=discord.TextChannel)
+        league_channel.id = 123456
+        league_channel.send = AsyncMock()
+        mock_interaction_admin.channel = command_channel
+        admin_cog.bot.get_channel.return_value = None
+        admin_cog.bot.fetch_channel = AsyncMock(return_value=league_channel)
         mock_interaction_admin.message = MagicMock()
         mock_interaction_admin.message.edit = AsyncMock()
         admin_cog._create_backup = AsyncMock()
@@ -935,22 +941,75 @@ class TestFixturePanelFlows:
         calculate_button = _get_button(view, "Calculate Scores")
         await calculate_button.callback(mock_interaction_admin)
 
+        admin_cog.bot.get_channel.assert_called_with(123456)
+        admin_cog.bot.fetch_channel.assert_awaited_once_with(123456)
         assert (
             admin_cog.get_calculate_cooldown("111111", str(mock_interaction_admin.user.id))
             is not None
         )
-        channel.send.assert_awaited_once()
+        league_channel.send.assert_awaited_once()
+        command_channel.send.assert_not_awaited()
         assert (
-            "Week 45 results calculated and posted"
+            "Week 45 results calculated and posted to the league channel"
             in mock_interaction_admin.response_sent[-1]["content"]
         )
-        assert "User One" in channel.send.call_args.args[0]
+        assert "User One" in league_channel.send.call_args.args[0]
         assert view.selection.fixture_label == "Week 45 [CLOSED]"
         assert _has_button(view, "Scoring Rules") is False
         assert _has_button(view, "Calculate Scores") is False
         assert _has_button(view, "Delete Fixture") is False
         mock_interaction_admin.message.edit.assert_awaited_once_with(
             content=view.render_content(), view=view
+        )
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_calculate_scores_button_rejects_unavailable_league_channel(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            "111111", 46, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        command_channel = MagicMock(spec=discord.TextChannel)
+        command_channel.send = AsyncMock()
+        mock_interaction_admin.channel = command_channel
+        admin_cog.bot.get_channel.return_value = None
+        admin_cog.bot.fetch_channel = AsyncMock(
+            side_effect=discord.InvalidData("unknown channel type")
+        )
+        mock_interaction_admin.message = MagicMock()
+        mock_interaction_admin.message.edit = AsyncMock()
+        admin_cog._create_backup = AsyncMock()
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+
+        calculate_button = _get_button(view, "Calculate Scores")
+        await calculate_button.callback(mock_interaction_admin)
+
+        command_channel.send.assert_not_awaited()
+        assert (
+            "configured league channel is unavailable"
+            in mock_interaction_admin.response_sent[-1]["content"].lower()
         )
 
     @pytest.mark.asyncio
@@ -1112,9 +1171,14 @@ class TestFixturePanelFlows:
         admin_cog,
         mock_interaction_admin,
     ):
-        channel = MagicMock(spec=discord.TextChannel)
-        channel.id = mock_interaction_admin.channel.id
-        mock_interaction_admin.channel = channel
+        command_channel = MagicMock(spec=discord.TextChannel)
+        command_channel.id = 999999
+        league_channel = MagicMock(spec=discord.TextChannel)
+        league_channel.id = 123456
+        league_channel.send = AsyncMock()
+        mock_interaction_admin.channel = command_channel
+        admin_cog.bot.get_channel.return_value = None
+        admin_cog.bot.fetch_channel = AsyncMock(return_value=league_channel)
         admin_cog.db.get_last_fixture_scores = AsyncMock(
             return_value={
                 "week_number": 1,
@@ -1154,7 +1218,11 @@ class TestFixturePanelFlows:
         post_button = _get_button(view, "Re-post Results")
         await post_button.callback(mock_interaction_admin)
 
-        assert isinstance(mock_interaction_admin.response_sent[-1]["view"], PostResultsConfirmView)
+        admin_cog.bot.get_channel.assert_called_with(123456)
+        admin_cog.bot.fetch_channel.assert_awaited_once_with(123456)
+        confirm_view = mock_interaction_admin.response_sent[-1]["view"]
+        assert isinstance(confirm_view, PostResultsConfirmView)
+        assert confirm_view.channel is league_channel
 
     @pytest.mark.asyncio
     async def test_unified_panel_post_results_only_previews_current_guild_scores(
@@ -1164,7 +1232,9 @@ class TestFixturePanelFlows:
     ):
         channel = MagicMock(spec=discord.TextChannel)
         channel.id = mock_interaction_admin.channel.id
+        channel.send = AsyncMock()
         mock_interaction_admin.channel = channel
+        admin_cog.bot.get_channel.return_value = channel
         deadline = datetime.now(UTC) - timedelta(days=1)
         current_fixture_id = await admin_cog.db.create_fixture(
             "111111", 1, ["Team A - Team B"], deadline
@@ -1307,13 +1377,17 @@ class TestFixturePanelFlows:
         assert view.selection.fixture_id is None
 
     @pytest.mark.asyncio
-    async def test_unified_panel_post_results_button_rejects_non_text_channel(
+    async def test_unified_panel_post_results_button_rejects_unavailable_league_channel(
         self,
         admin_cog,
         mock_interaction_admin,
     ):
         admin_cog.db.get_last_fixture_scores = AsyncMock(return_value={"scores": []})
         admin_cog.db.get_standings = AsyncMock(return_value=[])
+        admin_cog.bot.get_channel.return_value = None
+        admin_cog.bot.fetch_channel = AsyncMock(
+            side_effect=discord.InvalidData("unknown channel type")
+        )
 
         view = UnifiedAdminPanelView(
             admin_cog.db,
@@ -1326,7 +1400,10 @@ class TestFixturePanelFlows:
         post_button = _get_button(view, "Re-post Results")
         await post_button.callback(mock_interaction_admin)
 
-        assert "text channels" in mock_interaction_admin.response_sent[-1]["content"]
+        assert (
+            "configured league channel is unavailable"
+            in mock_interaction_admin.response_sent[-1]["content"].lower()
+        )
 
     @pytest.mark.asyncio
     async def test_unified_panel_post_results_button_rejects_missing_scores(

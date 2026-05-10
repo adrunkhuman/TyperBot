@@ -344,10 +344,33 @@ class AdminCommands(commands.Cog):
         interaction: discord.Interaction,
         score_result: FixtureScoreResult,
     ) -> None:
-        channel = interaction.channel
-        if not isinstance(channel, (discord.TextChannel, discord.Thread, discord.DMChannel)):
+        if interaction.guild_id is None:
             await interaction.response.send_message(
-                "Could not find channel to post in.", ephemeral=True
+                "Scores calculated but could not resolve this server.", ephemeral=True
+            )
+            return
+
+        config = await self.db.get_guild_config(str(interaction.guild_id))
+        channel = None
+        if config is not None:
+            try:
+                channel_id = int(config["league_channel_id"])
+            except (TypeError, ValueError):
+                channel_id = None
+            if channel_id is not None:
+                channel = self.bot.get_channel(channel_id)
+                if channel is None:
+                    fetch_channel = getattr(self.bot, "fetch_channel", None)
+                    if fetch_channel is not None:
+                        try:
+                            channel = await fetch_channel(channel_id)
+                        except discord.DiscordException:
+                            channel = None
+
+        if not isinstance(channel, discord.TextChannel):
+            await interaction.response.send_message(
+                "Scores calculated but the configured league channel is unavailable.",
+                ephemeral=True,
             )
             return
 
@@ -365,7 +388,7 @@ class AdminCommands(commands.Cog):
         try:
             await channel.send(message)
             await interaction.response.send_message(
-                f"Week {score_result.fixture['week_number']} results calculated and posted!",
+                f"Week {score_result.fixture['week_number']} results calculated and posted to the league channel!",
                 ephemeral=True,
             )
         except Exception as exc:

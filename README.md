@@ -26,7 +26,7 @@ Ask the repo owner for the invite link. The bot needs:
 After inviting TyperBot, run `/admin panel`. First-time setup requires Discord `Administrator` or `Manage Server` permission and stores:
 
 - admin role: who can use league admin actions
-- league channel: where fixture announcements, threads, and reminders go
+- league channel: where fixture announcements, threads, reminders, and public result/standings posts go
 
 After setup, members with the configured admin role use `/admin panel` to create fixtures, enter results, calculate scores, review late partial predictions, edit scoring rules, and start new seasons.
 
