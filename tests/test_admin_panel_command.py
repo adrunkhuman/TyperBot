@@ -1,8 +1,9 @@
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import discord
 import pytest
+from freezegun import freeze_time
 
 from tests.admin_panel_helpers import has_button as _has_button
 from typer_bot.commands.admin_commands import AdminCommands
@@ -50,17 +51,16 @@ class TestAdminPanelCommand:
         modal.games_input._value = "\n".join(sample_games)
         modal.deadline_input._value = ""
 
-        with patch(
-            "typer_bot.commands.admin_panel.modals.now",
-            return_value=datetime(2026, 4, 17, 19, 0, tzinfo=UTC),
-        ):
+        with freeze_time(datetime(2026, 4, 17, 19, 0, tzinfo=UTC)):
             await modal.on_submit(mock_interaction_admin)
 
         view = mock_interaction_admin.response_sent[-1]["view"]
-        assert view.deadline.year == 2026
-        assert view.deadline.month == 4
-        assert view.deadline.day == 24
-        assert view.deadline.hour == 18
+        deadline = view.deadline
+
+        assert deadline.year == 2026
+        assert deadline.month == 4
+        assert deadline.day == 24
+        assert deadline.hour == 18
 
     @pytest.mark.asyncio
     async def test_create_fixture_modal_warns_when_other_fixtures_are_open(

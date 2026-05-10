@@ -13,7 +13,8 @@ from .modals import (
 )
 from .predictions import PredictionsPanelView
 from .results import ResultsPanelView
-from .unified import PostResultsConfirmView, UnifiedAdminPanelView
+from .unified import UnifiedAdminPanelView
+from .unified_actions import PostResultsConfirmView
 
 __all__ = [
     "CorrectResultsModal",
