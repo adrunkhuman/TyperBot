@@ -1146,6 +1146,50 @@ class TestScores:
         assert standings[0]["total_points"] == 3
 
     @pytest.mark.asyncio
+    async def test_get_standings_for_season_returns_archived_season_scores(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        old_fixture_id = await db.create_fixture(
+            "111111", 1, ["Old Team A - Old Team B"], datetime.now(UTC)
+        )
+        await db.save_scores(
+            old_fixture_id,
+            [
+                {
+                    "user_id": "old-user",
+                    "user_name": "Old User",
+                    "points": 30,
+                    "exact_scores": 10,
+                    "correct_results": 0,
+                }
+            ],
+        )
+        old_season = await db.get_active_season("111111")
+        await _start_new_active_season(temp_db_path, "111111")
+        active_fixture_id = await db.create_fixture(
+            "111111", 1, ["New Team A - New Team B"], datetime.now(UTC)
+        )
+        await db.save_scores(
+            active_fixture_id,
+            [
+                {
+                    "user_id": "active-user",
+                    "user_name": "Active User",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+
+        standings = await db.get_standings_for_season("111111", old_season["id"])
+        wrong_guild_standings = await db.get_standings_for_season("222222", old_season["id"])
+
+        assert [row["user_id"] for row in standings] == ["old-user"]
+        assert standings[0]["total_points"] == 30
+        assert wrong_guild_standings == []
+
+    @pytest.mark.asyncio
     async def test_last_fixture_scores_are_active_season_scoped(self, temp_db_path):
         db = Database(temp_db_path)
         await db.initialize()
@@ -1811,6 +1855,42 @@ class TestSchemaValidation:
             await conn.commit()
 
         with pytest.raises(RuntimeError, match="fixtures.guild_id has empty rows"):
+            await db.initialize()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "UPDATE fixtures SET season_id = NULL WHERE id = ?",
+            "UPDATE fixtures SET season_id = 999999 WHERE id = ?",
+        ],
+    )
+    async def test_initialize_rejects_fixture_without_valid_season(self, temp_db_path, sql):
+        db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute(sql, (fixture_id,))
+            await conn.commit()
+
+        with pytest.raises(RuntimeError, match="same-guild season_id"):
+            await db.initialize()
+
+    @pytest.mark.asyncio
+    async def test_initialize_rejects_fixture_with_other_guild_season(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        other_fixture_id = await db.create_fixture("222222", 1, ["C - D"], datetime.now(UTC))
+        other_fixture = await db.get_fixture_by_id(other_fixture_id, "222222")
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute(
+                "UPDATE fixtures SET season_id = ? WHERE id = ?",
+                (other_fixture["season_id"], fixture_id),
+            )
+            await conn.commit()
+
+        with pytest.raises(RuntimeError, match="same-guild season_id"):
             await db.initialize()
 
 

@@ -19,6 +19,7 @@ from .prediction_parser import (
     parse_prediction_lines,
     parse_predictions,
 )
+from .prediction_submission import PredictionSubmission, build_prediction_submission
 from .scoring import (
     DEFAULT_SCORING_RULES,
     align_predictions_to_fixture,
@@ -43,6 +44,8 @@ __all__ = [
     "format_fixture_results",
     "format_predictions_preview",
     "format_standings",
+    "PredictionSubmission",
+    "build_prediction_submission",
     "align_predictions_to_fixture",
     "DEFAULT_SCORING_RULES",
     "calculate_points",
