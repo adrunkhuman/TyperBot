@@ -11,7 +11,7 @@ from typer_bot.services.errors import (
     PredictionDisappearedError,
     PredictionNotFoundError,
 )
-from typer_bot.utils import align_predictions_to_fixture, calculate_points, parse_line_predictions
+from typer_bot.utils import parse_line_predictions
 
 
 @dataclass(slots=True)
@@ -71,38 +71,7 @@ class AdminService:
         if not predictions:
             raise ValueError("No predictions found for this fixture")
 
-        scores = []
-        for prediction in predictions:
-            aligned_predictions = align_predictions_to_fixture(
-                prediction["predictions"],
-                prediction["predicted_game_indexes"],
-                len(results),
-            )
-            score_data = calculate_points(
-                aligned_predictions,
-                results,
-                prediction["is_late"],
-                prediction["late_penalty_waived"],
-            )
-            scores.append(
-                {
-                    "user_id": prediction["user_id"],
-                    "user_name": prediction["user_name"],
-                    "points": score_data["points"],
-                    "exact_scores": score_data["exact_scores"],
-                    "correct_results": score_data["correct_results"],
-                }
-            )
-
-        scores.sort(
-            key=lambda score: (
-                -score["points"],
-                -score["exact_scores"],
-                -score["correct_results"],
-                score["user_name"].lower(),
-            )
-        )
-        await self.db.save_scores(fixture_id, scores)
+        await self.db.recalculate_fixture_scores(fixture_id)
 
         return await self._build_score_result(fixture_id, guild_id)
 

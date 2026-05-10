@@ -458,6 +458,9 @@ class Database:
     async def save_scores(self, fixture_id, scores):
         return await self._scores.save_scores(fixture_id, scores)
 
+    async def recalculate_fixture_scores(self, fixture_id):
+        return await self._scores.recalculate_fixture_scores(fixture_id)
+
     async def get_standings(self, guild_id):
         return await self._scores.get_standings(guild_id)
 

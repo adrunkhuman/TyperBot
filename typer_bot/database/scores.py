@@ -4,9 +4,30 @@ import logging
 
 import aiosqlite
 
-from typer_bot.utils import align_predictions_to_fixture, calculate_points
+from typer_bot.utils import build_fixture_scores
 
 logger = logging.getLogger(__name__)
+
+
+def _deserialize_game_indexes(raw: str | None, prediction_count: int) -> list[int]:
+    if not raw:
+        return list(range(prediction_count))
+    return [int(part) for part in raw.split(",") if part != ""]
+
+
+def _prediction_row_to_score_input(row: aiosqlite.Row) -> dict:
+    prediction_values = row["predictions"].split("\n")
+    return {
+        "user_id": row["user_id"],
+        "user_name": row["user_name"],
+        "predictions": prediction_values,
+        "predicted_game_indexes": _deserialize_game_indexes(
+            row["predicted_game_indexes"],
+            len(prediction_values),
+        ),
+        "is_late": bool(row["is_late"]),
+        "late_penalty_waived": bool(row["late_penalty_waived"]),
+    }
 
 
 async def _fixture_has_scores_in_connection(db: aiosqlite.Connection, fixture_id: int) -> bool:
@@ -42,44 +63,8 @@ async def _recalculate_scores_in_connection(db: aiosqlite.Connection, fixture_id
             raise ValueError("No predictions found for this fixture")
 
         results = results_row["results"].split("\n")
-        scores = []
-        for prediction_row in prediction_rows:
-            raw_predictions = prediction_row["predictions"].split("\n")
-            raw_indexes = prediction_row["predicted_game_indexes"]
-            predicted_game_indexes = (
-                [int(part) for part in raw_indexes.split(",") if part != ""]
-                if raw_indexes
-                else list(range(len(raw_predictions)))
-            )
-            aligned_predictions = align_predictions_to_fixture(
-                raw_predictions,
-                predicted_game_indexes,
-                len(results),
-            )
-            score_data = calculate_points(
-                aligned_predictions,
-                results,
-                bool(prediction_row["is_late"]),
-                bool(prediction_row["late_penalty_waived"]),
-            )
-            scores.append(
-                {
-                    "user_id": prediction_row["user_id"],
-                    "user_name": prediction_row["user_name"],
-                    "points": score_data["points"],
-                    "exact_scores": score_data["exact_scores"],
-                    "correct_results": score_data["correct_results"],
-                }
-            )
-
-        scores.sort(
-            key=lambda score: (
-                -score["points"],
-                -score["exact_scores"],
-                -score["correct_results"],
-                score["user_name"].lower(),
-            )
-        )
+        predictions = [_prediction_row_to_score_input(row) for row in prediction_rows]
+        scores = build_fixture_scores(predictions, results)
 
         await db.execute("DELETE FROM scores WHERE fixture_id = ?", (fixture_id,))
         for score in scores:
@@ -222,6 +207,17 @@ class ScoreRepository:
                             "event_type": "transaction.rollback_failed",
                         },
                     )
+                raise
+
+    async def recalculate_fixture_scores(self, fixture_id: int) -> None:
+        """Recalculate one fixture's scores atomically from stored results and predictions."""
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                await _recalculate_scores_in_connection(db, fixture_id)
+                await db.commit()
+            except Exception:
+                await db.rollback()
                 raise
 
     async def get_standings(self, guild_id: str) -> list[dict]:
