@@ -331,6 +331,9 @@ class Database:
     async def get_active_scoring_rules(self, guild_id):
         return await self._seasons.get_active_scoring_rules(guild_id)
 
+    async def active_season_has_scores(self, guild_id):
+        return await self._seasons.active_season_has_scores(guild_id)
+
     async def update_active_scoring_rules(self, guild_id, rules):
         return await self._seasons.update_active_scoring_rules(guild_id, rules)
 
