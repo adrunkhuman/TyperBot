@@ -138,78 +138,6 @@ async def _validate_fixture_guild_ownership(db: aiosqlite.Connection) -> None:
         )
 
 
-async def _validate_season_schema(db: aiosqlite.Connection) -> None:
-    fixture_columns = await _table_columns(db, "fixtures")
-    if "season_id" not in fixture_columns:
-        raise RuntimeError(
-            "fixtures.season_id is missing. Run the one-time v3.0.0 season migration before starting the bot."
-        )
-
-    guild_config_columns = await _table_columns(db, "guild_config")
-    if "active_season_id" not in guild_config_columns:
-        raise RuntimeError(
-            "guild_config.active_season_id is missing. Run the one-time v3.0.0 season migration before starting the bot."
-        )
-
-    async with db.execute(
-        """
-        SELECT COUNT(*)
-        FROM fixtures
-        WHERE season_id IS NULL
-           OR NOT EXISTS (
-               SELECT 1
-               FROM seasons s
-               WHERE s.id = fixtures.season_id
-                 AND s.guild_id = fixtures.guild_id
-           )
-        """
-    ) as cursor:
-        row = await cursor.fetchone()
-    if row and row[0] > 0:
-        raise RuntimeError(
-            "fixtures.season_id has empty or cross-guild rows. Run the one-time v3.0.0 season migration before starting the bot."
-        )
-
-    async with db.execute(
-        """
-        SELECT COUNT(*)
-        FROM (
-            SELECT guild_id
-            FROM seasons
-            WHERE status = 'active'
-            GROUP BY guild_id
-            HAVING COUNT(*) > 1
-        )
-        """
-    ) as cursor:
-        row = await cursor.fetchone()
-    if row and row[0] > 0:
-        raise RuntimeError(
-            "multiple active seasons exist for a guild. Keep one active season per guild before starting the bot."
-        )
-
-    async with db.execute(
-        """
-        SELECT COUNT(*)
-        FROM (
-            SELECT DISTINCT f.guild_id
-            FROM fixtures f
-            WHERE NOT EXISTS (
-                SELECT 1
-                FROM seasons s
-                WHERE s.guild_id = f.guild_id
-                  AND s.status = 'active'
-            )
-        )
-        """
-    ) as cursor:
-        row = await cursor.fetchone()
-    if row and row[0] > 0:
-        raise RuntimeError(
-            "fixture guilds without an active season exist. Create one active season per fixture guild before starting the bot."
-        )
-
-
 class Database:
     """Composition root for SQLite setup and the bot's stable data facade.
 
@@ -342,7 +270,6 @@ class Database:
 
             await _validate_fixture_guild_ownership(db)
 
-            await _validate_season_schema(db)
             await _migrate_prediction_columns(db)
             await _migrate_results_table(db)
 
