@@ -9,7 +9,10 @@ You are working on `TyperBot`, a Discord bot for football prediction leagues.
 - **Tech:** Python 3.13+, discord.py, aiosqlite, portable container hosting.
 
 ## 2. Critical Constraints
+- **Product Model:** One hosted TyperBot application serves many Discord guilds. Server admins invite/configure the bot; they do not self-host it.
+- **League Scope:** Keep v3 simple: one league, one active season, one configured league channel, and one active scoring-rule set per guild.
 - **Persistence:** The database defaults to `./data/typer.db` locally. On production, set `DATA_DIR=/app/data` so the live DB stays on the mounted data volume.
+- **Schema Changes:** Do not add broad startup compatibility migrations or backfills for historical schemas. Existing production DB changes should be verified and ported manually when needed; startup should validate/fail fast for unsafe current-schema violations.
 - **Transaction Safety:** Critical operations use atomic transactions (BEGIN/COMMIT/ROLLBACK) to ensure data consistency. Never modify transaction logic without understanding rollback implications.
 - **Prediction Contract:** Fixture threads are the public source of truth. `/predict` is a structured composer that posts publicly into the selected fixture thread.
 - **Configuration:** All data paths configurable via env vars in `utils/config.py`:
@@ -122,7 +125,7 @@ guild_config (
 - **Admin Panel UI:** Edit `commands/admin_panel/`.
 - **Workflow/Cooldown State:** Thread prediction cooldowns live in `handlers/thread_prediction_handler.py`; admin calculate cooldowns live in `commands/admin_commands.py`. Keep them process-local instead of introducing module-level globals.
 - **New Commands:** Add Cog to `commands/` folder, load in `bot.py`.
-- **Database Changes:** Edit `typer_bot/database/connection.py` `initialize()` and the focused repositories in `typer_bot/database/` (handle migrations manually if needed).
+- **Database Changes:** Edit `typer_bot/database/connection.py` `initialize()` and the focused repositories in `typer_bot/database/`. Keep fresh schema creation and startup validation explicit; handle production data ports manually when needed.
 - **Debugging:** Check `utils/logger.py` for config. Set `LOG_LEVEL=DEBUG` in env.
 - **Database Restore:** Use `scripts/restore_db.py` from the host or container shell for manual database restoration from backups. The script restores into a temporary SQLite file first, then atomically replaces the live DB only after success.
 
