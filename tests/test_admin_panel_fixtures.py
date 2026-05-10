@@ -13,6 +13,7 @@ from typer_bot.commands.admin_panel import (
     DeleteConfirmView,
     EnterResultsModal,
     FixturesPanelView,
+    NewSeasonModal,
     PostResultsConfirmView,
     PredictionsPanelView,
     ResultsPanelView,
@@ -173,6 +174,191 @@ class TestFixturePanelFlows:
         assert isinstance(mock_interaction_admin.modal_sent["modal"], CreateFixtureModal)
 
     @pytest.mark.asyncio
+    async def test_unified_panel_shows_active_season_and_new_season_button(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+
+        assert "Active season: Default Season" in view.render_content()
+        assert _has_button(view, "New Season") is True
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_hides_contextual_actions_until_fixture_selection(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+
+        assert _has_button(view, "Enter Results") is False
+        assert _has_button(view, "Calculate Scores") is False
+        assert _has_button(view, "Correct Results") is False
+        assert _has_button(view, "Delete Fixture") is False
+        assert _has_button(view, "Replace Prediction") is False
+        assert _has_button(view, "Toggle Late Waiver") is False
+
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+
+        assert _has_button(view, "Enter Results") is True
+        assert _has_button(view, "Calculate Scores") is True
+        assert _has_button(view, "Correct Results") is False
+        assert _has_button(view, "Delete Fixture") is True
+        assert _has_button(view, "Replace Prediction") is False
+        assert _has_button(view, "Toggle Late Waiver") is False
+
+        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+
+        assert _has_button(view, "Enter Results") is False
+        assert _has_button(view, "Calculate Scores") is True
+        assert _has_button(view, "Correct Results") is True
+
+        await admin_cog.db.save_scores(
+            fixture_id,
+            [
+                {
+                    "user_id": "user-1",
+                    "user_name": "User One",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+
+        assert _has_button(view, "Enter Results") is False
+        assert _has_button(view, "Calculate Scores") is False
+        assert _has_button(view, "Correct Results") is True
+        assert _has_button(view, "Delete Fixture") is False
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_new_season_button_opens_modal(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        new_season_button = _get_button(view, "New Season")
+
+        await new_season_button.callback(mock_interaction_admin)
+
+        assert isinstance(mock_interaction_admin.modal_sent["modal"], NewSeasonModal)
+
+    @pytest.mark.asyncio
+    async def test_new_season_modal_blocks_open_fixtures(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        await admin_cog.db.create_fixture(
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.current_prediction = {"pending_partial_approval": True}
+        view.has_user_overflow = True
+        modal = NewSeasonModal(view)
+        modal.name_input._value = "2026/27"
+
+        await modal.on_submit(mock_interaction_admin)
+
+        assert "Close all open fixtures" in mock_interaction_admin.response_sent[-1]["content"]
+        assert (await admin_cog.db.get_active_season("111111"))["name"] == "Default Season"
+
+    @pytest.mark.asyncio
+    async def test_new_season_modal_starts_season_and_refreshes_panel(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_scores(
+            fixture_id,
+            [
+                {
+                    "user_id": "user-1",
+                    "user_name": "User One",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        modal = NewSeasonModal(view)
+        modal.name_input._value = "2026/27"
+
+        await modal.on_submit(mock_interaction_admin)
+        _new_fixture_id, new_week = await admin_cog.db.create_next_fixture(
+            "111111", sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+
+        content = mock_interaction_admin.response_sent[-1]["content"]
+        assert "Active season: 2026/27" in content
+        assert "Started new active season: 2026/27" in content
+        assert view.current_prediction is None
+        assert view.has_user_overflow is False
+        assert _has_button(view, "Enter Results") is False
+        assert _has_button(view, "Calculate Scores") is False
+        assert _has_button(view, "Correct Results") is False
+        assert _has_button(view, "Delete Fixture") is False
+        assert new_week == 1
+
+    @pytest.mark.asyncio
     async def test_unified_panel_hides_review_pending_button_without_pending_partials(
         self,
         admin_cog,
@@ -265,6 +451,7 @@ class TestFixturePanelFlows:
         fixture_id = await admin_cog.db.create_fixture(
             "111111", 56, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
+        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         await admin_cog.db.save_prediction(
             fixture_id,
             "111",
@@ -292,6 +479,8 @@ class TestFixturePanelFlows:
         assert view.selection.user_id == "111"
         assert _has_button(view, "Approve Late") is True
         assert _has_button(view, "Reject Late") is True
+        assert _has_button(view, "Enter Results") is False
+        assert _has_button(view, "Correct Results") is True
 
     @pytest.mark.asyncio
     async def test_unified_panel_review_pending_button_cycles_pending_submissions(
@@ -419,7 +608,7 @@ class TestFixturePanelFlows:
         assert isinstance(mock_interaction_admin.modal_sent["modal"], EnterResultsModal)
 
     @pytest.mark.asyncio
-    async def test_unified_panel_enter_results_button_rejects_existing_results(
+    async def test_unified_panel_hides_enter_results_button_after_results_are_saved(
         self,
         admin_cog,
         mock_interaction_admin,
@@ -441,10 +630,8 @@ class TestFixturePanelFlows:
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
 
-        enter_button = _get_button(view, "Enter Results")
-        await enter_button.callback(mock_interaction_admin)
-
-        assert "Correct Results" in mock_interaction_admin.response_sent[-1]["content"]
+        assert _has_button(view, "Enter Results") is False
+        assert _has_button(view, "Correct Results") is True
 
     @pytest.mark.asyncio
     async def test_unified_panel_calculate_scores_button_posts_results(
@@ -505,6 +692,7 @@ class TestFixturePanelFlows:
         fixture_id = await admin_cog.db.create_fixture(
             "111111", 47, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
+        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         admin_cog.record_calculate_cooldown(
             "111111", str(mock_interaction_admin.user.id), current_time=now().timestamp()
         )
@@ -537,9 +725,7 @@ class TestFixturePanelFlows:
         fixture_id = await admin_cog.db.create_fixture(
             "111111", 48, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        admin_cog.service.calculate_fixture_scores = AsyncMock(
-            side_effect=ValueError("No results entered")
-        )
+        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         admin_cog._create_backup = AsyncMock()
 
         view = UnifiedAdminPanelView(
@@ -557,7 +743,10 @@ class TestFixturePanelFlows:
         calculate_button = _get_button(view, "Calculate Scores")
         await calculate_button.callback(mock_interaction_admin)
 
-        assert mock_interaction_admin.response_sent[-1]["content"] == "No results entered"
+        assert (
+            mock_interaction_admin.response_sent[-1]["content"]
+            == "No predictions found for this fixture"
+        )
 
     @pytest.mark.asyncio
     async def test_unified_panel_post_results_button_opens_confirmation(
@@ -673,8 +862,13 @@ class TestFixturePanelFlows:
         sample_games,
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
+        first_fixture_id = None
         for week in range(1, 28):
-            await admin_cog.db.create_fixture("111111", week, sample_games, deadline)
+            fixture_id = await admin_cog.db.create_fixture("111111", week, sample_games, deadline)
+            if week == 1:
+                first_fixture_id = fixture_id
+        assert first_fixture_id is not None
+        await admin_cog.db.save_results(first_fixture_id, ["1-0", "1-1", "0-0"])
 
         view = UnifiedAdminPanelView(
             admin_cog.db,
@@ -697,6 +891,9 @@ class TestFixturePanelFlows:
 
         assert view.selection.fixture_label == "Week 1 [OPEN]"
         assert "Fixture: Week 1 [OPEN]" in mock_interaction_admin.response_sent[-1]["content"]
+        assert _has_button(view, "Enter Results") is False
+        assert _has_button(view, "Calculate Scores") is True
+        assert _has_button(view, "Correct Results") is True
 
     @pytest.mark.asyncio
     async def test_unified_panel_jump_to_week_rejects_invalid_input(

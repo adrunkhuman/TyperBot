@@ -114,6 +114,8 @@ class PanelSelectionState:
     fixture_id: int | None = None
     user_id: str | None = None
     fixture_label: str = ""
+    fixture_status: str | None = None
+    has_results: bool = False
     user_label: str = ""
     detail_lines: list[str] = field(default_factory=list)
     status_message: str = ""
@@ -370,11 +372,13 @@ class FixtureSelect(discord.ui.Select):
         self.parent_view.selection.user_id = None
         self.parent_view.selection.user_label = ""
         self.parent_view.selection.detail_lines = []
+        self.parent_view.selection.has_results = False
 
         fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
         if fixture is None:
             self.parent_view.selection.fixture_id = None
             self.parent_view.selection.fixture_label = ""
+            self.parent_view.selection.fixture_status = None
             self.parent_view.selection.status_message = "Fixture no longer exists."
             load_fixture_options = getattr(self.parent_view, "load_fixture_options", None)
             if callable(load_fixture_options):
@@ -382,6 +386,7 @@ class FixtureSelect(discord.ui.Select):
         else:
             self.parent_view.selection.fixture_id = fixture_id
             self.parent_view.selection.fixture_label = _fixture_select_label(fixture)
+            self.parent_view.selection.fixture_status = fixture["status"]
             self.parent_view.selection.status_message = ""
 
         populate_fixture_details = getattr(self.parent_view, "populate_fixture_details", None)

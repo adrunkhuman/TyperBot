@@ -4,6 +4,7 @@ import aiosqlite
 
 DEFAULT_SEASON_NAME = "Default Season"
 ACTIVE_SEASON_STATUS = "active"
+ARCHIVED_SEASON_STATUS = "archived"
 
 
 def _validate_guild_id(guild_id: str) -> None:
@@ -156,3 +157,64 @@ class SeasonRepository:
             ) as cursor:
                 rows = await cursor.fetchall()
         return [_row_to_season(row) for row in rows]
+
+    async def start_new_season(self, guild_id: str, name: str) -> dict:
+        """Archive the current active season and create a new active season."""
+        _validate_guild_id(guild_id)
+        season_name = name.strip()
+        if not season_name:
+            raise ValueError("Season name is required.")
+
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                db.row_factory = aiosqlite.Row
+                active_season = await _get_active_season_in_connection(db, guild_id)
+                if active_season is not None:
+                    async with db.execute(
+                        "SELECT COUNT(*) FROM fixtures WHERE guild_id = ? AND season_id = ? AND status = 'open'",
+                        (guild_id, active_season["id"]),
+                    ) as cursor:
+                        row = await cursor.fetchone()
+                    open_count = int(row[0]) if row else 0
+                    if open_count:
+                        message = "Close all open fixtures before starting a new season."
+                        raise ValueError(message)
+
+                    await db.execute(
+                        """
+                        UPDATE seasons
+                        SET status = ?, ended_at = CURRENT_TIMESTAMP
+                        WHERE id = ? AND guild_id = ? AND status = ?
+                        """,
+                        (
+                            ARCHIVED_SEASON_STATUS,
+                            active_season["id"],
+                            guild_id,
+                            ACTIVE_SEASON_STATUS,
+                        ),
+                    )
+
+                cursor = await db.execute(
+                    "INSERT INTO seasons (guild_id, name, status) VALUES (?, ?, ?)",
+                    (guild_id, season_name, ACTIVE_SEASON_STATUS),
+                )
+                if cursor.lastrowid is None:
+                    raise RuntimeError("Failed to create season: lastrowid is None")
+                season_id = cursor.lastrowid
+
+                await db.execute(
+                    "UPDATE guild_config SET active_season_id = ?, updated_at = CURRENT_TIMESTAMP WHERE guild_id = ?",
+                    (season_id, guild_id),
+                )
+
+                async with db.execute("SELECT * FROM seasons WHERE id = ?", (season_id,)) as cursor:
+                    row = await cursor.fetchone()
+                if row is None:
+                    raise RuntimeError("Created season disappeared")
+
+                await db.commit()
+                return _row_to_season(row)
+            except Exception:
+                await db.rollback()
+                raise

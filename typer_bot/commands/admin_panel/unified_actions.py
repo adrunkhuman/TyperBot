@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from typer_bot.utils import format_standings, has_setup_permission, now
+from typer_bot.utils import format_standings, get_admin_permission_error, has_setup_permission, now
 
 from .modals import CreateFixtureModal, EnterResultsModal
 
@@ -15,9 +15,9 @@ if TYPE_CHECKING:
 
 
 class SetupBotButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
-        super().__init__(label="Setup TyperBot", style=discord.ButtonStyle.secondary, row=2)
+        super().__init__(label="Setup TyperBot", style=discord.ButtonStyle.secondary, row=row)
 
     async def callback(self, interaction: discord.Interaction):
         from typer_bot.commands.admin_commands import GuildSetupPromptView
@@ -36,9 +36,9 @@ class SetupBotButton(discord.ui.Button):
 
 
 class CreateFixtureButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
-        super().__init__(label="Create Fixture", style=discord.ButtonStyle.success, row=2)
+        super().__init__(label="Create Fixture", style=discord.ButtonStyle.success, row=row)
 
     async def callback(self, interaction: discord.Interaction):
         channel = interaction.channel
@@ -68,6 +68,70 @@ class CreateFixtureButton(discord.ui.Button):
             self.parent_view.bot,
         )
         await interaction.response.send_modal(modal)
+
+
+class NewSeasonModal(discord.ui.Modal):
+    def __init__(self, parent_view: UnifiedAdminPanelView):
+        super().__init__(title="Start New Season")
+        self.parent_view = parent_view
+        self.name_input = discord.ui.TextInput(
+            label="Season Name",
+            placeholder="e.g. 2026/27",
+            required=True,
+            max_length=80,
+        )
+        self.add_item(self.name_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != self.parent_view.owner_user_id:
+            await interaction.response.send_message(
+                "You don't have permission to do this!", ephemeral=True
+            )
+            return
+        permission_error = await get_admin_permission_error(interaction, self.parent_view.db)
+        if permission_error is not None:
+            await interaction.response.send_message(permission_error, ephemeral=True)
+            return
+        if interaction.guild_id is None:
+            await interaction.response.send_message(
+                "Season management must be used in a server.", ephemeral=True
+            )
+            return
+
+        try:
+            season = await self.parent_view.db.start_new_season(
+                str(interaction.guild_id),
+                self.name_input.value,
+            )
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+
+        self.parent_view.selection.fixture_id = None
+        self.parent_view.selection.fixture_label = ""
+        self.parent_view.selection.fixture_status = None
+        self.parent_view.selection.has_results = False
+        self.parent_view.selection.user_id = None
+        self.parent_view.selection.user_label = ""
+        self.parent_view.selection.detail_lines = []
+        self.parent_view.selection.status_message = f"Started new active season: {season['name']}"
+        self.parent_view.current_prediction = None
+        self.parent_view.has_user_overflow = False
+        self.parent_view.user_select.update_options([])
+        await self.parent_view.load_fixture_options()
+        await interaction.response.edit_message(
+            content=self.parent_view.render_content(),
+            view=self.parent_view,
+        )
+
+
+class NewSeasonButton(discord.ui.Button):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
+        self.parent_view = parent_view
+        super().__init__(label="New Season", style=discord.ButtonStyle.secondary, row=row)
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(NewSeasonModal(self.parent_view))
 
 
 class JumpToWeekModal(discord.ui.Modal):
@@ -110,9 +174,11 @@ class JumpToWeekModal(discord.ui.Modal):
         self.parent_view.selection.fixture_label = (
             f"Week {fixture['week_number']} [{fixture['status'].upper()}]"
         )
+        self.parent_view.selection.fixture_status = fixture["status"]
         self.parent_view.selection.user_id = None
         self.parent_view.selection.user_label = ""
         self.parent_view.selection.detail_lines = []
+        self.parent_view.selection.has_results = False
         self.parent_view.selection.status_message = ""
         await self.parent_view.populate_fixture_details(fixture)
         await self.parent_view.load_user_options()
@@ -125,22 +191,22 @@ class JumpToWeekModal(discord.ui.Modal):
 
 
 class JumpToWeekButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
-        super().__init__(label="Jump To Week", style=discord.ButtonStyle.secondary, row=2)
+        super().__init__(label="Jump To Week", style=discord.ButtonStyle.secondary, row=row)
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.send_modal(JumpToWeekModal(self.parent_view))
 
 
 class EnterResultsButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
         super().__init__(
             label="Enter Results",
             style=discord.ButtonStyle.secondary,
             disabled=parent_view.selection.fixture_id is None,
-            row=3,
+            row=row,
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -165,13 +231,13 @@ class EnterResultsButton(discord.ui.Button):
 
 
 class CalculateScoresButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
         super().__init__(
             label="Calculate Scores",
             style=discord.ButtonStyle.secondary,
             disabled=parent_view.selection.fixture_id is None,
-            row=3,
+            row=row,
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -265,9 +331,9 @@ class PostResultsConfirmView(discord.ui.View):
 
 
 class PostResultsButton(discord.ui.Button):
-    def __init__(self, parent_view: UnifiedAdminPanelView):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
         self.parent_view = parent_view
-        super().__init__(label="Re-post Results", style=discord.ButtonStyle.secondary, row=3)
+        super().__init__(label="Re-post Results", style=discord.ButtonStyle.secondary, row=row)
 
     async def callback(self, interaction: discord.Interaction):
         fixture_data = await self.parent_view.db.get_last_fixture_scores(self.parent_view.guild_id)
