@@ -269,6 +269,7 @@ class TestPredictCommand:
     async def test_predict_modal_marks_late_prediction(
         self, user_commands, mock_interaction, database
     ):
+        await database.update_active_scoring_rules("111111", {"late_prediction_points": 1})
         await _attach_prediction_threads(user_commands, database, [1], mock_interaction.guild)
         fixture = await database.get_fixture_by_id(1, "111111")
         assert fixture is not None
@@ -291,7 +292,10 @@ class TestPredictCommand:
         prediction = await database.get_prediction(1, str(mock_interaction.user.id), "111111")
         assert prediction is not None
         assert prediction["is_late"] == 1
-        assert "Late prediction" in mock_interaction.response_sent[-1]["content"]
+        content = mock_interaction.response_sent[-1]["content"]
+        assert "Late prediction" in content
+        assert "active season's late penalty" in content
+        assert "0 points" not in content
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_dm")
@@ -1077,3 +1081,30 @@ class TestMyPredictionsCommand:
         assert "Week 2" in content
         assert f"1. {sample_games[0]} **2-1**" in content
         assert "No prediction submitted yet." in content
+
+
+class TestHelpCommand:
+    @pytest.mark.asyncio
+    async def test_help_uses_active_season_scoring_rules(
+        self,
+        user_commands,
+        mock_interaction,
+        database,
+    ):
+        await database.update_active_scoring_rules(
+            "111111",
+            {
+                "exact_score_points": 5,
+                "correct_outcome_points": 2,
+                "wrong_outcome_points": 1,
+                "late_prediction_points": 1,
+            },
+        )
+
+        await user_commands.help.callback(user_commands, mock_interaction)
+
+        content = mock_interaction.response_sent[-1]["content"]
+        assert "Exact score: 5 points" in content
+        assert "Correct result (win/loss/draw): 2 points" in content
+        assert "Wrong: 1 point" in content
+        assert "Late full predictions: 1 point" in content

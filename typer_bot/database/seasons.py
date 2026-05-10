@@ -2,6 +2,8 @@
 
 import aiosqlite
 
+from typer_bot.utils import DEFAULT_SCORING_RULES, normalize_scoring_rules
+
 DEFAULT_SEASON_NAME = "Default Season"
 ACTIVE_SEASON_STATUS = "active"
 ARCHIVED_SEASON_STATUS = "archived"
@@ -13,6 +15,7 @@ def _validate_guild_id(guild_id: str) -> None:
 
 
 def _row_to_season(row: aiosqlite.Row) -> dict:
+    scoring_rules = _row_to_scoring_rules(row)
     return {
         "id": row["id"],
         "guild_id": row["guild_id"],
@@ -20,7 +23,29 @@ def _row_to_season(row: aiosqlite.Row) -> dict:
         "status": row["status"],
         "created_at": row["created_at"],
         "ended_at": row["ended_at"],
+        "scoring_rules": scoring_rules,
     }
+
+
+def _row_to_scoring_rules(row: aiosqlite.Row) -> dict:
+    keys = set(row.keys())
+    return normalize_scoring_rules(
+        {key: row[key] for key in DEFAULT_SCORING_RULES if key in keys and row[key] is not None}
+    )
+
+
+def _validate_scoring_rules(rules: dict) -> dict:
+    unknown_rules = set(rules) - set(DEFAULT_SCORING_RULES)
+    if unknown_rules:
+        unknown_list = ", ".join(sorted(unknown_rules))
+        raise ValueError(f"Unknown scoring rule: {unknown_list}")
+    try:
+        normalized = normalize_scoring_rules(rules)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Scoring rule values must be whole numbers.") from exc
+    if any(value < 0 for value in normalized.values()):
+        raise ValueError("Scoring rule values must be zero or greater.")
+    return normalized
 
 
 async def _repair_guild_config_active_season_in_connection(
@@ -82,10 +107,26 @@ async def _create_default_season_in_connection(
 ) -> dict:
     cursor = await db.execute(
         """
-        INSERT INTO seasons (guild_id, name, status)
-        VALUES (?, ?, ?)
+        INSERT INTO seasons (
+            guild_id,
+            name,
+            status,
+            exact_score_points,
+            correct_outcome_points,
+            wrong_outcome_points,
+            late_prediction_points
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (guild_id, DEFAULT_SEASON_NAME, ACTIVE_SEASON_STATUS),
+        (
+            guild_id,
+            DEFAULT_SEASON_NAME,
+            ACTIVE_SEASON_STATUS,
+            DEFAULT_SCORING_RULES["exact_score_points"],
+            DEFAULT_SCORING_RULES["correct_outcome_points"],
+            DEFAULT_SCORING_RULES["wrong_outcome_points"],
+            DEFAULT_SCORING_RULES["late_prediction_points"],
+        ),
     )
     if cursor.lastrowid is None:
         raise RuntimeError("Failed to create season: lastrowid is None")
@@ -158,6 +199,71 @@ class SeasonRepository:
                 rows = await cursor.fetchall()
         return [_row_to_season(row) for row in rows]
 
+    async def get_active_scoring_rules(self, guild_id: str) -> dict | None:
+        """Return the active season's scoring rules, if a season exists."""
+        _validate_guild_id(guild_id)
+        season = await self.get_active_season(guild_id)
+        return season["scoring_rules"] if season else None
+
+    async def update_active_scoring_rules(self, guild_id: str, rules: dict) -> dict:
+        """Update active-season scoring rules unless stored scores already exist."""
+        _validate_guild_id(guild_id)
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                db.row_factory = aiosqlite.Row
+                active_season = await _get_active_season_in_connection(db, guild_id)
+                if active_season is None:
+                    active_season = await _create_default_season_in_connection(db, guild_id)
+                normalized = _validate_scoring_rules(active_season["scoring_rules"] | rules)
+
+                async with db.execute(
+                    """
+                    SELECT 1
+                    FROM scores score
+                    JOIN fixtures fixture ON fixture.id = score.fixture_id
+                    WHERE fixture.guild_id = ? AND fixture.season_id = ?
+                    LIMIT 1
+                    """,
+                    (guild_id, active_season["id"]),
+                ) as cursor:
+                    if await cursor.fetchone() is not None:
+                        message = "Cannot change scoring rules after scores have been calculated for this season."
+                        raise ValueError(message)
+
+                await db.execute(
+                    """
+                    UPDATE seasons
+                    SET exact_score_points = ?,
+                        correct_outcome_points = ?,
+                        wrong_outcome_points = ?,
+                        late_prediction_points = ?
+                    WHERE id = ? AND guild_id = ? AND status = ?
+                    """,
+                    (
+                        normalized["exact_score_points"],
+                        normalized["correct_outcome_points"],
+                        normalized["wrong_outcome_points"],
+                        normalized["late_prediction_points"],
+                        active_season["id"],
+                        guild_id,
+                        ACTIVE_SEASON_STATUS,
+                    ),
+                )
+                async with db.execute(
+                    "SELECT * FROM seasons WHERE id = ?",
+                    (active_season["id"],),
+                ) as cursor:
+                    row = await cursor.fetchone()
+                if row is None:
+                    raise RuntimeError("Active season disappeared")
+
+                await db.commit()
+                return _row_to_season(row)["scoring_rules"]
+            except Exception:
+                await db.rollback()
+                raise
+
     async def start_new_season(self, guild_id: str, name: str) -> dict:
         """Archive the current active season and create a new active season."""
         _validate_guild_id(guild_id)
@@ -196,8 +302,27 @@ class SeasonRepository:
                     )
 
                 cursor = await db.execute(
-                    "INSERT INTO seasons (guild_id, name, status) VALUES (?, ?, ?)",
-                    (guild_id, season_name, ACTIVE_SEASON_STATUS),
+                    """
+                    INSERT INTO seasons (
+                        guild_id,
+                        name,
+                        status,
+                        exact_score_points,
+                        correct_outcome_points,
+                        wrong_outcome_points,
+                        late_prediction_points
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        guild_id,
+                        season_name,
+                        ACTIVE_SEASON_STATUS,
+                        DEFAULT_SCORING_RULES["exact_score_points"],
+                        DEFAULT_SCORING_RULES["correct_outcome_points"],
+                        DEFAULT_SCORING_RULES["wrong_outcome_points"],
+                        DEFAULT_SCORING_RULES["late_prediction_points"],
+                    ),
                 )
                 if cursor.lastrowid is None:
                     raise RuntimeError("Failed to create season: lastrowid is None")

@@ -6,6 +6,16 @@ import aiosqlite
 
 from typer_bot.utils import build_fixture_scores
 
+
+def _season_row_to_scoring_rules(row: aiosqlite.Row) -> dict:
+    return {
+        "exact_score_points": row["exact_score_points"],
+        "correct_outcome_points": row["correct_outcome_points"],
+        "wrong_outcome_points": row["wrong_outcome_points"],
+        "late_prediction_points": row["late_prediction_points"],
+    }
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,7 +53,12 @@ async def _recalculate_scores_in_connection(db: aiosqlite.Connection, fixture_id
     try:
         async with db.execute(
             """
-            SELECT f.*
+            SELECT
+                f.*,
+                s.exact_score_points,
+                s.correct_outcome_points,
+                s.wrong_outcome_points,
+                s.late_prediction_points
             FROM fixtures f
             JOIN seasons s ON s.id = f.season_id AND s.guild_id = f.guild_id
             WHERE f.id = ? AND s.status = 'active'
@@ -72,7 +87,11 @@ async def _recalculate_scores_in_connection(db: aiosqlite.Connection, fixture_id
 
         results = results_row["results"].split("\n")
         predictions = [_prediction_row_to_score_input(row) for row in prediction_rows]
-        scores = build_fixture_scores(predictions, results)
+        scores = build_fixture_scores(
+            predictions,
+            results,
+            _season_row_to_scoring_rules(fixture_row),
+        )
 
         await db.execute("DELETE FROM scores WHERE fixture_id = ?", (fixture_id,))
         for score in scores:

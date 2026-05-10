@@ -19,7 +19,13 @@ from .prediction_parser import (
     parse_prediction_lines,
     parse_predictions,
 )
-from .scoring import align_predictions_to_fixture, build_fixture_scores, calculate_points
+from .scoring import (
+    DEFAULT_SCORING_RULES,
+    align_predictions_to_fixture,
+    build_fixture_scores,
+    calculate_points,
+    normalize_scoring_rules,
+)
 from .timezone import APP_TZ, format_for_discord, now, parse_deadline, parse_iso
 
 __all__ = [
@@ -38,8 +44,10 @@ __all__ = [
     "format_predictions_preview",
     "format_standings",
     "align_predictions_to_fixture",
+    "DEFAULT_SCORING_RULES",
     "calculate_points",
     "build_fixture_scores",
+    "normalize_scoring_rules",
     "now",
     "parse_deadline",
     "format_for_discord",

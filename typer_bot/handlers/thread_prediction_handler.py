@@ -250,7 +250,7 @@ class ThreadPredictionHandler:
                     else:
                         await message.author.send(
                             "⚠️ **Late prediction!** Your prediction was saved but you will receive "
-                            "0 points for this round since the deadline has passed."
+                            "the active season's late penalty unless an admin waives it."
                         )
             elif is_partial:
                 with suppress(discord.Forbidden):

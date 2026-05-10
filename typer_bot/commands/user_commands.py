@@ -16,6 +16,7 @@ from typer_bot.utils import (
     format_standings,
     get_configured_admin_role_mention,
     is_configured_admin,
+    normalize_scoring_rules,
     now,
     parse_prediction_lines,
 )
@@ -23,6 +24,26 @@ from typer_bot.utils import (
 SELECT_PAGE_SIZE = 25
 BUTTON_PAGE_SIZE = 23
 logger = logging.getLogger(__name__)
+
+
+def _format_scoring_help(scoring_rules: dict | None) -> str:
+    rules = normalize_scoring_rules(scoring_rules)
+    exact_points = _points_label(rules["exact_score_points"])
+    outcome_points = _points_label(rules["correct_outcome_points"])
+    wrong_points = _points_label(rules["wrong_outcome_points"])
+    late_points = _points_label(rules["late_prediction_points"])
+    return (
+        "**Scoring:**\n"
+        f"• Exact score: {exact_points}\n"
+        f"• Correct result (win/loss/draw): {outcome_points}\n"
+        f"• Wrong: {wrong_points}\n"
+        f"• Late full predictions: {late_points} unless an admin waives the penalty\n"
+        "• Late predictions with missing games: pending admin review"
+    )
+
+
+def _points_label(points: int) -> str:
+    return f"{points} point" if points == 1 else f"{points} points"
 
 
 async def _require_guild_id(interaction: discord.Interaction) -> str | None:
@@ -493,7 +514,7 @@ class PredictModal(discord.ui.Modal):
                 "if an admin approves this late submission with missing games."
             )
         elif is_late:
-            content += "\n\n⚠️ **Late prediction!** You will receive 0 points for this round."
+            content += "\n\n⚠️ **Late prediction!** The active season's late penalty applies unless an admin waives it."
         elif is_partial:
             content += (
                 "\n\nℹ️ **Partial prediction saved:** any missing games will count as no prediction. "
@@ -619,8 +640,12 @@ class UserCommands(commands.Cog):
     async def help(self, interaction: discord.Interaction):
         """Display help for users and admins."""
         is_admin_user = await is_configured_admin(interaction, self.db)
+        scoring_rules = None
+        if interaction.guild_id is not None:
+            scoring_rules = await self.db.get_active_scoring_rules(str(interaction.guild_id))
+        scoring_help = _format_scoring_help(scoring_rules)
 
-        user_help = """## 📖 User Commands
+        user_help = f"""## 📖 User Commands
 
 **For Players:**
 • `/predict` - Choose the week if needed, fill the modal, and post predictions publicly to the fixture thread
@@ -649,12 +674,7 @@ Team C - Team D 1:1
 • Rejected late submissions are discarded
 • Public review status stays visible in the fixture thread
 
-**Scoring:**
-• Exact score: 3 points
-• Correct result (win/loss/draw): 1 point
-• Wrong: 0 points
-• Late full predictions: 0 points unless an admin waives the penalty
-• Late predictions with missing games: pending admin review
+{scoring_help}
 
 **Input formats:** `2:0`, `2-0`, `2 : 0`"""
 

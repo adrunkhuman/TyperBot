@@ -2,6 +2,21 @@
 
 from collections.abc import Sequence
 
+DEFAULT_SCORING_RULES = {
+    "exact_score_points": 3,
+    "correct_outcome_points": 1,
+    "wrong_outcome_points": 0,
+    "late_prediction_points": 0,
+}
+
+
+def normalize_scoring_rules(rules: dict | None = None) -> dict:
+    """Return scoring rules with defaults for omitted fields."""
+    normalized = DEFAULT_SCORING_RULES.copy()
+    if rules:
+        normalized.update({key: int(value) for key, value in rules.items() if key in normalized})
+    return normalized
+
 
 def align_predictions_to_fixture(
     predictions: list[str],
@@ -21,21 +36,16 @@ def calculate_points(
     actual_results: Sequence[str],
     is_late: bool = False,
     late_penalty_waived: bool = False,
+    scoring_rules: dict | None = None,
 ) -> dict:
-    """Calculate points.
-
-    Exact: 3pts
-    Outcome: 1pt
-    Late: -100% penalty (0pts)
-
-    Returns: dict with points, exact_scores, correct_results, penalty
-    """
+    """Calculate points from prediction rows and season scoring rules."""
+    rules = normalize_scoring_rules(scoring_rules)
     if is_late and not late_penalty_waived:
         return {
-            "points": 0,
+            "points": rules["late_prediction_points"],
             "exact_scores": 0,
             "correct_results": 0,
-            "penalty": "Late prediction - 100% penalty applied",
+            "penalty": "Late prediction penalty applied",
         }
 
     total_points = 0
@@ -59,15 +69,17 @@ def calculate_points(
         actual_home, actual_away = parsed_actual
 
         if pred_home == actual_home and pred_away == actual_away:
-            total_points += 3
+            total_points += rules["exact_score_points"]
             exact_count += 1
         elif (
             (pred_home > pred_away and actual_home > actual_away)
             or (pred_home < pred_away and actual_home < actual_away)
             or (pred_home == pred_away and actual_home == actual_away)
         ):
-            total_points += 1
+            total_points += rules["correct_outcome_points"]
             correct_count += 1
+        else:
+            total_points += rules["wrong_outcome_points"]
 
     return {
         "points": total_points,
@@ -77,8 +89,13 @@ def calculate_points(
     }
 
 
-def build_fixture_scores(predictions: Sequence[dict], results: Sequence[str]) -> list[dict]:
+def build_fixture_scores(
+    predictions: Sequence[dict],
+    results: Sequence[str],
+    scoring_rules: dict | None = None,
+) -> list[dict]:
     """Build sorted fixture score rows from stored prediction payloads."""
+    rules = normalize_scoring_rules(scoring_rules)
     scores = []
     for prediction in predictions:
         aligned_predictions = align_predictions_to_fixture(
@@ -91,6 +108,7 @@ def build_fixture_scores(predictions: Sequence[dict], results: Sequence[str]) ->
             results,
             prediction["is_late"],
             prediction["late_penalty_waived"],
+            rules,
         )
         scores.append(
             {

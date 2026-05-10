@@ -42,6 +42,22 @@ class TestCalculatePoints:
         assert result["exact_scores"] == 0
         assert result["correct_results"] == 0
 
+    def test_custom_scoring_rules(self):
+        result = calculate_points(
+            ["2-1", "1-1", "0-2"],
+            ["2-1", "2-2", "2-0"],
+            scoring_rules={
+                "exact_score_points": 5,
+                "correct_outcome_points": 2,
+                "wrong_outcome_points": 1,
+                "late_prediction_points": 0,
+            },
+        )
+
+        assert result["points"] == 8
+        assert result["exact_scores"] == 1
+        assert result["correct_results"] == 1
+
     def test_mixed_results_multiple_games(self):
         """Multiple games with exact, correct, and wrong outcomes."""
         predictions = ["2-1", "3-0", "1-1", "0-2"]
@@ -58,7 +74,19 @@ class TestCalculatePoints:
         assert result["points"] == 0
         assert result["exact_scores"] == 0
         assert result["correct_results"] == 0
-        assert result["penalty"] == "Late prediction - 100% penalty applied"
+        assert result["penalty"] == "Late prediction penalty applied"
+
+    def test_custom_late_prediction_points(self):
+        result = calculate_points(
+            ["2-1"],
+            ["2-1"],
+            is_late=True,
+            scoring_rules={"late_prediction_points": 1},
+        )
+
+        assert result["points"] == 1
+        assert result["exact_scores"] == 0
+        assert result["correct_results"] == 0
 
     def test_empty_predictions(self):
         """Empty prediction lists should return 0 points."""
@@ -192,4 +220,33 @@ class TestBuildFixtureScores:
         assert [(score["user_id"], score["points"]) for score in scores] == [
             ("waived", 3),
             ("late", 0),
+        ]
+
+    def test_scores_with_custom_rules(self):
+        scores = build_fixture_scores(
+            [
+                {
+                    "user_id": "exact",
+                    "user_name": "Exact User",
+                    "predictions": ["2-1"],
+                    "predicted_game_indexes": [0],
+                    "is_late": False,
+                    "late_penalty_waived": False,
+                },
+                {
+                    "user_id": "late",
+                    "user_name": "Late User",
+                    "predictions": ["2-1"],
+                    "predicted_game_indexes": [0],
+                    "is_late": True,
+                    "late_penalty_waived": False,
+                },
+            ],
+            ["2-1"],
+            {"exact_score_points": 5, "late_prediction_points": 1},
+        )
+
+        assert [(score["user_id"], score["points"]) for score in scores] == [
+            ("exact", 5),
+            ("late", 1),
         ]
