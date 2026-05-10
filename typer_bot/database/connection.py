@@ -12,6 +12,7 @@ from .guild_config import GuildConfigRepository
 from .predictions import PredictionRepository, SaveResult
 from .results import ResultsRepository
 from .scores import ScoreRepository
+from .seasons import SeasonRepository
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +138,78 @@ async def _validate_fixture_guild_ownership(db: aiosqlite.Connection) -> None:
         )
 
 
+async def _validate_season_schema(db: aiosqlite.Connection) -> None:
+    fixture_columns = await _table_columns(db, "fixtures")
+    if "season_id" not in fixture_columns:
+        raise RuntimeError(
+            "fixtures.season_id is missing. Run the one-time v3.0.0 season migration before starting the bot."
+        )
+
+    guild_config_columns = await _table_columns(db, "guild_config")
+    if "active_season_id" not in guild_config_columns:
+        raise RuntimeError(
+            "guild_config.active_season_id is missing. Run the one-time v3.0.0 season migration before starting the bot."
+        )
+
+    async with db.execute(
+        """
+        SELECT COUNT(*)
+        FROM fixtures
+        WHERE season_id IS NULL
+           OR NOT EXISTS (
+               SELECT 1
+               FROM seasons s
+               WHERE s.id = fixtures.season_id
+                 AND s.guild_id = fixtures.guild_id
+           )
+        """
+    ) as cursor:
+        row = await cursor.fetchone()
+    if row and row[0] > 0:
+        raise RuntimeError(
+            "fixtures.season_id has empty or cross-guild rows. Run the one-time v3.0.0 season migration before starting the bot."
+        )
+
+    async with db.execute(
+        """
+        SELECT COUNT(*)
+        FROM (
+            SELECT guild_id
+            FROM seasons
+            WHERE status = 'active'
+            GROUP BY guild_id
+            HAVING COUNT(*) > 1
+        )
+        """
+    ) as cursor:
+        row = await cursor.fetchone()
+    if row and row[0] > 0:
+        raise RuntimeError(
+            "multiple active seasons exist for a guild. Keep one active season per guild before starting the bot."
+        )
+
+    async with db.execute(
+        """
+        SELECT COUNT(*)
+        FROM (
+            SELECT DISTINCT f.guild_id
+            FROM fixtures f
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM seasons s
+                WHERE s.guild_id = f.guild_id
+                  AND s.status = 'active'
+            )
+        )
+        """
+    ) as cursor:
+        row = await cursor.fetchone()
+    if row and row[0] > 0:
+        raise RuntimeError(
+            "fixture guilds without an active season exist. Create one active season per fixture guild before starting the bot."
+        )
+
+
 class Database:
     """Composition root for SQLite setup and the bot's stable data facade.
 
@@ -157,6 +230,7 @@ class Database:
         self._predictions = PredictionRepository(self.db_path)
         self._results = ResultsRepository(self.db_path)
         self._scores = ScoreRepository(self.db_path)
+        self._seasons = SeasonRepository(self.db_path)
 
     async def initialize(self) -> None:
         """Create tables, enable WAL mode, and apply additive migrations.
@@ -175,9 +249,21 @@ class Database:
                 if row and row[0] != "wal":
                     logger.warning("WAL mode not applied; journal_mode=%s", row[0])
             await db.execute("""
+                CREATE TABLE IF NOT EXISTS seasons (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    ended_at DATETIME
+                )
+            """)
+
+            await db.execute("""
                 CREATE TABLE IF NOT EXISTS fixtures (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     guild_id TEXT NOT NULL,
+                    season_id INTEGER,
                     week_number INTEGER NOT NULL,
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
@@ -238,6 +324,7 @@ class Database:
                     guild_id TEXT PRIMARY KEY,
                     admin_role_id TEXT NOT NULL,
                     league_channel_id TEXT NOT NULL,
+                    active_season_id INTEGER,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
@@ -255,6 +342,7 @@ class Database:
 
             await _validate_fixture_guild_ownership(db)
 
+            await _validate_season_schema(db)
             await _migrate_prediction_columns(db)
             await _migrate_results_table(db)
 
@@ -268,6 +356,12 @@ class Database:
             await db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_fixtures_guild_week ON fixtures(guild_id, week_number)"
             )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_seasons_guild_status ON seasons(guild_id, status)"
+            )
+            await db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_seasons_one_active_per_guild ON seasons(guild_id) WHERE status = 'active'"
+            )
 
             await db.commit()
 
@@ -278,6 +372,15 @@ class Database:
 
     async def get_guild_config(self, guild_id):
         return await self._guild_config.get_guild_config(guild_id)
+
+    async def get_active_season(self, guild_id):
+        return await self._seasons.get_active_season(guild_id)
+
+    async def get_or_create_active_season(self, guild_id):
+        return await self._seasons.get_or_create_active_season(guild_id)
+
+    async def get_seasons(self, guild_id):
+        return await self._seasons.get_seasons(guild_id)
 
     async def create_fixture(self, guild_id, week_number, games, deadline):
         return await self._fixtures.create_fixture(guild_id, week_number, games, deadline)

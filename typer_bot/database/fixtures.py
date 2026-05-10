@@ -8,6 +8,8 @@ import aiosqlite
 from typer_bot.utils import parse_iso
 from typer_bot.utils.config import DB_PATH
 
+from .seasons import _get_or_create_active_season_in_connection
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,6 +38,7 @@ class FixtureRepository:
             "id": row_dict.get("id"),
             "guild_id": row_dict.get("guild_id"),
             "week_number": row_dict.get("week_number"),
+            "season_id": row_dict.get("season_id"),
             "games": [g for g in games_text.split("\n") if g],
             "deadline": parse_iso(deadline_text) if deadline_text else None,
             "status": row_dict.get("status"),
@@ -58,11 +61,23 @@ class FixtureRepository:
             deadline = deadline.replace(tzinfo=APP_TZ)
         start_time = time.perf_counter()
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute(
-                "INSERT INTO fixtures (guild_id, week_number, games, deadline) VALUES (?, ?, ?, ?)",
-                (guild_id, week_number, "\n".join(games), deadline.isoformat()),
-            )
-            await db.commit()
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                season = await _get_or_create_active_season_in_connection(db, guild_id)
+                cursor = await db.execute(
+                    "INSERT INTO fixtures (guild_id, season_id, week_number, games, deadline) VALUES (?, ?, ?, ?, ?)",
+                    (
+                        guild_id,
+                        season["id"],
+                        week_number,
+                        "\n".join(games),
+                        deadline.isoformat(),
+                    ),
+                )
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
             if cursor.lastrowid is None:
                 raise RuntimeError("Failed to create fixture: lastrowid is None")
 
@@ -104,9 +119,10 @@ class FixtureRepository:
                     row = await cursor.fetchone()
                     next_week = int(row[0]) + 1 if row else 1
 
+                season = await _get_or_create_active_season_in_connection(db, guild_id)
                 insert_cursor = await db.execute(
-                    "INSERT INTO fixtures (guild_id, week_number, games, deadline) VALUES (?, ?, ?, ?)",
-                    (guild_id, next_week, "\n".join(games), deadline.isoformat()),
+                    "INSERT INTO fixtures (guild_id, season_id, week_number, games, deadline) VALUES (?, ?, ?, ?, ?)",
+                    (guild_id, season["id"], next_week, "\n".join(games), deadline.isoformat()),
                 )
                 await db.commit()
             except Exception:
