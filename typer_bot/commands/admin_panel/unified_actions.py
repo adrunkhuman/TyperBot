@@ -24,12 +24,13 @@ class SetupBotButton(discord.ui.Button):
 
         if not has_setup_permission(interaction):
             await interaction.response.send_message(
-                "Only a server admin can configure TyperBot for this server.", ephemeral=True
+                "Only someone with Administrator or Manage Server can configure TyperBot.",
+                ephemeral=True,
             )
             return
 
         await interaction.response.send_message(
-            "Update TyperBot setup for this server.",
+            "Update the admin role and league channel for this server's league.",
             view=GuildSetupPromptView(self.parent_view.db, str(interaction.user.id)),
             ephemeral=True,
         )
