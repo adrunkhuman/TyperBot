@@ -109,6 +109,8 @@ class NewSeasonModal(discord.ui.Modal):
 
         self.parent_view.selection.fixture_id = None
         self.parent_view.selection.fixture_label = ""
+        self.parent_view.selection.fixture_status = None
+        self.parent_view.selection.has_results = False
         self.parent_view.selection.user_id = None
         self.parent_view.selection.user_label = ""
         self.parent_view.selection.detail_lines = []
@@ -172,9 +174,11 @@ class JumpToWeekModal(discord.ui.Modal):
         self.parent_view.selection.fixture_label = (
             f"Week {fixture['week_number']} [{fixture['status'].upper()}]"
         )
+        self.parent_view.selection.fixture_status = fixture["status"]
         self.parent_view.selection.user_id = None
         self.parent_view.selection.user_label = ""
         self.parent_view.selection.detail_lines = []
+        self.parent_view.selection.has_results = False
         self.parent_view.selection.status_message = ""
         await self.parent_view.populate_fixture_details(fixture)
         await self.parent_view.load_user_options()

@@ -93,10 +93,15 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.add_item(self.fixture_select)
         self.add_item(self.user_select)
 
+        selected_fixture_is_open = (
+            self.selection.fixture_id is not None and self.selection.fixture_status == "open"
+        )
         self.add_item(CreateFixtureButton(self, row=2))
-        if self.selection.fixture_id is not None:
+        if selected_fixture_is_open and not self.selection.has_results:
             self.add_item(EnterResultsButton(self, row=2))
+        if selected_fixture_is_open:
             self.add_item(CalculateScoresButton(self, row=2))
+        if self.selection.fixture_id is not None and self.selection.has_results:
             self.add_item(CorrectResultsButton(self, row=2))
         self.add_item(PostResultsButton(self, row=2))
 
@@ -120,7 +125,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
             self.add_item(
                 ViewPredictionsButton(self, disabled=self.selection.fixture_id is None, row=3)
             )
-        if self.selection.fixture_id is not None:
+        if selected_fixture_is_open:
             self.add_item(FixturesDeleteButton(self, row=3))
         if self.has_pending_partials:
             self.add_item(ReviewPendingPartialsButton(self, row=3))
@@ -163,11 +168,13 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
 
     async def populate_fixture_details(self, fixture: dict | None) -> None:
         self.selection.detail_lines = []
+        self.selection.has_results = False
         if fixture is None:
             return
 
         results = await self.db.get_results(fixture["id"])
         if results:
+            self.selection.has_results = True
             self.selection.detail_lines = _build_detail_lines(fixture["games"], results)
 
     def render_content(self) -> str:

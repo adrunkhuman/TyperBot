@@ -179,10 +179,12 @@ class ReviewPendingPartialsButton(discord.ui.Button):
         self.parent_view.selection.fixture_label = (
             f"Week {fixture['week_number']} [{fixture['status'].upper()}]"
         )
+        self.parent_view.selection.fixture_status = fixture["status"]
         self.parent_view.selection.user_id = next_prediction["user_id"]
         self.parent_view.selection.user_label = (
             f"{next_prediction['user_name']} ({_prediction_status_text(next_prediction)})"
         )
+        await self.parent_view.populate_fixture_details(fixture)
         self.parent_view.selection.detail_lines = _build_indexed_detail_lines(
             next_prediction["predicted_game_indexes"],
             fixture["games"],
