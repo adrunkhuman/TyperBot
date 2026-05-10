@@ -29,9 +29,23 @@ You are working on `TyperBot`, a Discord bot for football prediction leagues.
 SQLite. Tables are initialized in `typer_bot/database/connection.py`.
 
 ```sql
+seasons (
+    id INTEGER PK,
+    guild_id TEXT,
+    name TEXT,
+    status TEXT DEFAULT 'active',       -- 'active' or 'archived'
+    exact_score_points INTEGER DEFAULT 3,
+    correct_outcome_points INTEGER DEFAULT 1,
+    wrong_outcome_points INTEGER DEFAULT 0,
+    late_prediction_points INTEGER DEFAULT 0,
+    created_at DATETIME,
+    ended_at DATETIME
+)
+
 fixtures (
     id INTEGER PK,
     guild_id TEXT,                   -- Discord guild/server ID owning the league state
+    season_id INTEGER FK,
     week_number INTEGER,
     games TEXT,                      -- Newline separated: "Team A - Team B\nTeam C - Team D"
     deadline DATETIME,
@@ -73,7 +87,7 @@ scores (
     fixture_id INTEGER FK,
     user_id TEXT,
     user_name TEXT,
-    points INTEGER,                  -- 3 (exact), 1 (outcome), 0 (miss)
+    points INTEGER,                  -- Calculated from the fixture season's scoring rules
     exact_scores INTEGER,
     correct_results INTEGER,
     UNIQUE(fixture_id, user_id)
@@ -83,6 +97,7 @@ guild_config (
     guild_id TEXT PK,
     admin_role_id TEXT,
     league_channel_id TEXT,
+    active_season_id INTEGER,
     created_at DATETIME,
     updated_at DATETIME
 )
@@ -96,7 +111,7 @@ guild_config (
 - `typer_bot/commands/admin_commands.py`: `/admin` command surface and orchestration for admin workflows, including admin calculation cooldown state.
 - `typer_bot/utils/config.py`: Centralized configuration (data paths via env vars).
 - `typer_bot/utils/prediction_parser.py`: Central logic for parsing "2-1" or "2:1" strings.
-- `typer_bot/utils/scoring.py`: Point calculation rules.
+- `typer_bot/utils/scoring.py`: Point calculation using season scoring rules.
 - `typer_bot/utils/logger.py`: structured logging configuration for local and deployed environments.
 - `typer_bot/utils/db_backup.py`: Automatic database backup after successful score calculation.
 - `scripts/restore_db.py`: Manual database restore from a host or container shell.

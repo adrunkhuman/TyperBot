@@ -110,6 +110,7 @@ class TestOnMessage:
     @pytest.mark.asyncio
     async def test_marks_late_predictions(self, handler, database, mock_message, sample_games):
         """Should mark predictions as late when past deadline."""
+        await database.update_active_scoring_rules("111111", {"late_prediction_points": 1})
         deadline = datetime.now(UTC) - timedelta(hours=1)
         fixture_id = await database.create_fixture("111111", 1, sample_games, deadline)
         await database.update_fixture_announcement(
@@ -128,6 +129,8 @@ class TestOnMessage:
         assert len(predictions) == 1
         assert predictions[0]["is_late"]
         assert "Late prediction" in mock_message.author.dm_sent[0]
+        assert "active season's late penalty" in mock_message.author.dm_sent[0]
+        assert "0 points" not in mock_message.author.dm_sent[0]
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixture_with_thread")

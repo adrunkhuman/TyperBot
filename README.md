@@ -65,11 +65,15 @@ Team E - Team F 3:2
 ```
 
 ## Scoring
+- Scoring rules are stored per season. The defaults are:
 - Exact score: 3 points
 - Correct outcome: 1 point
 - Wrong outcome: 0 points
 - Late full predictions: 0 points unless an admin waives the penalty
 - Late predictions with missing games: excluded from scoring until reviewed by an admin
+- Rule values must be whole numbers greater than or equal to zero.
+- Changing rules is blocked after scores exist for that season, so stored scores do not silently go stale.
+- Starting a new season resets its scoring rules to the defaults.
 
 ## Operational constraints
 - Match data, predictions, results, and scores are stored in SQLite.

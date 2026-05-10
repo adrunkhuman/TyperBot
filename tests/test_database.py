@@ -379,6 +379,75 @@ class TestSeasons:
         assert new_fixture["season_id"] == active_season["id"]
 
     @pytest.mark.asyncio
+    async def test_start_new_season_uses_fresh_default_scoring_rules(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        custom_rules = {
+            "exact_score_points": 5,
+            "correct_outcome_points": 2,
+            "wrong_outcome_points": 1,
+            "late_prediction_points": 1,
+        }
+        await db.update_active_scoring_rules("111111", custom_rules)
+
+        await db.start_new_season("111111", "Next Season")
+
+        seasons = await db.get_seasons("111111")
+        active_rules = await db.get_active_scoring_rules("111111")
+        assert seasons[0]["scoring_rules"] == custom_rules
+        assert active_rules == {
+            "exact_score_points": 3,
+            "correct_outcome_points": 1,
+            "wrong_outcome_points": 0,
+            "late_prediction_points": 0,
+        }
+
+    @pytest.mark.asyncio
+    async def test_scoring_rule_updates_preserve_omitted_values(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.update_active_scoring_rules(
+            "111111",
+            {
+                "exact_score_points": 5,
+                "correct_outcome_points": 2,
+                "wrong_outcome_points": 1,
+                "late_prediction_points": 1,
+            },
+        )
+
+        await db.update_active_scoring_rules("111111", {"late_prediction_points": 2})
+
+        assert await db.get_active_scoring_rules("111111") == {
+            "exact_score_points": 5,
+            "correct_outcome_points": 2,
+            "wrong_outcome_points": 1,
+            "late_prediction_points": 2,
+        }
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("rules", "message"),
+        [
+            ({"exact_score_points": -1}, "zero or greater"),
+            ({"exact_score_points": "many"}, "whole numbers"),
+            ({"exact_points": 5}, "Unknown scoring rule"),
+        ],
+    )
+    async def test_invalid_scoring_rule_updates_do_not_mutate_existing_rules(
+        self, temp_db_path, rules, message
+    ):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.update_active_scoring_rules("111111", {"exact_score_points": 5})
+        existing_rules = await db.get_active_scoring_rules("111111")
+
+        with pytest.raises(ValueError, match=message):
+            await db.update_active_scoring_rules("111111", rules)
+
+        assert await db.get_active_scoring_rules("111111") == existing_rules
+
+    @pytest.mark.asyncio
     async def test_fixture_queries_default_to_active_season(self, temp_db_path):
         db = Database(temp_db_path)
         await db.initialize()
@@ -558,6 +627,201 @@ class TestSeasons:
 
 
 class TestScores:
+    @pytest.mark.asyncio
+    async def test_result_correction_recalculates_with_active_season_rules(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.update_active_scoring_rules(
+            "111111", {"exact_score_points": 5, "correct_outcome_points": 2}
+        )
+        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        await db.save_results(fixture_id, ["2-1"])
+        await db.save_prediction(fixture_id, "user-1", "User One", ["2-1"], False)
+        await db.recalculate_fixture_scores(fixture_id)
+
+        await db.save_results_with_recalc(fixture_id, ["2-0"])
+
+        scores = await db.get_scores_for_fixture(fixture_id)
+        assert scores[0]["points"] == 2
+
+    @pytest.mark.asyncio
+    async def test_prediction_replacement_recalculates_with_active_season_rules(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.update_active_scoring_rules(
+            "111111", {"exact_score_points": 5, "wrong_outcome_points": 1}
+        )
+        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        await db.save_results(fixture_id, ["2-1"])
+        await db.save_prediction(fixture_id, "user-1", "User One", ["2-1"], False)
+        await db.recalculate_fixture_scores(fixture_id)
+
+        updated = await db.admin_update_prediction_with_recalc(
+            fixture_id, "user-1", ["1-2"], "admin-1"
+        )
+
+        scores = await db.get_scores_for_fixture(fixture_id)
+        assert updated is True
+        assert scores[0]["points"] == 1
+
+    @pytest.mark.asyncio
+    async def test_waiver_toggle_recalculates_with_active_season_rules(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.update_active_scoring_rules(
+            "111111", {"exact_score_points": 5, "late_prediction_points": 1}
+        )
+        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        await db.save_results(fixture_id, ["2-1"])
+        await db.save_prediction(fixture_id, "user-1", "User One", ["2-1"], True)
+        await db.recalculate_fixture_scores(fixture_id)
+
+        waived = await db.toggle_late_penalty_waiver_with_recalc(fixture_id, "user-1")
+
+        scores = await db.get_scores_for_fixture(fixture_id)
+        assert waived is True
+        assert scores[0]["points"] == 5
+
+    @pytest.mark.asyncio
+    async def test_partial_approval_recalculates_with_active_season_rules(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.update_active_scoring_rules("111111", {"exact_score_points": 5})
+        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        await db.save_results(fixture_id, ["2-1"])
+        await db.save_prediction(fixture_id, "user-1", "User One", ["2-1"], False)
+        await db.recalculate_fixture_scores(fixture_id)
+        await db.save_prediction(
+            fixture_id,
+            "partial",
+            "Partial User",
+            ["2-1"],
+            True,
+            predicted_game_indexes=[0],
+            pending_partial_approval=True,
+        )
+
+        approved = await db.approve_partial_prediction(fixture_id, "partial", "admin-1")
+
+        scores = await db.get_scores_for_fixture(fixture_id)
+        assert approved is True
+        assert [(score["user_id"], score["points"]) for score in scores] == [
+            ("partial", 5),
+            ("user-1", 5),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_partial_rejection_recalculates_with_active_season_rules(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.update_active_scoring_rules("111111", {"exact_score_points": 5})
+        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        await db.save_results(fixture_id, ["2-1"])
+        await db.save_prediction(fixture_id, "user-1", "User One", ["2-1"], False)
+        await db.save_prediction(
+            fixture_id,
+            "partial",
+            "Partial User",
+            ["2-1"],
+            True,
+            predicted_game_indexes=[0],
+            pending_partial_approval=True,
+        )
+        await db.recalculate_fixture_scores(fixture_id)
+
+        rejected = await db.reject_partial_prediction(fixture_id, "partial")
+
+        scores = await db.get_scores_for_fixture(fixture_id)
+        assert rejected is True
+        assert [(score["user_id"], score["points"]) for score in scores] == [("user-1", 5)]
+
+    @pytest.mark.asyncio
+    async def test_recalculate_fixture_scores_uses_active_season_rules(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.update_active_scoring_rules(
+            "111111",
+            {
+                "exact_score_points": 5,
+                "correct_outcome_points": 2,
+                "wrong_outcome_points": 1,
+                "late_prediction_points": 0,
+            },
+        )
+        fixture_id = await db.create_fixture(
+            "111111", 1, ["A - B", "C - D", "E - F"], datetime.now(UTC)
+        )
+        await db.save_results(fixture_id, ["2-1", "1-1", "2-0"])
+        await db.save_prediction(
+            fixture_id,
+            "user-1",
+            "User One",
+            ["2-1", "2-2", "0-2"],
+            False,
+        )
+
+        await db.recalculate_fixture_scores(fixture_id)
+
+        scores = await db.get_scores_for_fixture(fixture_id)
+        assert scores[0]["points"] == 8
+        assert scores[0]["exact_scores"] == 1
+        assert scores[0]["correct_results"] == 1
+
+    @pytest.mark.asyncio
+    async def test_late_prediction_uses_active_season_penalty_rule(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.update_active_scoring_rules("111111", {"late_prediction_points": 1})
+        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        await db.save_results(fixture_id, ["2-1"])
+        await db.save_prediction(fixture_id, "late", "Late User", ["2-1"], True)
+        await db.save_prediction(fixture_id, "waived", "Waived User", ["2-1"], True)
+        await db.set_late_penalty_waiver(fixture_id, "waived", True)
+
+        await db.recalculate_fixture_scores(fixture_id)
+
+        scores = await db.get_scores_for_fixture(fixture_id)
+        assert [(score["user_id"], score["points"]) for score in scores] == [
+            ("waived", 3),
+            ("late", 1),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_scoring_rules_are_guild_isolated(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.update_active_scoring_rules("111111", {"exact_score_points": 5})
+        guild_one_fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        guild_two_fixture_id = await db.create_fixture("222222", 1, ["A - B"], datetime.now(UTC))
+        for fixture_id in (guild_one_fixture_id, guild_two_fixture_id):
+            await db.save_results(fixture_id, ["2-1"])
+            await db.save_prediction(fixture_id, "user-1", "User One", ["2-1"], False)
+            await db.recalculate_fixture_scores(fixture_id)
+
+        guild_one_scores = await db.get_scores_for_fixture(guild_one_fixture_id)
+        guild_two_scores = await db.get_scores_for_fixture(guild_two_fixture_id)
+        assert guild_one_scores[0]["points"] == 5
+        assert guild_two_scores[0]["points"] == 3
+
+    @pytest.mark.asyncio
+    async def test_scoring_rule_changes_are_blocked_after_scores_exist(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        await db.save_results(fixture_id, ["2-1"])
+        await db.save_prediction(fixture_id, "user-1", "User One", ["2-1"], False)
+        await db.recalculate_fixture_scores(fixture_id)
+
+        with pytest.raises(ValueError, match="Cannot change scoring rules"):
+            await db.update_active_scoring_rules("111111", {"exact_score_points": 5})
+
+        assert await db.get_active_scoring_rules("111111") == {
+            "exact_score_points": 3,
+            "correct_outcome_points": 1,
+            "wrong_outcome_points": 0,
+            "late_prediction_points": 0,
+        }
+
     @pytest.mark.asyncio
     async def test_save_scores_does_not_mutate_when_write_lock_is_held(
         self, temp_db_path, monkeypatch
@@ -1273,9 +1537,16 @@ class TestSchemaMigration:
 
         await db.create_fixture("111111", 1, ["Team A - Team B"], datetime.now(UTC))
         fixture = await db.get_current_fixture("111111")
+        scoring_rules = await db.get_active_scoring_rules("111111")
         assert fixture is not None
         assert "message_id" in fixture
         assert fixture["week_number"] == 1
+        assert scoring_rules == {
+            "exact_score_points": 3,
+            "correct_outcome_points": 1,
+            "wrong_outcome_points": 0,
+            "late_prediction_points": 0,
+        }
 
     @pytest.mark.asyncio
     async def test_initialize_migrates_legacy_results_to_unique_latest_row(self, temp_db_path):

@@ -121,6 +121,20 @@ async def _migrate_prediction_columns(db: aiosqlite.Connection) -> None:
         await db.execute("ALTER TABLE predictions ADD COLUMN public_message_kind TEXT")
 
 
+async def _migrate_season_columns(db: aiosqlite.Connection) -> None:
+    columns = await _table_columns(db, "seasons")
+    scoring_columns = {
+        "exact_score_points": "INTEGER NOT NULL DEFAULT 3",
+        "correct_outcome_points": "INTEGER NOT NULL DEFAULT 1",
+        "wrong_outcome_points": "INTEGER NOT NULL DEFAULT 0",
+        "late_prediction_points": "INTEGER NOT NULL DEFAULT 0",
+    }
+    for column_name, column_definition in scoring_columns.items():
+        if column_name not in columns:
+            logger.info("Adding %s column to seasons table", column_name)
+            await db.execute(f"ALTER TABLE seasons ADD COLUMN {column_name} {column_definition}")
+
+
 async def _validate_fixture_guild_ownership(db: aiosqlite.Connection) -> None:
     columns = await _table_columns(db, "fixtures")
     if "guild_id" not in columns:
@@ -142,7 +156,7 @@ class Database:
     """Composition root for SQLite setup and the bot's stable data facade.
 
     Callers use this facade instead of reaching into repositories directly. It
-    owns path setup, schema initialization, additive migrations, and the focused
+    owns path setup, schema initialization, startup migrations, and the focused
     repository objects that perform the actual reads and writes.
     """
 
@@ -161,7 +175,7 @@ class Database:
         self._seasons = SeasonRepository(self.db_path)
 
     async def initialize(self) -> None:
-        """Create tables, enable WAL mode, and apply additive migrations.
+        """Create tables, enable WAL mode, and apply startup migrations.
 
         Fresh databases get the current schema. Existing databases are migrated
         in place by adding missing columns and by collapsing ``results`` rows
@@ -182,6 +196,10 @@ class Database:
                     guild_id TEXT NOT NULL,
                     name TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'active',
+                    exact_score_points INTEGER NOT NULL DEFAULT 3,
+                    correct_outcome_points INTEGER NOT NULL DEFAULT 1,
+                    wrong_outcome_points INTEGER NOT NULL DEFAULT 0,
+                    late_prediction_points INTEGER NOT NULL DEFAULT 0,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     ended_at DATETIME
                 )
@@ -270,6 +288,7 @@ class Database:
 
             await _validate_fixture_guild_ownership(db)
 
+            await _migrate_season_columns(db)
             await _migrate_prediction_columns(db)
             await _migrate_results_table(db)
 
@@ -308,6 +327,12 @@ class Database:
 
     async def get_seasons(self, guild_id):
         return await self._seasons.get_seasons(guild_id)
+
+    async def get_active_scoring_rules(self, guild_id):
+        return await self._seasons.get_active_scoring_rules(guild_id)
+
+    async def update_active_scoring_rules(self, guild_id, rules):
+        return await self._seasons.update_active_scoring_rules(guild_id, rules)
 
     async def start_new_season(self, guild_id, name):
         return await self._seasons.start_new_season(guild_id, name)
