@@ -261,15 +261,24 @@ class ScoreRepository:
 
     async def get_standings(self, guild_id: str) -> list[dict]:
         """Get standings for one guild."""
+        return await self._get_standings(guild_id)
+
+    async def get_standings_for_season(self, guild_id: str, season_id: int) -> list[dict]:
+        """Get standings for one season owned by one guild."""
+        return await self._get_standings(guild_id, season_id=season_id)
+
+    async def _get_standings(self, guild_id: str, season_id: int | None = None) -> list[dict]:
+        season_filter = "season.id = ?" if season_id is not None else "season.status = 'active'"
+        params = (guild_id, season_id) if season_id is not None else (guild_id,)
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(
-                """WITH guild_scores AS (
+                f"""WITH guild_scores AS (
                            SELECT s.*
                            FROM scores s
                            JOIN fixtures f ON f.id = s.fixture_id
                            JOIN seasons season ON season.id = f.season_id AND season.guild_id = f.guild_id
-                           WHERE f.guild_id = ? AND season.status = 'active'
+                           WHERE f.guild_id = ? AND {season_filter}
                        ),
                        latest_names AS (
                            SELECT user_id, user_name
@@ -292,11 +301,11 @@ class ScoreRepository:
                           SUM(gs.exact_scores) as total_exact,
                           SUM(gs.correct_results) as total_correct,
                           COUNT(DISTINCT gs.fixture_id) as weeks_played
-                    FROM guild_scores gs
-                    JOIN latest_names ln ON ln.user_id = gs.user_id
-                    GROUP BY gs.user_id, ln.user_name
-                    ORDER BY total_points DESC, total_exact DESC, total_correct DESC, ln.user_name ASC""",
-                (guild_id,),
+                     FROM guild_scores gs
+                     JOIN latest_names ln ON ln.user_id = gs.user_id
+                     GROUP BY gs.user_id, ln.user_name
+                     ORDER BY total_points DESC, total_exact DESC, total_correct DESC, ln.user_name ASC""",
+                params,
             ) as cursor:
                 rows = await cursor.fetchall()
                 return [

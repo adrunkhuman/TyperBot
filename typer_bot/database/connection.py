@@ -129,6 +129,28 @@ async def _validate_fixture_guild_ownership(db: aiosqlite.Connection) -> None:
         )
 
 
+async def _validate_fixture_season_ownership(db: aiosqlite.Connection) -> None:
+    async with db.execute(
+        """
+        SELECT f.id
+        FROM fixtures f
+        LEFT JOIN seasons s ON s.id = f.season_id AND s.guild_id = f.guild_id
+        WHERE f.season_id IS NULL OR s.id IS NULL
+        ORDER BY f.id
+        LIMIT 5
+        """
+    ) as cursor:
+        rows = await cursor.fetchall()
+    if not rows:
+        return
+
+    fixture_ids = ", ".join(str(row[0]) for row in rows)
+    raise RuntimeError(
+        "fixtures has rows without a valid same-guild season_id: "
+        f"{fixture_ids}. Assign every fixture to a season owned by the same guild before starting the bot."
+    )
+
+
 async def _validate_current_schema(db: aiosqlite.Connection) -> None:
     for table_name, required_columns in REQUIRED_COLUMNS.items():
         columns = await _table_columns(db, table_name)
@@ -218,6 +240,7 @@ class Database:
             if has_existing_schema:
                 await _validate_current_schema(db)
                 await _validate_fixture_guild_ownership(db)
+                await _validate_fixture_season_ownership(db)
                 await _validate_unique_results(db)
 
             await db.execute("""
@@ -310,6 +333,7 @@ class Database:
             if not has_existing_schema:
                 await _validate_current_schema(db)
                 await _validate_fixture_guild_ownership(db)
+                await _validate_fixture_season_ownership(db)
                 await _validate_unique_results(db)
 
             await db.execute(
@@ -548,6 +572,9 @@ class Database:
 
     async def get_standings(self, guild_id):
         return await self._scores.get_standings(guild_id)
+
+    async def get_standings_for_season(self, guild_id, season_id):
+        return await self._scores.get_standings_for_season(guild_id, season_id)
 
     async def get_last_fixture_scores(self, guild_id):
         return await self._scores.get_last_fixture_scores(guild_id)

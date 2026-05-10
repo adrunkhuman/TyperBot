@@ -11,6 +11,7 @@ from discord.ext import commands
 
 from typer_bot.database import Database, SaveResult
 from typer_bot.utils import (
+    build_prediction_submission,
     format_for_discord,
     format_predictions_preview,
     format_standings,
@@ -425,15 +426,18 @@ class PredictModal(discord.ui.Modal):
             )
             return
 
-        is_late = now() > fixture["deadline"]
+        submitted_at = now()
         existing_prediction = await self.db.get_prediction(
             fixture["id"], str(interaction.user.id), fixture["guild_id"]
         )
-        is_partial = len(predicted_game_indexes) < len(fixture["games"])
-        pending_partial_approval = is_late and is_partial
+        submission = build_prediction_submission(
+            fixture=fixture,
+            predicted_game_indexes=predicted_game_indexes,
+            submitted_at=submitted_at,
+        )
         admin_role_mention = (
             await get_configured_admin_role_mention(str(interaction.guild_id), self.db)
-            if pending_partial_approval
+            if submission.pending_partial_approval
             else None
         )
         public_message = None
@@ -445,8 +449,8 @@ class PredictModal(discord.ui.Modal):
                     predictions,
                     predicted_game_indexes,
                     is_update=existing_prediction is not None,
-                    is_late=is_late,
-                    pending_partial_approval=pending_partial_approval,
+                    is_late=submission.is_late,
+                    pending_partial_approval=submission.pending_partial_approval,
                     admin_role_mention=admin_role_mention,
                 )
             )
@@ -457,17 +461,24 @@ class PredictModal(discord.ui.Modal):
             )
             return
 
+        submission = build_prediction_submission(
+            fixture=fixture,
+            predicted_game_indexes=predicted_game_indexes,
+            submitted_at=submitted_at,
+            public_message_id=str(public_message.id),
+            public_message_kind="bot_post",
+        )
         try:
             result = await self.db.save_prediction_guarded(
                 fixture["id"],
                 str(interaction.user.id),
                 self.user_name,
                 predictions,
-                is_late,
+                submission.is_late,
                 predicted_game_indexes=predicted_game_indexes,
-                pending_partial_approval=pending_partial_approval,
-                public_message_id=str(public_message.id) if pending_partial_approval else None,
-                public_message_kind="bot_post" if pending_partial_approval else None,
+                pending_partial_approval=submission.pending_partial_approval,
+                public_message_id=submission.public_message_id,
+                public_message_kind=submission.public_message_kind,
             )
         except Exception:
             logger.exception(
@@ -508,14 +519,14 @@ class PredictModal(discord.ui.Modal):
         deadline_str = format_for_discord(fixture["deadline"], "F")
         relative_str = format_for_discord(fixture["deadline"], "R")
         content += f"\n\n**Posted publicly in the fixture thread.**\n**Deadline:** {deadline_str} ({relative_str})"
-        if pending_partial_approval:
+        if submission.pending_partial_approval:
             content += (
                 "\n\n⏳ **Late prediction awaiting admin review:** your predicted games will only count "
                 "if an admin approves this late submission with missing games."
             )
-        elif is_late:
+        elif submission.is_late:
             content += "\n\n⚠️ **Late prediction!** The active season's late penalty applies unless an admin waives it."
-        elif is_partial:
+        elif submission.is_partial:
             content += (
                 "\n\nℹ️ **Partial prediction saved:** any missing games will count as no prediction. "
                 "If the deadline has not passed yet, use `/predict` again to fill the rest."

@@ -8,7 +8,12 @@ from datetime import datetime, timedelta
 import discord
 
 from typer_bot.database import Database, SaveResult
-from typer_bot.utils import get_configured_admin_role_mention, now, parse_prediction_lines
+from typer_bot.utils import (
+    build_prediction_submission,
+    get_configured_admin_role_mention,
+    now,
+    parse_prediction_lines,
+)
 from typer_bot.utils.logger import LogContextManager, log_event
 
 logger = logging.getLogger(__name__)
@@ -153,9 +158,13 @@ class ThreadPredictionHandler:
                 logger.debug(f"Ignoring message with no valid scores from {message.author.id}")
                 return False
 
-            is_late = current_time > fixture["deadline"]
-            is_partial = len(predicted_game_indexes) < len(fixture["games"])
-            pending_partial_approval = is_late and is_partial
+            submission = build_prediction_submission(
+                fixture=fixture,
+                predicted_game_indexes=predicted_game_indexes,
+                submitted_at=current_time,
+                public_message_id=str(message.id),
+                public_message_kind="thread_message",
+            )
 
         try:
             result = await self.db.try_save_prediction(
@@ -163,11 +172,11 @@ class ThreadPredictionHandler:
                 user_id,
                 message.author.display_name,
                 predictions,
-                is_late,
+                submission.is_late,
                 predicted_game_indexes=predicted_game_indexes,
-                pending_partial_approval=pending_partial_approval,
-                public_message_id=str(message.id) if pending_partial_approval else None,
-                public_message_kind="thread_message" if pending_partial_approval else None,
+                pending_partial_approval=submission.pending_partial_approval,
+                public_message_id=submission.public_message_id,
+                public_message_kind=submission.public_message_kind,
             )
 
             if result == SaveResult.FIXTURE_CLOSED:
@@ -205,7 +214,7 @@ class ThreadPredictionHandler:
                 return True
 
             try:
-                await message.add_reaction("⏳" if pending_partial_approval else "✅")
+                await message.add_reaction("⏳" if submission.pending_partial_approval else "✅")
             except discord.Forbidden:
                 logger.warning(
                     f"Could not add reaction to thread prediction from {message.author.id}. "
@@ -228,12 +237,12 @@ class ThreadPredictionHandler:
                 week_number=fixture["week_number"],
                 source="thread",
                 predictions_count=len(predictions),
-                is_late=is_late,
+                is_late=submission.is_late,
             )
 
-            if is_late:
+            if submission.is_late:
                 with suppress(discord.Forbidden):
-                    if pending_partial_approval:
+                    if submission.pending_partial_approval:
                         admin_role_mention = (
                             await get_configured_admin_role_mention(str(message.guild.id), self.db)
                             if message.guild
@@ -252,7 +261,7 @@ class ThreadPredictionHandler:
                             "⚠️ **Late prediction!** Your prediction was saved but you will receive "
                             "the active season's late penalty unless an admin waives it."
                         )
-            elif is_partial:
+            elif submission.is_partial:
                 with suppress(discord.Forbidden):
                     await message.author.send(
                         "ℹ️ **Partial prediction saved.** Any missing games will count as no prediction. If the deadline has not passed yet, use `/predict` again to fill the rest."
