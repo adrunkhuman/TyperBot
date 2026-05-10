@@ -228,6 +228,19 @@ class ScoringRulesButton(discord.ui.Button):
         self.parent_view.active_season = await self.parent_view.db.get_or_create_active_season(
             self.parent_view.guild_id
         )
+        self.parent_view.active_season_has_scores = (
+            await self.parent_view.db.active_season_has_scores(self.parent_view.guild_id)
+        )
+        if self.parent_view.active_season_has_scores:
+            self.parent_view.selection.status_message = (
+                "Scoring rules are locked because scores have been calculated for this season."
+            )
+            await self.parent_view.load_fixture_options()
+            await interaction.response.edit_message(
+                content=self.parent_view.render_content(),
+                view=self.parent_view,
+            )
+            return
         await interaction.response.send_modal(ScoringRulesModal(self.parent_view))
 
 
@@ -344,9 +357,11 @@ class CalculateScoresButton(discord.ui.Button):
             return
         fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
         if fixture is None or fixture["status"] != "open":
+            await self._refresh_parent_panel(fixture_id)
             await interaction.response.send_message(
                 "That fixture is no longer open.", ephemeral=True
             )
+            await self._edit_parent_message(interaction)
             return
 
         admin_commands = self.parent_view.admin_commands
@@ -382,6 +397,28 @@ class CalculateScoresButton(discord.ui.Button):
         )
         await admin_commands._create_backup()
         await admin_commands._post_calculation_to_channel(interaction, score_result)
+        await self._refresh_parent_panel(fixture_id)
+        await self._edit_parent_message(interaction)
+
+    async def _edit_parent_message(self, interaction: discord.Interaction) -> None:
+        message = getattr(interaction, "message", None)
+        edit_message = getattr(message, "edit", None)
+        if callable(edit_message):
+            await edit_message(content=self.parent_view.render_content(), view=self.parent_view)
+
+    async def _refresh_parent_panel(self, fixture_id: int) -> None:
+        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
+        if fixture is not None:
+            self.parent_view.selection.fixture_status = fixture["status"]
+            self.parent_view.selection.fixture_label = (
+                f"Week {fixture['week_number']} [{fixture['status'].upper()}]"
+            )
+            await self.parent_view.populate_fixture_details(fixture)
+        await self.parent_view.load_user_options()
+        await self.parent_view.set_selected_prediction()
+        await self.parent_view.load_fixture_options()
+        self.parent_view.fixture_select.sync_selected_option()
+        self.parent_view._refresh_items()
 
 
 class PostResultsConfirmView(discord.ui.View):

@@ -401,7 +401,6 @@ class TestFixturePanelFlows:
             ["2-1", "1-1", "0-0"],
             False,
         )
-        await admin_cog.db.recalculate_fixture_scores(fixture_id)
         view = UnifiedAdminPanelView(
             admin_cog.db,
             admin_cog.service,
@@ -411,13 +410,14 @@ class TestFixturePanelFlows:
             bot=admin_cog.bot,
         )
         await view.load_fixture_options()
-        assert _has_button(view, "Scoring Rules") is False
+        assert _has_button(view, "Scoring Rules") is True
 
         modal = ScoringRulesModal(view)
         modal.exact_input._value = "5"
         modal.outcome_input._value = "2"
         modal.wrong_input._value = "1"
         modal.late_input._value = "1"
+        await admin_cog.db.recalculate_fixture_scores(fixture_id)
 
         await modal.on_submit(mock_interaction_admin)
 
@@ -916,6 +916,8 @@ class TestFixturePanelFlows:
         channel = MagicMock(spec=discord.TextChannel)
         channel.send = AsyncMock()
         mock_interaction_admin.channel = channel
+        mock_interaction_admin.message = MagicMock()
+        mock_interaction_admin.message.edit = AsyncMock()
         admin_cog._create_backup = AsyncMock()
 
         view = UnifiedAdminPanelView(
@@ -943,6 +945,100 @@ class TestFixturePanelFlows:
             in mock_interaction_admin.response_sent[-1]["content"]
         )
         assert "User One" in channel.send.call_args.args[0]
+        assert view.selection.fixture_label == "Week 45 [CLOSED]"
+        assert _has_button(view, "Scoring Rules") is False
+        assert _has_button(view, "Calculate Scores") is False
+        assert _has_button(view, "Delete Fixture") is False
+        mock_interaction_admin.message.edit.assert_awaited_once_with(
+            content=view.render_content(), view=view
+        )
+
+    @pytest.mark.asyncio
+    async def test_stale_calculate_scores_button_refreshes_when_fixture_already_scored(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            "111111", 45, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        mock_interaction_admin.message = MagicMock()
+        mock_interaction_admin.message.edit = AsyncMock()
+        admin_cog._create_backup = AsyncMock()
+        admin_cog._post_calculation_to_channel = AsyncMock()
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+        stale_button = _get_button(view, "Calculate Scores")
+        await admin_cog.db.recalculate_fixture_scores(fixture_id)
+
+        await stale_button.callback(mock_interaction_admin)
+
+        assert (
+            mock_interaction_admin.response_sent[-1]["content"] == "That fixture is no longer open."
+        )
+        admin_cog._create_backup.assert_not_awaited()
+        admin_cog._post_calculation_to_channel.assert_not_awaited()
+        assert view.selection.fixture_label == "Week 45 [CLOSED]"
+        assert _has_button(view, "Scoring Rules") is False
+        assert _has_button(view, "Calculate Scores") is False
+        assert _has_button(view, "Delete Fixture") is False
+        mock_interaction_admin.message.edit.assert_awaited_once_with(
+            content=view.render_content(), view=view
+        )
+
+    @pytest.mark.asyncio
+    async def test_stale_scoring_rules_button_refreshes_when_scores_now_exist(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            "111111", 45, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await admin_cog.db.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        stale_button = _get_button(view, "Scoring Rules")
+        await admin_cog.db.recalculate_fixture_scores(fixture_id)
+
+        await stale_button.callback(mock_interaction_admin)
+
+        assert not hasattr(mock_interaction_admin, "modal_sent")
+        assert "Scoring rules are locked" in mock_interaction_admin.response_sent[-1]["content"]
+        assert _has_button(view, "Scoring Rules") is False
 
     @pytest.mark.asyncio
     async def test_unified_panel_calculate_scores_button_rejects_active_cooldown(
