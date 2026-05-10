@@ -36,6 +36,8 @@ from .unified_actions import (
     NewSeasonModal,
     PostResultsButton,
     PostResultsConfirmView,
+    ScoringRulesButton,
+    ScoringRulesModal,
     SetupBotButton,
 )
 
@@ -52,9 +54,21 @@ __all__ = [
     "NewSeasonModal",
     "PostResultsButton",
     "PostResultsConfirmView",
+    "ScoringRulesButton",
+    "ScoringRulesModal",
     "SetupBotButton",
     "UnifiedAdminPanelView",
 ]
+
+
+def _format_scoring_rules(rules: dict) -> str:
+    return (
+        "Scoring: "
+        f"exact {rules['exact_score_points']}, "
+        f"outcome {rules['correct_outcome_points']}, "
+        f"wrong {rules['wrong_outcome_points']}, "
+        f"late {rules['late_prediction_points']}"
+    )
 
 
 class UnifiedAdminPanelView(OwnerRestrictedView):
@@ -131,6 +145,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
             self.add_item(ReviewPendingPartialsButton(self, row=3))
 
         self.add_item(JumpToWeekButton(self, row=4))
+        self.add_item(ScoringRulesButton(self, row=4))
         self.add_item(NewSeasonButton(self, row=4))
         self.add_item(SetupBotButton(self, row=4))
 
@@ -181,6 +196,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         lines = ["**Admin Panel**"]
         if self.active_season is not None:
             lines.append(f"Active season: {self.active_season['name']}")
+            lines.append(_format_scoring_rules(self.active_season["scoring_rules"]))
         if self.selection.fixture_label:
             header = f"Fixture: {self.selection.fixture_label}"
             if self.selection.user_label:

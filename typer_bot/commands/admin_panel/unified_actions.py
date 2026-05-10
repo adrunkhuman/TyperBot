@@ -134,6 +134,103 @@ class NewSeasonButton(discord.ui.Button):
         await interaction.response.send_modal(NewSeasonModal(self.parent_view))
 
 
+class ScoringRulesModal(discord.ui.Modal):
+    def __init__(self, parent_view: UnifiedAdminPanelView):
+        super().__init__(title="Scoring Rules")
+        self.parent_view = parent_view
+        active_season = parent_view.active_season or {}
+        self.season_id = active_season.get("id")
+        rules = active_season.get("scoring_rules", {})
+        self.exact_input = discord.ui.TextInput(
+            label="Exact Score Points",
+            default=str(rules.get("exact_score_points", 3)),
+            required=True,
+            max_length=4,
+        )
+        self.outcome_input = discord.ui.TextInput(
+            label="Correct Outcome Points",
+            default=str(rules.get("correct_outcome_points", 1)),
+            required=True,
+            max_length=4,
+        )
+        self.wrong_input = discord.ui.TextInput(
+            label="Wrong Outcome Points",
+            default=str(rules.get("wrong_outcome_points", 0)),
+            required=True,
+            max_length=4,
+        )
+        self.late_input = discord.ui.TextInput(
+            label="Late Full Prediction Points",
+            default=str(rules.get("late_prediction_points", 0)),
+            required=True,
+            max_length=4,
+        )
+        self.add_item(self.exact_input)
+        self.add_item(self.outcome_input)
+        self.add_item(self.wrong_input)
+        self.add_item(self.late_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if str(interaction.user.id) != self.parent_view.owner_user_id:
+            await interaction.response.send_message(
+                "You don't have permission to do this!", ephemeral=True
+            )
+            return
+        permission_error = await get_admin_permission_error(interaction, self.parent_view.db)
+        if permission_error is not None:
+            await interaction.response.send_message(permission_error, ephemeral=True)
+            return
+        if interaction.guild_id is None:
+            await interaction.response.send_message(
+                "Scoring rules must be managed in a server.", ephemeral=True
+            )
+            return
+
+        active_season = await self.parent_view.db.get_or_create_active_season(
+            str(interaction.guild_id)
+        )
+        if active_season["id"] != self.season_id:
+            await interaction.response.send_message(
+                "The active season changed. Reopen Scoring Rules and try again.",
+                ephemeral=True,
+            )
+            return
+
+        try:
+            rules = await self.parent_view.db.update_active_scoring_rules(
+                str(interaction.guild_id),
+                {
+                    "exact_score_points": self.exact_input.value,
+                    "correct_outcome_points": self.outcome_input.value,
+                    "wrong_outcome_points": self.wrong_input.value,
+                    "late_prediction_points": self.late_input.value,
+                },
+            )
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+
+        self.parent_view.active_season = active_season | {"scoring_rules": rules}
+        self.parent_view.selection.status_message = "Updated active-season scoring rules."
+        await self.parent_view.load_fixture_options()
+        await interaction.response.edit_message(
+            content=self.parent_view.render_content(),
+            view=self.parent_view,
+        )
+
+
+class ScoringRulesButton(discord.ui.Button):
+    def __init__(self, parent_view: UnifiedAdminPanelView, row: int | None = None):
+        self.parent_view = parent_view
+        super().__init__(label="Scoring Rules", style=discord.ButtonStyle.secondary, row=row)
+
+    async def callback(self, interaction: discord.Interaction):
+        self.parent_view.active_season = await self.parent_view.db.get_or_create_active_season(
+            self.parent_view.guild_id
+        )
+        await interaction.response.send_modal(ScoringRulesModal(self.parent_view))
+
+
 class JumpToWeekModal(discord.ui.Modal):
     def __init__(self, parent_view: UnifiedAdminPanelView):
         super().__init__(title="Jump To Week")
