@@ -19,7 +19,7 @@ from .prediction_parser import (
     parse_prediction_lines,
     parse_predictions,
 )
-from .scoring import align_predictions_to_fixture, calculate_points
+from .scoring import align_predictions_to_fixture, build_fixture_scores, calculate_points
 from .timezone import APP_TZ, format_for_discord, now, parse_deadline, parse_iso
 
 __all__ = [
@@ -39,6 +39,7 @@ __all__ = [
     "format_standings",
     "align_predictions_to_fixture",
     "calculate_points",
+    "build_fixture_scores",
     "now",
     "parse_deadline",
     "format_for_discord",

@@ -77,6 +77,42 @@ def calculate_points(
     }
 
 
+def build_fixture_scores(predictions: Sequence[dict], results: Sequence[str]) -> list[dict]:
+    """Build sorted fixture score rows from stored prediction payloads."""
+    scores = []
+    for prediction in predictions:
+        aligned_predictions = align_predictions_to_fixture(
+            prediction["predictions"],
+            prediction["predicted_game_indexes"],
+            len(results),
+        )
+        score_data = calculate_points(
+            aligned_predictions,
+            results,
+            prediction["is_late"],
+            prediction["late_penalty_waived"],
+        )
+        scores.append(
+            {
+                "user_id": prediction["user_id"],
+                "user_name": prediction["user_name"],
+                "points": score_data["points"],
+                "exact_scores": score_data["exact_scores"],
+                "correct_results": score_data["correct_results"],
+            }
+        )
+
+    scores.sort(
+        key=lambda score: (
+            -score["points"],
+            -score["exact_scores"],
+            -score["correct_results"],
+            score["user_name"].lower(),
+        )
+    )
+    return scores
+
+
 def parse_result(result_str: str) -> tuple[int, int] | None:
     """Parse a result string into home and away scores."""
     try:

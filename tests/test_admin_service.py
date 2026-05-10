@@ -557,6 +557,49 @@ class TestPartialPredictionApproval:
         assert result.scores[0]["points"] == 6
 
     @pytest.mark.asyncio
+    async def test_initial_calculation_and_recalculation_persist_same_scores(
+        self,
+        database,
+        sample_games,
+    ):
+        service = AdminService(database)
+        fixture_id = await database.create_fixture(
+            "111111", 4, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await database.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await database.save_prediction(
+            fixture_id,
+            "partial",
+            "Partial User",
+            ["1-1", "0-2"],
+            True,
+            predicted_game_indexes=[1, 2],
+        )
+        await database.set_late_penalty_waiver(fixture_id, "partial", True)
+        await database.save_prediction(
+            fixture_id,
+            "full",
+            "Full User",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+
+        await service.calculate_fixture_scores(fixture_id, "111111")
+        initial_scores = await database.get_scores_for_fixture(fixture_id)
+
+        assert await database.save_results_with_recalc(fixture_id, ["2-1", "1-1", "0-2"])
+        recalculated_scores = await database.get_scores_for_fixture(fixture_id)
+
+        score_fields = ("user_id", "points", "exact_scores", "correct_results")
+        assert [tuple(score[field] for field in score_fields) for score in recalculated_scores] == [
+            tuple(score[field] for field in score_fields) for score in initial_scores
+        ]
+        assert [(score["user_id"], score["points"]) for score in recalculated_scores] == [
+            ("full", 9),
+            ("partial", 6),
+        ]
+
+    @pytest.mark.asyncio
     async def test_approve_partial_prediction_recalculates_scored_fixture(
         self,
         database,

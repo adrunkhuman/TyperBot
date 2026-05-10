@@ -1,6 +1,6 @@
 """Tests for scoring calculation utilities."""
 
-from typer_bot.utils.scoring import calculate_points
+from typer_bot.utils.scoring import build_fixture_scores, calculate_points
 
 
 class TestCalculatePoints:
@@ -136,3 +136,60 @@ class TestCalculatePoints:
         assert result["points"] == 7
         assert result["exact_scores"] == 2
         assert result["correct_results"] == 1
+
+
+class TestBuildFixtureScores:
+    def test_scores_sparse_predictions_and_applies_fixture_ordering(self):
+        scores = build_fixture_scores(
+            [
+                {
+                    "user_id": "partial",
+                    "user_name": "Partial User",
+                    "predictions": ["1-1", "0-2"],
+                    "predicted_game_indexes": [1, 2],
+                    "is_late": False,
+                    "late_penalty_waived": False,
+                },
+                {
+                    "user_id": "full",
+                    "user_name": "Full User",
+                    "predictions": ["2-1", "1-1", "0-2"],
+                    "predicted_game_indexes": [0, 1, 2],
+                    "is_late": False,
+                    "late_penalty_waived": False,
+                },
+            ],
+            ["2-1", "1-1", "0-2"],
+        )
+
+        assert [score["user_id"] for score in scores] == ["full", "partial"]
+        assert scores[0]["points"] == 9
+        assert scores[1]["points"] == 6
+
+    def test_late_penalty_is_applied_once_for_all_score_recalculation_paths(self):
+        scores = build_fixture_scores(
+            [
+                {
+                    "user_id": "late",
+                    "user_name": "Late User",
+                    "predictions": ["2-1"],
+                    "predicted_game_indexes": [0],
+                    "is_late": True,
+                    "late_penalty_waived": False,
+                },
+                {
+                    "user_id": "waived",
+                    "user_name": "Waived User",
+                    "predictions": ["2-1"],
+                    "predicted_game_indexes": [0],
+                    "is_late": True,
+                    "late_penalty_waived": True,
+                },
+            ],
+            ["2-1"],
+        )
+
+        assert [(score["user_id"], score["points"]) for score in scores] == [
+            ("waived", 3),
+            ("late", 0),
+        ]

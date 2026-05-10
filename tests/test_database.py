@@ -200,6 +200,52 @@ class TestScores:
         assert scores[0]["points"] == 3
 
     @pytest.mark.asyncio
+    async def test_recalculate_fixture_scores_rolls_back_after_partial_write_failure(
+        self, temp_db_path
+    ):
+        db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture(
+            "111111",
+            1,
+            ["Team A - Team B", "Team C - Team D"],
+            datetime.now(UTC),
+        )
+        await db.save_prediction(fixture_id, "user-1", "User One", ["2-1", "1-1"], False)
+        await db.save_results(fixture_id, ["2-1", "1-1"])
+        await db.save_scores(
+            fixture_id,
+            [
+                {
+                    "user_id": "original",
+                    "user_name": "Original User",
+                    "points": 1,
+                    "exact_scores": 0,
+                    "correct_results": 1,
+                }
+            ],
+        )
+
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute(
+                """
+                CREATE TRIGGER fail_recalculated_score_insert
+                BEFORE INSERT ON scores
+                WHEN NEW.user_id = 'user-1'
+                BEGIN
+                    SELECT RAISE(FAIL, 'forced score insert failure');
+                END
+                """
+            )
+            await conn.commit()
+
+        with pytest.raises(aiosqlite.IntegrityError, match="forced score insert failure"):
+            await db.recalculate_fixture_scores(fixture_id)
+
+        scores = await db.get_scores_for_fixture(fixture_id)
+        assert [(score["user_id"], score["points"]) for score in scores] == [("original", 1)]
+
+    @pytest.mark.asyncio
     async def test_standings_order_by_points_tiebreakers_and_name(self, temp_db_path):
         db = Database(temp_db_path)
         await db.initialize()
