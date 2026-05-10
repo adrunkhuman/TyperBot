@@ -105,6 +105,83 @@ class TestGuildConfig:
         assert guild_two["admin_role_id"] == "role-2"
 
 
+class TestSeasons:
+    @pytest.mark.asyncio
+    async def test_create_fixture_uses_fresh_guild_active_season(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.upsert_guild_config("111111", "role-1", "channel-1")
+
+        first_fixture_id = await db.create_fixture(
+            "111111", 1, ["Team A - Team B"], datetime.now(UTC)
+        )
+        second_fixture_id = await db.create_fixture(
+            "111111", 2, ["Team C - Team D"], datetime.now(UTC)
+        )
+
+        active_season = await db.get_active_season("111111")
+        first_fixture = await db.get_fixture_by_id(first_fixture_id, "111111")
+        second_fixture = await db.get_fixture_by_id(second_fixture_id, "111111")
+        config = await db.get_guild_config("111111")
+
+        assert active_season is not None
+        assert active_season["guild_id"] == "111111"
+        assert active_season["name"]
+        assert active_season["status"] == "active"
+        assert first_fixture["season_id"] == active_season["id"]
+        assert second_fixture["season_id"] == active_season["id"]
+        assert config["active_season_id"] == active_season["id"]
+
+    @pytest.mark.asyncio
+    async def test_active_seasons_are_guild_isolated(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+
+        guild_one_fixture_id = await db.create_fixture(
+            "111111", 1, ["Team A - Team B"], datetime.now(UTC)
+        )
+        guild_two_fixture_id = await db.create_fixture(
+            "222222", 1, ["Team C - Team D"], datetime.now(UTC)
+        )
+
+        guild_one_season = await db.get_active_season("111111")
+        guild_two_season = await db.get_active_season("222222")
+        guild_one_fixture = await db.get_fixture_by_id(guild_one_fixture_id, "111111")
+        guild_two_fixture = await db.get_fixture_by_id(guild_two_fixture_id, "222222")
+
+        assert guild_one_season is not None
+        assert guild_two_season is not None
+        assert guild_one_season["guild_id"] == "111111"
+        assert guild_two_season["guild_id"] == "222222"
+        assert guild_one_season["id"] != guild_two_season["id"]
+        assert guild_one_fixture["season_id"] == guild_one_season["id"]
+        assert guild_two_fixture["season_id"] == guild_two_season["id"]
+
+    @pytest.mark.asyncio
+    async def test_get_or_create_active_season_repairs_stale_config_pointer(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.upsert_guild_config("111111", "role-1", "channel-1")
+        fixture_id = await db.create_fixture("111111", 1, ["Team A - Team B"], datetime.now(UTC))
+        fixture = await db.get_fixture_by_id(fixture_id, "111111")
+
+        async with aiosqlite.connect(temp_db_path) as conn:
+            cursor = await conn.execute(
+                "INSERT INTO seasons (guild_id, name, status) VALUES ('222222', 'Wrong Guild', 'active')"
+            )
+            await conn.execute(
+                "UPDATE guild_config SET active_season_id = ? WHERE guild_id = '111111'",
+                (cursor.lastrowid,),
+            )
+            await conn.commit()
+
+        active_season = await db.get_or_create_active_season("111111")
+        config = await db.get_guild_config("111111")
+
+        assert active_season["id"] == fixture["season_id"]
+        assert config["active_season_id"] == active_season["id"]
+
+
 class TestScores:
     @pytest.mark.asyncio
     async def test_save_scores_does_not_mutate_when_write_lock_is_held(
@@ -583,14 +660,22 @@ class TestSchemaMigration:
             await db.initialize()
 
     @pytest.mark.asyncio
-    async def test_initialize_preserves_manually_backfilled_legacy_fixture_graph(
-        self, temp_db_path
-    ):
+    async def test_initialize_preserves_manually_migrated_legacy_fixture_graph(self, temp_db_path):
         async with aiosqlite.connect(temp_db_path) as conn:
             await conn.executescript(
                 """
+                CREATE TABLE seasons (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    ended_at DATETIME
+                );
                 CREATE TABLE fixtures (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
+                    season_id INTEGER,
                     week_number INTEGER NOT NULL,
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
@@ -623,7 +708,10 @@ class TestSchemaMigration:
                 """
             )
             await conn.execute(
-                "INSERT INTO fixtures (id, week_number, games, deadline, status, message_id) VALUES (1, 1, 'A - B', ?, 'closed', '789012')",
+                "INSERT INTO seasons (id, guild_id, name, status) VALUES (1, '111111', 'Migrated Season', 'active')"
+            )
+            await conn.execute(
+                "INSERT INTO fixtures (id, guild_id, season_id, week_number, games, deadline, status, message_id) VALUES (1, '111111', 1, 1, 'A - B', ?, 'closed', '789012')",
                 (datetime.now(UTC).isoformat(),),
             )
             await conn.execute(
@@ -634,8 +722,6 @@ class TestSchemaMigration:
             await conn.execute(
                 "INSERT INTO scores (fixture_id, user_id, user_name, points, exact_scores, correct_results) VALUES (1, 'user-1', 'User One', 3, 1, 0)"
             )
-            await conn.execute("ALTER TABLE fixtures ADD COLUMN guild_id TEXT")
-            await conn.execute("UPDATE fixtures SET guild_id = '111111'")
             await conn.commit()
 
         db = Database(temp_db_path)
@@ -643,6 +729,7 @@ class TestSchemaMigration:
 
         fixture = await db.get_fixture_by_id(1, "111111")
         other_guild_fixture = await db.get_fixture_by_id(1, "222222")
+        season = await db.get_active_season("111111")
         prediction = await db.get_prediction(1, "user-1", "111111")
         results = await db.get_results(1)
         standings = await db.get_standings("111111")
@@ -650,6 +737,8 @@ class TestSchemaMigration:
 
         assert fixture is not None
         assert other_guild_fixture is None
+        assert season is not None
+        assert fixture["season_id"] == season["id"]
         assert prediction["predictions"] == ["2-1"]
         assert results == ["2-1"]
         assert [row["user_id"] for row in standings] == ["user-1"]
@@ -659,10 +748,23 @@ class TestSchemaMigration:
     async def test_initialize_adds_missing_columns(self, temp_db_path):
         """Should automatically add missing columns during initialization."""
         async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute(
+                """
+                CREATE TABLE seasons (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    ended_at DATETIME
+                )
+                """
+            )
             await conn.execute("""
                 CREATE TABLE fixtures (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     guild_id TEXT NOT NULL,
+                    season_id INTEGER,
                     week_number INTEGER NOT NULL,
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
@@ -670,6 +772,9 @@ class TestSchemaMigration:
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            await conn.execute(
+                "INSERT INTO seasons (id, guild_id, name, status) VALUES (1, '111111', 'Migrated Season', 'active')"
+            )
             await conn.commit()
 
         db = Database(temp_db_path)
@@ -680,6 +785,7 @@ class TestSchemaMigration:
         fixture = await db.get_current_fixture("111111")
         assert fixture is not None
         assert "message_id" in fixture
+        assert fixture["week_number"] == 1
 
     @pytest.mark.asyncio
     async def test_initialize_migrates_legacy_results_to_unique_latest_row(self, temp_db_path):
@@ -687,15 +793,31 @@ class TestSchemaMigration:
         async with aiosqlite.connect(temp_db_path) as conn:
             await conn.execute(
                 """
+                CREATE TABLE seasons (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    ended_at DATETIME
+                )
+                """
+            )
+            await conn.execute(
+                """
                 CREATE TABLE fixtures (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     guild_id TEXT NOT NULL,
+                    season_id INTEGER,
                     week_number INTEGER NOT NULL,
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
                     status TEXT DEFAULT 'open'
                 )
                 """
+            )
+            await conn.execute(
+                "INSERT INTO seasons (id, guild_id, name, status) VALUES (1, '111111', 'Migrated Season', 'active')"
             )
             await conn.execute(
                 """
@@ -722,7 +844,7 @@ class TestSchemaMigration:
                 """
             )
             await conn.execute(
-                "INSERT INTO fixtures (id, guild_id, week_number, games, deadline, status) VALUES (1, '111111', 1, 'A - B', ?, 'open')",
+                "INSERT INTO fixtures (id, guild_id, season_id, week_number, games, deadline, status) VALUES (1, '111111', 1, 1, 'A - B', ?, 'open')",
                 (datetime.now(UTC).isoformat(),),
             )
             await conn.execute(
@@ -765,15 +887,31 @@ class TestSchemaMigration:
         async with aiosqlite.connect(temp_db_path) as conn:
             await conn.execute(
                 """
+                CREATE TABLE seasons (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    ended_at DATETIME
+                )
+                """
+            )
+            await conn.execute(
+                """
                 CREATE TABLE fixtures (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     guild_id TEXT NOT NULL,
+                    season_id INTEGER,
                     week_number INTEGER NOT NULL,
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
                     status TEXT DEFAULT 'open'
                 )
                 """
+            )
+            await conn.execute(
+                "INSERT INTO seasons (id, guild_id, name, status) VALUES (1, '111111', 'Migrated Season', 'active')"
             )
             await conn.execute(
                 """
@@ -800,7 +938,7 @@ class TestSchemaMigration:
                 """
             )
             await conn.execute(
-                "INSERT INTO fixtures (id, guild_id, week_number, games, deadline, status) VALUES (1, '111111', 1, 'A - B', ?, 'open')",
+                "INSERT INTO fixtures (id, guild_id, season_id, week_number, games, deadline, status) VALUES (1, '111111', 1, 1, 'A - B', ?, 'open')",
                 (datetime.now(UTC).isoformat(),),
             )
             await conn.execute(

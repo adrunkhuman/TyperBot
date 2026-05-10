@@ -12,6 +12,7 @@ from .guild_config import GuildConfigRepository
 from .predictions import PredictionRepository, SaveResult
 from .results import ResultsRepository
 from .scores import ScoreRepository
+from .seasons import SeasonRepository
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +158,7 @@ class Database:
         self._predictions = PredictionRepository(self.db_path)
         self._results = ResultsRepository(self.db_path)
         self._scores = ScoreRepository(self.db_path)
+        self._seasons = SeasonRepository(self.db_path)
 
     async def initialize(self) -> None:
         """Create tables, enable WAL mode, and apply additive migrations.
@@ -175,9 +177,21 @@ class Database:
                 if row and row[0] != "wal":
                     logger.warning("WAL mode not applied; journal_mode=%s", row[0])
             await db.execute("""
+                CREATE TABLE IF NOT EXISTS seasons (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    ended_at DATETIME
+                )
+            """)
+
+            await db.execute("""
                 CREATE TABLE IF NOT EXISTS fixtures (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     guild_id TEXT NOT NULL,
+                    season_id INTEGER,
                     week_number INTEGER NOT NULL,
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
@@ -238,6 +252,7 @@ class Database:
                     guild_id TEXT PRIMARY KEY,
                     admin_role_id TEXT NOT NULL,
                     league_channel_id TEXT NOT NULL,
+                    active_season_id INTEGER,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
@@ -268,6 +283,12 @@ class Database:
             await db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_fixtures_guild_week ON fixtures(guild_id, week_number)"
             )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_seasons_guild_status ON seasons(guild_id, status)"
+            )
+            await db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_seasons_one_active_per_guild ON seasons(guild_id) WHERE status = 'active'"
+            )
 
             await db.commit()
 
@@ -278,6 +299,15 @@ class Database:
 
     async def get_guild_config(self, guild_id):
         return await self._guild_config.get_guild_config(guild_id)
+
+    async def get_active_season(self, guild_id):
+        return await self._seasons.get_active_season(guild_id)
+
+    async def get_or_create_active_season(self, guild_id):
+        return await self._seasons.get_or_create_active_season(guild_id)
+
+    async def get_seasons(self, guild_id):
+        return await self._seasons.get_seasons(guild_id)
 
     async def create_fixture(self, guild_id, week_number, games, deadline):
         return await self._fixtures.create_fixture(guild_id, week_number, games, deadline)
