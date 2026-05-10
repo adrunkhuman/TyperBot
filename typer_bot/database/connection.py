@@ -1,4 +1,4 @@
-"""Database composition root — schema initialisation and migrations."""
+"""Database composition root — schema initialisation and validation."""
 
 import logging
 from pathlib import Path
@@ -18,6 +18,67 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["Database", "SaveResult"]
 
+REQUIRED_COLUMNS = {
+    "seasons": {
+        "id",
+        "guild_id",
+        "name",
+        "status",
+        "exact_score_points",
+        "correct_outcome_points",
+        "wrong_outcome_points",
+        "late_prediction_points",
+        "created_at",
+        "ended_at",
+    },
+    "fixtures": {
+        "id",
+        "guild_id",
+        "season_id",
+        "week_number",
+        "games",
+        "deadline",
+        "status",
+        "message_id",
+        "channel_id",
+        "created_at",
+    },
+    "predictions": {
+        "id",
+        "fixture_id",
+        "user_id",
+        "user_name",
+        "predictions",
+        "submitted_at",
+        "is_late",
+        "late_penalty_waived",
+        "admin_edited_at",
+        "admin_edited_by",
+        "predicted_game_indexes",
+        "pending_partial_approval",
+        "public_message_id",
+        "public_message_kind",
+    },
+    "results": {"id", "fixture_id", "results", "calculated_at", "updated_at"},
+    "scores": {
+        "id",
+        "fixture_id",
+        "user_id",
+        "user_name",
+        "points",
+        "exact_scores",
+        "correct_results",
+    },
+    "guild_config": {
+        "guild_id",
+        "admin_role_id",
+        "league_channel_id",
+        "active_season_id",
+        "created_at",
+        "updated_at",
+    },
+}
+
 
 async def _table_columns(db: aiosqlite.Connection, table_name: str) -> set[str]:
     async with db.execute(f"PRAGMA table_info({table_name})") as cursor:
@@ -25,121 +86,37 @@ async def _table_columns(db: aiosqlite.Connection, table_name: str) -> set[str]:
     return {col[1] for col in columns}
 
 
-async def _migrate_results_table(db: aiosqlite.Connection) -> None:
-    columns = await _table_columns(db, "results")
-    if not columns:
-        return
-
+async def _has_existing_schema(db: aiosqlite.Connection) -> bool:
     async with db.execute(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_results_fixture_id_unique'"
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' LIMIT 1"
     ) as cursor:
-        row = await cursor.fetchone()
-        unique_index_exists = bool(row and row[0] > 0)
-
-    if unique_index_exists:
-        return
-
-    timestamp_expr = (
-        "COALESCE(calculated_at, CURRENT_TIMESTAMP)"
-        if "calculated_at" in columns
-        else "CURRENT_TIMESTAMP"
-    )
-
-    logger.info("Migrating results table for deterministic result updates")
-    await db.execute("BEGIN IMMEDIATE")
-    try:
-        await db.execute("DROP TABLE IF EXISTS results_migrated")
-        await db.execute(
-            """
-            CREATE TABLE results_migrated (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                fixture_id INTEGER NOT NULL,
-                results TEXT NOT NULL,
-                calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (fixture_id) REFERENCES fixtures(id)
-            )
-            """
-        )
-        await db.execute(
-            f"""
-            INSERT INTO results_migrated (fixture_id, results, calculated_at, updated_at)
-            SELECT fixture_id,
-                   results,
-                   {timestamp_expr},
-                   {timestamp_expr}
-            FROM results old
-            WHERE old.id IN (
-                SELECT MAX(id)
-                FROM results
-                GROUP BY fixture_id
-            )
-            """
-        )
-        await db.execute("DROP TABLE results")
-        await db.execute("ALTER TABLE results_migrated RENAME TO results")
-        await db.execute("CREATE UNIQUE INDEX idx_results_fixture_id_unique ON results(fixture_id)")
-        await db.commit()
-    except Exception:
-        await db.rollback()
-        raise
+        return await cursor.fetchone() is not None
 
 
-async def _migrate_prediction_columns(db: aiosqlite.Connection) -> None:
-    columns = await _table_columns(db, "predictions")
+async def _has_unique_index(
+    db: aiosqlite.Connection,
+    table_name: str,
+    column_names: tuple[str, ...],
+) -> bool:
+    async with db.execute(f"PRAGMA index_list({table_name})") as cursor:
+        indexes = await cursor.fetchall()
 
-    if "late_penalty_waived" not in columns:
-        logger.info("Adding late_penalty_waived column to predictions table")
-        await db.execute(
-            "ALTER TABLE predictions ADD COLUMN late_penalty_waived BOOLEAN DEFAULT FALSE"
-        )
-
-    if "admin_edited_at" not in columns:
-        logger.info("Adding admin_edited_at column to predictions table")
-        await db.execute("ALTER TABLE predictions ADD COLUMN admin_edited_at DATETIME")
-
-    if "admin_edited_by" not in columns:
-        logger.info("Adding admin_edited_by column to predictions table")
-        await db.execute("ALTER TABLE predictions ADD COLUMN admin_edited_by TEXT")
-
-    if "predicted_game_indexes" not in columns:
-        logger.info("Adding predicted_game_indexes column to predictions table")
-        await db.execute("ALTER TABLE predictions ADD COLUMN predicted_game_indexes TEXT")
-
-    if "pending_partial_approval" not in columns:
-        logger.info("Adding pending_partial_approval column to predictions table")
-        await db.execute(
-            "ALTER TABLE predictions ADD COLUMN pending_partial_approval BOOLEAN DEFAULT FALSE"
-        )
-
-    if "public_message_id" not in columns:
-        logger.info("Adding public_message_id column to predictions table")
-        await db.execute("ALTER TABLE predictions ADD COLUMN public_message_id TEXT")
-
-    if "public_message_kind" not in columns:
-        logger.info("Adding public_message_kind column to predictions table")
-        await db.execute("ALTER TABLE predictions ADD COLUMN public_message_kind TEXT")
-
-
-async def _migrate_season_columns(db: aiosqlite.Connection) -> None:
-    columns = await _table_columns(db, "seasons")
-    scoring_columns = {
-        "exact_score_points": "INTEGER NOT NULL DEFAULT 3",
-        "correct_outcome_points": "INTEGER NOT NULL DEFAULT 1",
-        "wrong_outcome_points": "INTEGER NOT NULL DEFAULT 0",
-        "late_prediction_points": "INTEGER NOT NULL DEFAULT 0",
-    }
-    for column_name, column_definition in scoring_columns.items():
-        if column_name not in columns:
-            logger.info("Adding %s column to seasons table", column_name)
-            await db.execute(f"ALTER TABLE seasons ADD COLUMN {column_name} {column_definition}")
+    for index in indexes:
+        if not index[2] or index[4]:
+            continue
+        index_name = index[1]
+        async with db.execute(f"PRAGMA index_info({index_name})") as cursor:
+            index_columns = await cursor.fetchall()
+        if tuple(row[2] for row in index_columns) == column_names:
+            return True
+    return False
 
 
 async def _validate_fixture_guild_ownership(db: aiosqlite.Connection) -> None:
     columns = await _table_columns(db, "fixtures")
     if "guild_id" not in columns:
         raise RuntimeError(
-            "fixtures.guild_id is missing. Run the one-time v2.0.0 guild ownership migration before starting the bot."
+            "fixtures.guild_id is missing. Manually port the database to the current schema before starting the bot."
         )
 
     async with db.execute(
@@ -148,15 +125,61 @@ async def _validate_fixture_guild_ownership(db: aiosqlite.Connection) -> None:
         row = await cursor.fetchone()
     if row and row[0] > 0:
         raise RuntimeError(
-            "fixtures.guild_id has empty rows. Backfill every fixture with the owning Discord guild ID before starting the bot."
+            "fixtures.guild_id has empty rows. Set every fixture to its owning Discord guild ID before starting the bot."
         )
+
+
+async def _validate_current_schema(db: aiosqlite.Connection) -> None:
+    for table_name, required_columns in REQUIRED_COLUMNS.items():
+        columns = await _table_columns(db, table_name)
+        missing_columns = required_columns - columns
+        if missing_columns:
+            missing_list = ", ".join(f"{table_name}.{column}" for column in sorted(missing_columns))
+            raise RuntimeError(
+                f"Database schema is missing required column(s): {missing_list}. "
+                "Manually port the database to the current schema before starting the bot."
+            )
+
+    required_unique_constraints = {
+        "predictions": ("fixture_id", "user_id"),
+        "scores": ("fixture_id", "user_id"),
+    }
+    for table_name, column_names in required_unique_constraints.items():
+        if not await _has_unique_index(db, table_name, column_names):
+            joined_columns = ", ".join(column_names)
+            raise RuntimeError(
+                f"Database schema is missing required unique constraint: {table_name}({joined_columns}). "
+                "Manually port the database to the current schema before starting the bot."
+            )
+
+
+async def _validate_unique_results(db: aiosqlite.Connection) -> None:
+    async with db.execute(
+        """
+        SELECT fixture_id, COUNT(*) AS row_count
+        FROM results
+        GROUP BY fixture_id
+        HAVING row_count > 1
+        ORDER BY fixture_id
+        LIMIT 5
+        """
+    ) as cursor:
+        rows = await cursor.fetchall()
+    if not rows:
+        return
+
+    fixture_ids = ", ".join(str(row[0]) for row in rows)
+    raise RuntimeError(
+        "results has duplicate rows for fixture_id(s): "
+        f"{fixture_ids}. Keep one result row per fixture before starting the bot."
+    )
 
 
 class Database:
     """Composition root for SQLite setup and the bot's stable data facade.
 
     Callers use this facade instead of reaching into repositories directly. It
-    owns path setup, schema initialization, startup migrations, and the focused
+    owns path setup, schema initialization, startup validation, and the focused
     repository objects that perform the actual reads and writes.
     """
 
@@ -175,21 +198,28 @@ class Database:
         self._seasons = SeasonRepository(self.db_path)
 
     async def initialize(self) -> None:
-        """Create tables, enable WAL mode, and apply startup migrations.
+        """Create tables, enable WAL mode, and validate existing schema invariants.
 
-        Fresh databases get the current schema. Existing databases are migrated
-        in place by adding missing columns and by collapsing ``results`` rows
-        into the current one-row-per-fixture layout.
+        Fresh databases get the current schema. Existing databases must already
+        match the current schema, except for explicit fail-fast checks that
+        produce actionable errors for unsafe live data.
 
         Raises:
-            RuntimeError: Existing databases must have a populated
-                ``fixtures.guild_id`` before v2 startup can continue.
+            RuntimeError: Existing databases must match the current schema and
+                contain data safe for current unique constraints before startup
+                can continue.
         """
         async with aiosqlite.connect(self.db_path) as db:
             async with db.execute("PRAGMA journal_mode=WAL") as cur:
                 row = await cur.fetchone()
                 if row and row[0] != "wal":
                     logger.warning("WAL mode not applied; journal_mode=%s", row[0])
+            has_existing_schema = await _has_existing_schema(db)
+            if has_existing_schema:
+                await _validate_current_schema(db)
+                await _validate_fixture_guild_ownership(db)
+                await _validate_unique_results(db)
+
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS seasons (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -215,6 +245,7 @@ class Database:
                     deadline DATETIME NOT NULL,
                     status TEXT DEFAULT 'open',
                     message_id TEXT,
+                    channel_id TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -276,26 +307,19 @@ class Database:
                 )
             """)
 
-            column_names = await _table_columns(db, "fixtures")
+            if not has_existing_schema:
+                await _validate_current_schema(db)
+                await _validate_fixture_guild_ownership(db)
+                await _validate_unique_results(db)
 
-            if "message_id" not in column_names:
-                logger.info("Adding message_id column to fixtures table")
-                await db.execute("ALTER TABLE fixtures ADD COLUMN message_id TEXT")
-
-            if "channel_id" not in column_names:
-                logger.info("Adding channel_id column to fixtures table")
-                await db.execute("ALTER TABLE fixtures ADD COLUMN channel_id TEXT")
-
-            await _validate_fixture_guild_ownership(db)
-
-            await _migrate_season_columns(db)
-            await _migrate_prediction_columns(db)
-            await _migrate_results_table(db)
-
-            # Keep one results row per fixture on both fresh installs and upgraded DBs.
             await db.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_results_fixture_id_unique ON results(fixture_id)"
             )
+            if not await _has_unique_index(db, "results", ("fixture_id",)):
+                raise RuntimeError(
+                    "Database schema is missing required unique constraint: results(fixture_id). "
+                    "Manually port the database to the current schema before starting the bot."
+                )
             await db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_fixtures_guild_status_week ON fixtures(guild_id, status, week_number)"
             )

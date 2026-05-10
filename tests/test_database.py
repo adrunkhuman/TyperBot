@@ -1426,59 +1426,40 @@ class TestOpenFixturesQueries:
         assert guild_one_second["guild_id"] == "111111"
 
 
-class TestSchemaMigration:
-    """Test suite for automatic schema migration."""
+class TestSchemaValidation:
+    """Test suite for startup schema validation."""
 
     @pytest.mark.asyncio
-    async def test_initialize_rejects_fixtures_without_guild_ownership(self, temp_db_path):
-        async with aiosqlite.connect(temp_db_path) as conn:
-            await conn.execute(
-                """
-                CREATE TABLE fixtures (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    week_number INTEGER NOT NULL,
-                    games TEXT NOT NULL,
-                    deadline DATETIME NOT NULL,
-                    status TEXT DEFAULT 'open'
-                )
-                """
-            )
-            await conn.commit()
-
+    async def test_initialize_is_safe_for_current_schema_existing_data(self, temp_db_path):
         db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        await db.save_prediction(
+            fixture_id,
+            "user-1",
+            "User One",
+            ["2-1"],
+            public_message_id="message-1",
+            public_message_kind="thread_prediction",
+        )
+        await db.save_results(fixture_id, ["2-1"])
 
-        with pytest.raises(RuntimeError, match="fixtures.guild_id is missing"):
-            await db.initialize()
+        restarted_db = Database(temp_db_path)
+        await restarted_db.initialize()
+        await restarted_db.save_results(fixture_id, ["3-1"])
 
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize("guild_id", [None, "", "   "])
-    async def test_initialize_rejects_blank_fixture_guild_ownership(self, temp_db_path, guild_id):
-        async with aiosqlite.connect(temp_db_path) as conn:
-            await conn.execute(
-                """
-                CREATE TABLE fixtures (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    guild_id TEXT,
-                    week_number INTEGER NOT NULL,
-                    games TEXT NOT NULL,
-                    deadline DATETIME NOT NULL,
-                    status TEXT DEFAULT 'open'
-                )
-                """
-            )
-            await conn.execute(
-                "INSERT INTO fixtures (guild_id, week_number, games, deadline, status) VALUES (?, 1, 'A - B', ?, 'open')",
-                (guild_id, datetime.now(UTC).isoformat()),
-            )
-            await conn.commit()
+        fixture = await restarted_db.get_fixture_by_id(fixture_id, "111111")
+        prediction = await restarted_db.get_prediction(fixture_id, "user-1", "111111")
+        results = await restarted_db.get_results(fixture_id)
 
-        db = Database(temp_db_path)
-
-        with pytest.raises(RuntimeError, match="fixtures.guild_id has empty rows"):
-            await db.initialize()
+        assert fixture is not None
+        assert fixture["guild_id"] == "111111"
+        assert prediction["public_message_id"] == "message-1"
+        assert prediction["public_message_kind"] == "thread_prediction"
+        assert results == ["3-1"]
 
     @pytest.mark.asyncio
-    async def test_initialize_preserves_manually_migrated_legacy_fixture_graph(self, temp_db_path):
+    async def test_initialize_rejects_duplicate_result_rows_without_mutating(self, temp_db_path):
         async with aiosqlite.connect(temp_db_path) as conn:
             await conn.executescript(
                 """
@@ -1487,6 +1468,10 @@ class TestSchemaMigration:
                     guild_id TEXT NOT NULL,
                     name TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'active',
+                    exact_score_points INTEGER NOT NULL DEFAULT 3,
+                    correct_outcome_points INTEGER NOT NULL DEFAULT 1,
+                    wrong_outcome_points INTEGER NOT NULL DEFAULT 0,
+                    late_prediction_points INTEGER NOT NULL DEFAULT 0,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     ended_at DATETIME
                 );
@@ -1498,7 +1483,9 @@ class TestSchemaMigration:
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
                     status TEXT DEFAULT 'open',
-                    message_id TEXT
+                    message_id TEXT,
+                    channel_id TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE TABLE predictions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1507,12 +1494,22 @@ class TestSchemaMigration:
                     user_name TEXT NOT NULL,
                     predictions TEXT NOT NULL,
                     submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    is_late BOOLEAN DEFAULT FALSE
+                    is_late BOOLEAN DEFAULT FALSE,
+                    late_penalty_waived BOOLEAN DEFAULT FALSE,
+                    admin_edited_at DATETIME,
+                    admin_edited_by TEXT,
+                    predicted_game_indexes TEXT,
+                    pending_partial_approval BOOLEAN DEFAULT FALSE,
+                    public_message_id TEXT,
+                    public_message_kind TEXT,
+                    UNIQUE(fixture_id, user_id)
                 );
                 CREATE TABLE results (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     fixture_id INTEGER NOT NULL,
-                    results TEXT NOT NULL
+                    results TEXT NOT NULL,
+                    calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE TABLE scores (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1521,64 +1518,103 @@ class TestSchemaMigration:
                     user_name TEXT NOT NULL,
                     points INTEGER NOT NULL,
                     exact_scores INTEGER DEFAULT 0,
-                    correct_results INTEGER DEFAULT 0
+                    correct_results INTEGER DEFAULT 0,
+                    UNIQUE(fixture_id, user_id)
+                );
+                CREATE TABLE guild_config (
+                    guild_id TEXT PRIMARY KEY,
+                    admin_role_id TEXT NOT NULL,
+                    league_channel_id TEXT NOT NULL,
+                    active_season_id INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 );
                 """
             )
             await conn.execute(
-                "INSERT INTO seasons (id, guild_id, name, status) VALUES (1, '111111', 'Migrated Season', 'active')"
+                "INSERT INTO seasons (id, guild_id, name, status) VALUES (1, '111111', 'Current Season', 'active')"
             )
             await conn.execute(
-                "INSERT INTO fixtures (id, guild_id, season_id, week_number, games, deadline, status, message_id) VALUES (1, '111111', 1, 1, 'A - B', ?, 'closed', '789012')",
+                "INSERT INTO fixtures (id, guild_id, season_id, week_number, games, deadline, status) VALUES (1, '111111', 1, 1, 'A - B', ?, 'open')",
                 (datetime.now(UTC).isoformat(),),
             )
             await conn.execute(
-                "INSERT INTO predictions (fixture_id, user_id, user_name, predictions, submitted_at, is_late) VALUES (1, 'user-1', 'User One', '2-1', ?, 0)",
-                (datetime.now(UTC).isoformat(),),
+                "INSERT INTO results (fixture_id, results, calculated_at, updated_at) VALUES (1, '1-0', '2024-01-01T10:00:00+00:00', '2024-01-01T10:00:00+00:00')"
             )
-            await conn.execute("INSERT INTO results (fixture_id, results) VALUES (1, '2-1')")
             await conn.execute(
-                "INSERT INTO scores (fixture_id, user_id, user_name, points, exact_scores, correct_results) VALUES (1, 'user-1', 'User One', 3, 1, 0)"
+                "INSERT INTO results (fixture_id, results, calculated_at, updated_at) VALUES (1, '2-0', '2024-01-01T12:00:00+00:00', '2024-01-01T12:00:00+00:00')"
             )
             await conn.commit()
 
         db = Database(temp_db_path)
-        await db.initialize()
 
-        fixture = await db.get_fixture_by_id(1, "111111")
-        other_guild_fixture = await db.get_fixture_by_id(1, "222222")
-        season = await db.get_active_season("111111")
-        prediction = await db.get_prediction(1, "user-1", "111111")
-        results = await db.get_results(1)
-        standings = await db.get_standings("111111")
-        other_guild_standings = await db.get_standings("222222")
+        with pytest.raises(
+            RuntimeError,
+            match=r"results has duplicate rows for fixture_id\(s\): 1.*Keep one result row per fixture",
+        ):
+            await db.initialize()
 
-        assert fixture is not None
-        assert other_guild_fixture is None
-        assert season is not None
-        assert fixture["season_id"] == season["id"]
-        assert prediction["predictions"] == ["2-1"]
-        assert results == ["2-1"]
-        assert [row["user_id"] for row in standings] == ["user-1"]
-        assert other_guild_standings == []
+        async with (
+            aiosqlite.connect(temp_db_path) as conn,
+            conn.execute("SELECT results FROM results ORDER BY id") as cursor,
+        ):
+            assert await cursor.fetchall() == [("1-0",), ("2-0",)]
 
     @pytest.mark.asyncio
-    async def test_initialize_adds_missing_columns(self, temp_db_path):
-        """Should automatically add missing columns during initialization."""
+    async def test_initialize_creates_missing_result_unique_index_for_current_schema(
+        self, temp_db_path
+    ):
+        db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        await db.save_results(fixture_id, ["1-0"])
         async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute("DROP INDEX idx_results_fixture_id_unique")
+            await conn.commit()
+
+        await db.initialize()
+        await db.save_results(fixture_id, ["2-0"])
+
+        assert await db.get_results(fixture_id) == ["2-0"]
+        async with (
+            aiosqlite.connect(temp_db_path) as conn,
+            conn.execute(
+                "SELECT COUNT(*) FROM results WHERE fixture_id = ?", (fixture_id,)
+            ) as cursor,
+        ):
+            assert await cursor.fetchone() == (1,)
+
+    @pytest.mark.asyncio
+    async def test_initialize_rejects_partial_result_unique_index(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute("DROP INDEX idx_results_fixture_id_unique")
             await conn.execute(
+                "CREATE UNIQUE INDEX idx_results_fixture_id_unique ON results(fixture_id) WHERE fixture_id > 0"
+            )
+            await conn.commit()
+
+        with pytest.raises(RuntimeError, match=r"results\(fixture_id\)"):
+            await db.initialize()
+
+    @pytest.mark.asyncio
+    async def test_initialize_rejects_missing_prediction_unique_constraint(self, temp_db_path):
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.executescript(
                 """
                 CREATE TABLE seasons (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     guild_id TEXT NOT NULL,
                     name TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'active',
+                    exact_score_points INTEGER NOT NULL DEFAULT 3,
+                    correct_outcome_points INTEGER NOT NULL DEFAULT 1,
+                    wrong_outcome_points INTEGER NOT NULL DEFAULT 0,
+                    late_prediction_points INTEGER NOT NULL DEFAULT 0,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     ended_at DATETIME
-                )
-                """
-            )
-            await conn.execute("""
+                );
                 CREATE TABLE fixtures (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     guild_id TEXT NOT NULL,
@@ -1587,202 +1623,195 @@ class TestSchemaMigration:
                     games TEXT NOT NULL,
                     deadline DATETIME NOT NULL,
                     status TEXT DEFAULT 'open',
+                    message_id TEXT,
+                    channel_id TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE predictions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id INTEGER NOT NULL,
+                    user_id TEXT NOT NULL,
+                    user_name TEXT NOT NULL,
+                    predictions TEXT NOT NULL,
+                    submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    is_late BOOLEAN DEFAULT FALSE,
+                    late_penalty_waived BOOLEAN DEFAULT FALSE,
+                    admin_edited_at DATETIME,
+                    admin_edited_by TEXT,
+                    predicted_game_indexes TEXT,
+                    pending_partial_approval BOOLEAN DEFAULT FALSE,
+                    public_message_id TEXT,
+                    public_message_kind TEXT
+                );
+                CREATE TABLE results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id INTEGER NOT NULL,
+                    results TEXT NOT NULL,
+                    calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE scores (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id INTEGER NOT NULL,
+                    user_id TEXT NOT NULL,
+                    user_name TEXT NOT NULL,
+                    points INTEGER NOT NULL,
+                    exact_scores INTEGER DEFAULT 0,
+                    correct_results INTEGER DEFAULT 0,
+                    UNIQUE(fixture_id, user_id)
+                );
+                CREATE TABLE guild_config (
+                    guild_id TEXT PRIMARY KEY,
+                    admin_role_id TEXT NOT NULL,
+                    league_channel_id TEXT NOT NULL,
+                    active_season_id INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+            await conn.commit()
+
+        db = Database(temp_db_path)
+
+        with pytest.raises(RuntimeError, match=r"predictions\(fixture_id, user_id\)"):
+            await db.initialize()
+
+    @pytest.mark.asyncio
+    async def test_initialize_rejects_stale_schema_without_required_columns(self, temp_db_path):
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.executescript(
+                """
+                CREATE TABLE seasons (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    exact_score_points INTEGER NOT NULL DEFAULT 3,
+                    correct_outcome_points INTEGER NOT NULL DEFAULT 1,
+                    wrong_outcome_points INTEGER NOT NULL DEFAULT 0,
+                    late_prediction_points INTEGER NOT NULL DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    ended_at DATETIME
+                );
+                CREATE TABLE fixtures (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL,
+                    season_id INTEGER,
+                    week_number INTEGER NOT NULL,
+                    games TEXT NOT NULL,
+                    deadline DATETIME NOT NULL,
+                    status TEXT DEFAULT 'open',
+                    message_id TEXT,
+                    channel_id TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE predictions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id INTEGER NOT NULL,
+                    user_id TEXT NOT NULL,
+                    user_name TEXT NOT NULL,
+                    predictions TEXT NOT NULL,
+                    submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    is_late BOOLEAN DEFAULT FALSE,
+                    late_penalty_waived BOOLEAN DEFAULT FALSE,
+                    admin_edited_at DATETIME,
+                    admin_edited_by TEXT,
+                    predicted_game_indexes TEXT,
+                    pending_partial_approval BOOLEAN DEFAULT FALSE,
+                    public_message_kind TEXT,
+                    UNIQUE(fixture_id, user_id)
+                );
+                CREATE TABLE results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id INTEGER NOT NULL,
+                    results TEXT NOT NULL,
+                    calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE scores (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    fixture_id INTEGER NOT NULL,
+                    user_id TEXT NOT NULL,
+                    user_name TEXT NOT NULL,
+                    points INTEGER NOT NULL,
+                    exact_scores INTEGER DEFAULT 0,
+                    correct_results INTEGER DEFAULT 0,
+                    UNIQUE(fixture_id, user_id)
+                );
+                CREATE TABLE guild_config (
+                    guild_id TEXT PRIMARY KEY,
+                    admin_role_id TEXT NOT NULL,
+                    league_channel_id TEXT NOT NULL,
+                    active_season_id INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+            await conn.commit()
+
+        db = Database(temp_db_path)
+
+        with pytest.raises(RuntimeError, match="predictions.public_message_id"):
+            await db.initialize()
+
+    @pytest.mark.asyncio
+    async def test_initialize_rejects_existing_schema_with_missing_table(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute("DROP TABLE scores")
+            await conn.commit()
+
+        with pytest.raises(RuntimeError, match="scores.fixture_id"):
+            await db.initialize()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("guild_id", ["", "   "])
+    async def test_initialize_rejects_blank_fixture_guild_ownership(self, temp_db_path, guild_id):
+        db = Database(temp_db_path)
+        await db.initialize()
+        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute(
+                "UPDATE fixtures SET guild_id = ? WHERE id = ?", (guild_id, fixture_id)
+            )
+            await conn.commit()
+
+        with pytest.raises(RuntimeError, match="fixtures.guild_id has empty rows"):
+            await db.initialize()
+
+    @pytest.mark.asyncio
+    async def test_initialize_rejects_null_fixture_guild_ownership(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute("DROP TABLE fixtures")
+            await conn.execute(
+                """
+                CREATE TABLE fixtures (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT,
+                    season_id INTEGER,
+                    week_number INTEGER NOT NULL,
+                    games TEXT NOT NULL,
+                    deadline DATETIME NOT NULL,
+                    status TEXT DEFAULT 'open',
+                    message_id TEXT,
+                    channel_id TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
-            """)
-            await conn.execute(
-                "INSERT INTO seasons (id, guild_id, name, status) VALUES (1, '111111', 'Migrated Season', 'active')"
-            )
-            await conn.commit()
-
-        db = Database(temp_db_path)
-
-        await db.initialize()
-
-        await db.create_fixture("111111", 1, ["Team A - Team B"], datetime.now(UTC))
-        fixture = await db.get_current_fixture("111111")
-        scoring_rules = await db.get_active_scoring_rules("111111")
-        assert fixture is not None
-        assert "message_id" in fixture
-        assert fixture["week_number"] == 1
-        assert scoring_rules == {
-            "exact_score_points": 3,
-            "correct_outcome_points": 1,
-            "wrong_outcome_points": 0,
-            "late_prediction_points": 0,
-        }
-
-    @pytest.mark.asyncio
-    async def test_initialize_migrates_legacy_results_to_unique_latest_row(self, temp_db_path):
-        """Legacy duplicate result rows should collapse to the newest saved value."""
-        async with aiosqlite.connect(temp_db_path) as conn:
-            await conn.execute(
-                """
-                CREATE TABLE seasons (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    guild_id TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'active',
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    ended_at DATETIME
-                )
                 """
             )
             await conn.execute(
-                """
-                CREATE TABLE fixtures (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    guild_id TEXT NOT NULL,
-                    season_id INTEGER,
-                    week_number INTEGER NOT NULL,
-                    games TEXT NOT NULL,
-                    deadline DATETIME NOT NULL,
-                    status TEXT DEFAULT 'open'
-                )
-                """
-            )
-            await conn.execute(
-                "INSERT INTO seasons (id, guild_id, name, status) VALUES (1, '111111', 'Migrated Season', 'active')"
-            )
-            await conn.execute(
-                """
-                CREATE TABLE predictions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    fixture_id INTEGER NOT NULL,
-                    user_id TEXT NOT NULL,
-                    user_name TEXT NOT NULL,
-                    predictions TEXT NOT NULL,
-                    submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    is_late BOOLEAN DEFAULT FALSE,
-                    UNIQUE(fixture_id, user_id)
-                )
-                """
-            )
-            await conn.execute(
-                """
-                CREATE TABLE results (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    fixture_id INTEGER NOT NULL,
-                    results TEXT NOT NULL,
-                    calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-            await conn.execute(
-                "INSERT INTO fixtures (id, guild_id, season_id, week_number, games, deadline, status) VALUES (1, '111111', 1, 1, 'A - B', ?, 'open')",
+                "INSERT INTO fixtures (guild_id, season_id, week_number, games, deadline, status) VALUES (NULL, NULL, 1, 'A - B', ?, 'open')",
                 (datetime.now(UTC).isoformat(),),
             )
-            await conn.execute(
-                "INSERT INTO results (fixture_id, results, calculated_at) VALUES (1, '1-0', '2024-01-01T10:00:00+00:00')"
-            )
-            await conn.execute(
-                "INSERT INTO results (fixture_id, results, calculated_at) VALUES (1, '2-0', '2024-01-01T12:00:00+00:00')"
-            )
             await conn.commit()
 
-        db = Database(temp_db_path)
-        await db.initialize()
-
-        assert await db.get_results(1) == ["2-0"]
-
-        async with (
-            aiosqlite.connect(temp_db_path) as conn,
-            conn.execute("SELECT COUNT(*) FROM results WHERE fixture_id = 1") as cursor,
-        ):
-            row = await cursor.fetchone()
-            assert row is not None
-            assert row[0] == 1
-
-        await db.save_results(1, ["3-0"])
-        assert await db.get_results(1) == ["3-0"]
-
-        async with (
-            aiosqlite.connect(temp_db_path) as conn,
-            conn.execute("SELECT COUNT(*) FROM results WHERE fixture_id = 1") as cursor,
-        ):
-            row = await cursor.fetchone()
-            assert row is not None
-            assert row[0] == 1
-
-    @pytest.mark.asyncio
-    async def test_initialize_adds_prediction_override_columns_with_safe_defaults(
-        self, temp_db_path
-    ):
-        """Legacy prediction rows should gain admin-override fields without mutating existing facts."""
-        async with aiosqlite.connect(temp_db_path) as conn:
-            await conn.execute(
-                """
-                CREATE TABLE seasons (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    guild_id TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'active',
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    ended_at DATETIME
-                )
-                """
-            )
-            await conn.execute(
-                """
-                CREATE TABLE fixtures (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    guild_id TEXT NOT NULL,
-                    season_id INTEGER,
-                    week_number INTEGER NOT NULL,
-                    games TEXT NOT NULL,
-                    deadline DATETIME NOT NULL,
-                    status TEXT DEFAULT 'open'
-                )
-                """
-            )
-            await conn.execute(
-                "INSERT INTO seasons (id, guild_id, name, status) VALUES (1, '111111', 'Migrated Season', 'active')"
-            )
-            await conn.execute(
-                """
-                CREATE TABLE predictions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    fixture_id INTEGER NOT NULL,
-                    user_id TEXT NOT NULL,
-                    user_name TEXT NOT NULL,
-                    predictions TEXT NOT NULL,
-                    submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    is_late BOOLEAN DEFAULT FALSE,
-                    UNIQUE(fixture_id, user_id)
-                )
-                """
-            )
-            await conn.execute(
-                """
-                CREATE TABLE results (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    fixture_id INTEGER NOT NULL,
-                    results TEXT NOT NULL,
-                    calculated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-            await conn.execute(
-                "INSERT INTO fixtures (id, guild_id, season_id, week_number, games, deadline, status) VALUES (1, '111111', 1, 1, 'A - B', ?, 'open')",
-                (datetime.now(UTC).isoformat(),),
-            )
-            await conn.execute(
-                """
-                INSERT INTO predictions (fixture_id, user_id, user_name, predictions, submitted_at, is_late)
-                VALUES (1, 'user-1', 'User One', '1-0', '2024-01-01T10:00:00+00:00', 1)
-                """
-            )
-            await conn.commit()
-
-        db = Database(temp_db_path)
-        await db.initialize()
-
-        prediction = await db.get_prediction(1, "user-1", "111111")
-        assert prediction is not None
-        assert prediction["is_late"] == 1
-        assert prediction["late_penalty_waived"] == 0
-        assert prediction["admin_edited_at"] is None
-        assert prediction["admin_edited_by"] is None
+        with pytest.raises(RuntimeError, match="fixtures.guild_id has empty rows"):
+            await db.initialize()
 
 
 @pytest.fixture
