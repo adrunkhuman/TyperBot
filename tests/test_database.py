@@ -826,6 +826,67 @@ class TestScores:
         }
 
     @pytest.mark.asyncio
+    async def test_scoring_rule_change_block_is_guild_and_active_season_scoped(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        old_fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        await db.save_scores(
+            old_fixture_id,
+            [
+                {
+                    "user_id": "user-1",
+                    "user_name": "User One",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+        await db.start_new_season("111111", "Next Season")
+
+        await db.update_active_scoring_rules("111111", {"exact_score_points": 5})
+
+        other_guild_fixture_id = await db.create_fixture("222222", 1, ["C - D"], datetime.now(UTC))
+        await db.save_scores(
+            other_guild_fixture_id,
+            [
+                {
+                    "user_id": "user-2",
+                    "user_name": "User Two",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+
+        await db.update_active_scoring_rules("111111", {"correct_outcome_points": 2})
+
+        active_fixture_id = await db.create_fixture("111111", 1, ["E - F"], datetime.now(UTC))
+        await db.save_scores(
+            active_fixture_id,
+            [
+                {
+                    "user_id": "user-1",
+                    "user_name": "User One",
+                    "points": 5,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+
+        with pytest.raises(ValueError, match="Cannot change scoring rules"):
+            await db.update_active_scoring_rules("111111", {"wrong_outcome_points": 1})
+
+        assert await db.get_active_scoring_rules("111111") == {
+            "exact_score_points": 5,
+            "correct_outcome_points": 2,
+            "wrong_outcome_points": 0,
+            "late_prediction_points": 0,
+        }
+
+    @pytest.mark.asyncio
     async def test_save_scores_does_not_mutate_when_write_lock_is_held(
         self, temp_db_path, monkeypatch
     ):
