@@ -234,6 +234,151 @@ class TestSeasons:
         assert new_fixture["season_id"] == active_season["id"]
 
     @pytest.mark.asyncio
+    async def test_start_new_season_archives_previous_active_season(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.upsert_guild_config("111111", "role-1", "channel-1")
+        old_fixture_id = await db.create_fixture(
+            "111111", 7, ["Team A - Team B"], datetime.now(UTC)
+        )
+        await db.save_scores(
+            old_fixture_id,
+            [
+                {
+                    "user_id": "user-1",
+                    "user_name": "User One",
+                    "points": 3,
+                    "exact_scores": 1,
+                    "correct_results": 0,
+                }
+            ],
+        )
+        old_season = await db.get_active_season("111111")
+
+        new_season = await db.start_new_season("111111", "2026/27")
+        config = await db.get_guild_config("111111")
+        seasons = await db.get_seasons("111111")
+
+        assert old_season is not None
+        assert new_season["name"] == "2026/27"
+        assert new_season["status"] == "active"
+        assert config["active_season_id"] == new_season["id"]
+        assert [(season["id"], season["status"]) for season in seasons] == [
+            (old_season["id"], "archived"),
+            (new_season["id"], "active"),
+        ]
+        assert seasons[0]["ended_at"] is not None
+
+    @pytest.mark.asyncio
+    async def test_start_new_season_blocks_open_active_fixture(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        await db.create_fixture("111111", 1, ["Team A - Team B"], datetime.now(UTC))
+        old_season = await db.get_active_season("111111")
+
+        with pytest.raises(ValueError, match="Close all open fixtures"):
+            await db.start_new_season("111111", "2026/27")
+
+        assert await db.get_active_season("111111") == old_season
+
+    @pytest.mark.asyncio
+    async def test_start_new_season_rejects_blank_name_without_mutating(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        old_fixture_id = await db.create_fixture(
+            "111111", 1, ["Team A - Team B"], datetime.now(UTC)
+        )
+        await db.save_scores(
+            old_fixture_id,
+            [
+                {
+                    "user_id": "user-1",
+                    "user_name": "User One",
+                    "points": 1,
+                    "exact_scores": 0,
+                    "correct_results": 1,
+                }
+            ],
+        )
+        old_season = await db.get_active_season("111111")
+
+        with pytest.raises(ValueError, match="Season name is required"):
+            await db.start_new_season("111111", "   ")
+
+        assert await db.get_active_season("111111") == old_season
+        assert await db.get_seasons("111111") == [old_season]
+
+    @pytest.mark.asyncio
+    async def test_start_new_season_rolls_back_when_new_season_insert_fails(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        old_fixture_id = await db.create_fixture(
+            "111111", 1, ["Team A - Team B"], datetime.now(UTC)
+        )
+        await db.save_scores(
+            old_fixture_id,
+            [
+                {
+                    "user_id": "user-1",
+                    "user_name": "User One",
+                    "points": 1,
+                    "exact_scores": 0,
+                    "correct_results": 1,
+                }
+            ],
+        )
+        old_season = await db.get_active_season("111111")
+        async with aiosqlite.connect(temp_db_path) as conn:
+            await conn.execute(
+                """
+                CREATE TRIGGER fail_broken_season_insert
+                BEFORE INSERT ON seasons
+                WHEN NEW.name = 'Broken Season'
+                BEGIN
+                    SELECT RAISE(FAIL, 'broken season insert');
+                END
+                """
+            )
+            await conn.commit()
+
+        with pytest.raises(aiosqlite.IntegrityError, match="broken season insert"):
+            await db.start_new_season("111111", "Broken Season")
+
+        assert await db.get_active_season("111111") == old_season
+        assert await db.get_seasons("111111") == [old_season]
+
+    @pytest.mark.asyncio
+    async def test_start_new_season_resets_next_fixture_week(self, temp_db_path):
+        db = Database(temp_db_path)
+        await db.initialize()
+        old_fixture_id, old_week = await db.create_next_fixture(
+            "111111", ["Team A - Team B"], datetime.now(UTC)
+        )
+        await db.save_scores(
+            old_fixture_id,
+            [
+                {
+                    "user_id": "user-1",
+                    "user_name": "User One",
+                    "points": 1,
+                    "exact_scores": 0,
+                    "correct_results": 1,
+                }
+            ],
+        )
+
+        await db.start_new_season("111111", "2026/27")
+        new_fixture_id, new_week = await db.create_next_fixture(
+            "111111", ["Team C - Team D"], datetime.now(UTC)
+        )
+        new_fixture = await db.get_fixture_by_id(new_fixture_id, "111111")
+        active_season = await db.get_active_season("111111")
+
+        assert old_week == 1
+        assert new_week == 1
+        assert new_fixture["season_id"] == active_season["id"]
+
+    @pytest.mark.asyncio
     async def test_fixture_queries_default_to_active_season(self, temp_db_path):
         db = Database(temp_db_path)
         await db.initialize()

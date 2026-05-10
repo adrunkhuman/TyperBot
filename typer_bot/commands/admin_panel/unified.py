@@ -32,6 +32,8 @@ from .unified_actions import (
     EnterResultsButton,
     JumpToWeekButton,
     JumpToWeekModal,
+    NewSeasonButton,
+    NewSeasonModal,
     PostResultsButton,
     PostResultsConfirmView,
     SetupBotButton,
@@ -46,6 +48,8 @@ __all__ = [
     "EnterResultsButton",
     "JumpToWeekButton",
     "JumpToWeekModal",
+    "NewSeasonButton",
+    "NewSeasonModal",
     "PostResultsButton",
     "PostResultsConfirmView",
     "SetupBotButton",
@@ -78,6 +82,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.has_user_overflow = False
         self.has_pending_partials = False
         self.current_prediction: dict | None = None
+        self.active_season: dict | None = None
         self.fixture_select = FixtureSelect(self)
         self.user_select = PredictionUserSelect(self)
         self.user_select.update_options([])
@@ -91,6 +96,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.add_item(FixturesDeleteButton(self, disabled=self.selection.fixture_id is None, row=2))
         self.add_item(SetupBotButton(self))
         self.add_item(JumpToWeekButton(self))
+        self.add_item(NewSeasonButton(self))
         if self.has_pending_partials:
             self.add_item(ReviewPendingPartialsButton(self))
         self.add_item(EnterResultsButton(self))
@@ -121,6 +127,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
             )
 
     async def load_fixture_options(self) -> None:
+        self.active_season = await self.db.get_or_create_active_season(self.guild_id)
         fixtures = await self.db.get_recent_fixtures(self.guild_id, MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
         self.has_pending_partials = bool(
@@ -162,6 +169,8 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
 
     def render_content(self) -> str:
         lines = ["**Admin Panel**"]
+        if self.active_season is not None:
+            lines.append(f"Active season: {self.active_season['name']}")
         if self.selection.fixture_label:
             header = f"Fixture: {self.selection.fixture_label}"
             if self.selection.user_label:

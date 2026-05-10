@@ -309,6 +309,9 @@ class Database:
     async def get_seasons(self, guild_id):
         return await self._seasons.get_seasons(guild_id)
 
+    async def start_new_season(self, guild_id, name):
+        return await self._seasons.start_new_season(guild_id, name)
+
     async def create_fixture(self, guild_id, week_number, games, deadline):
         return await self._fixtures.create_fixture(guild_id, week_number, games, deadline)
 
