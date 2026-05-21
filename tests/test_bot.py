@@ -50,6 +50,7 @@ class TestSetupHook:
         ):
             bot = TyperBot.__new__(TyperBot)
             bot.db = MagicMock()
+            bot.db.db_path = "test.db"
             bot.db.initialize = AsyncMock()
             bot.thread_handler = MagicMock()
             bot.load_extension = AsyncMock()
@@ -62,6 +63,13 @@ class TestSetupHook:
         """Database is initialized during setup_hook."""
         await bot_instance.setup_hook()
         bot_instance.db.initialize.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_setup_hook_runs_optional_auto_seed_after_database_init(self, bot_instance):
+        with patch("typer_bot.bot.maybe_auto_seed_test_data", AsyncMock()) as auto_seed:
+            await bot_instance.setup_hook()
+
+        auto_seed.assert_awaited_once_with("test.db")
 
     @pytest.mark.asyncio
     async def test_setup_hook_loads_user_commands(self, bot_instance):

@@ -9,9 +9,19 @@ import shutil
 from datetime import timedelta
 from pathlib import Path
 
+import aiosqlite
+
 from typer_bot.database import Database
 from typer_bot.utils import calculate_points, now
-from typer_bot.utils.config import BACKUP_DIR, DB_PATH
+from typer_bot.utils.config import (
+    BACKUP_DIR,
+    DB_PATH,
+    ENVIRONMENT,
+    IS_PRODUCTION,
+    SEED_TEST_DATA,
+    TEST_GUILD_ID,
+    TEST_USER_ID,
+)
 from typer_bot.utils.logger import setup_logging
 
 SAMPLE_GAMES = [
@@ -83,39 +93,23 @@ def _build_seed_users() -> list[dict[str, str]]:
     return [user.copy() for user in SYNTHETIC_USERS]
 
 
-async def seed_mixed_test_data(
-    db_path: str,
-    backup_dir: str,
-    tester_user_id: str | None,
-    guild_id: str = DEFAULT_MANUAL_GUILD_ID,
-    *,
-    force_reset: bool = False,
-) -> None:
-    """Reset the target SQLite files and seed one mixed manual-testing scenario.
+async def _database_has_seedable_data(db_path: str) -> bool:
+    async with aiosqlite.connect(db_path) as db:
+        for table_name in (
+            "guild_config",
+            "seasons",
+            "fixtures",
+            "predictions",
+            "results",
+            "scores",
+        ):
+            async with db.execute(f"SELECT 1 FROM {table_name} LIMIT 1") as cursor:
+                if await cursor.fetchone() is not None:
+                    return True
+    return False
 
-    Args:
-        db_path: SQLite database file to recreate and seed.
-        backup_dir: Backup directory removed before reseeding.
-        tester_user_id: Real Discord user ID added only to the open-fixture seed data.
-        guild_id: Discord guild ID assigned to seeded fixtures.
-        force_reset: Allows resetting paths outside ``./.local/manual-discord-test``.
 
-    Raises:
-        ValueError: Target paths are outside the default manual-test directory and
-            ``force_reset`` is not enabled.
-
-    Notes:
-        The reset removes the database file, its WAL/SHM sidecars, and the backup
-        directory. The seed creates three fixtures: one scored past fixture, one
-        open fixture with saved predictions, and one overdue fixture with a late
-        prediction. This touches SQLite only. It does not post announcements,
-        create threads, or run any Discord workflows.
-    """
-    _reset_database_files(db_path, backup_dir, force_reset)
-
-    db = Database(db_path)
-    await db.initialize()
-
+async def _seed_mixed_rows(db: Database, tester_user_id: str | None, guild_id: str) -> None:
     current_time = now()
     users = _build_seed_users()
 
@@ -201,6 +195,69 @@ async def seed_mixed_test_data(
         ["3-1", "0-0", "1-2"],
         True,
     )
+
+
+async def maybe_auto_seed_test_data(
+    db_path: str,
+    *,
+    enabled: bool = SEED_TEST_DATA,
+    environment: str = ENVIRONMENT,
+    is_production: bool = IS_PRODUCTION,
+    guild_id: str | None = TEST_GUILD_ID,
+    tester_user_id: str | None = TEST_USER_ID,
+) -> bool:
+    """Seed disposable non-production data when explicitly enabled and empty."""
+    if not enabled:
+        return False
+    if is_production:
+        logger.warning("Skipping test data auto-seed in production environment")
+        return False
+    if not guild_id:
+        raise RuntimeError("TEST_GUILD_ID is required when SEED_TEST_DATA is enabled.")
+    if await _database_has_seedable_data(db_path):
+        logger.info("Skipping test data auto-seed because database is not empty")
+        return False
+
+    await _seed_mixed_rows(Database(db_path), tester_user_id, guild_id)
+    logger.info(
+        "Seeded non-production test data", extra={"environment": environment, "guild_id": guild_id}
+    )
+    return True
+
+
+async def seed_mixed_test_data(
+    db_path: str,
+    backup_dir: str,
+    tester_user_id: str | None,
+    guild_id: str = DEFAULT_MANUAL_GUILD_ID,
+    *,
+    force_reset: bool = False,
+) -> None:
+    """Reset the target SQLite files and seed one mixed manual-testing scenario.
+
+    Args:
+        db_path: SQLite database file to recreate and seed.
+        backup_dir: Backup directory removed before reseeding.
+        tester_user_id: Real Discord user ID added only to the open-fixture seed data.
+        guild_id: Discord guild ID assigned to seeded fixtures.
+        force_reset: Allows resetting paths outside ``./.local/manual-discord-test``.
+
+    Raises:
+        ValueError: Target paths are outside the default manual-test directory and
+            ``force_reset`` is not enabled.
+
+    Notes:
+        The reset removes the database file, its WAL/SHM sidecars, and the backup
+        directory. The seed creates three fixtures: one scored past fixture, one
+        open fixture with saved predictions, and one overdue fixture with a late
+        prediction. This touches SQLite only. It does not post announcements,
+        create threads, or run any Discord workflows.
+    """
+    _reset_database_files(db_path, backup_dir, force_reset)
+
+    db = Database(db_path)
+    await db.initialize()
+    await _seed_mixed_rows(db, tester_user_id, guild_id)
 
 
 async def _async_main(tester_user_id: str | None, guild_id: str, force_reset: bool) -> None:
