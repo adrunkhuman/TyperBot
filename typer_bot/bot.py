@@ -20,16 +20,11 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-logger.info("=" * 50)
-logger.info("STARTING TYPER BOT")
-logger.info("=" * 50)
-
 
 class TyperBot(commands.Bot):
     """Football predictions Discord bot."""
 
     def __init__(self):
-        logger.info("Initializing TyperBot...")
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
@@ -38,7 +33,6 @@ class TyperBot(commands.Bot):
 
         self.db = Database()
         self.thread_handler = ThreadPredictionHandler(self, self.db)
-        logger.info("Database instance created")
 
     async def on_interaction(self, interaction: discord.Interaction):
         """Set trace ID and context for every interaction before processing."""
@@ -87,42 +81,34 @@ class TyperBot(commands.Bot):
 
     async def setup_hook(self):
         """Initialize database and load cogs."""
-        logger.info("Running setup_hook...")
-
         try:
             await self.db.initialize()
-            logger.info("Database initialized successfully")
+            logger.info("Database initialized")
             await maybe_auto_seed_test_data(self.db.db_path)
         except Exception:
             logger.exception("Database initialization failed")
             raise
 
-        logger.info("Loading command cogs...")
         try:
             await self.load_extension("typer_bot.commands.user_commands")
-            logger.info("Loaded user_commands")
         except Exception:
             logger.exception("Failed to load user_commands")
             raise
 
         try:
             await self.load_extension("typer_bot.commands.admin_commands")
-            logger.info("Loaded admin_commands")
         except Exception:
             logger.exception("Failed to load admin_commands")
             raise
 
-        logger.info("Syncing slash commands...")
         try:
             synced = await self.tree.sync()
             logger.info(f"Synced {len(synced)} commands")
         except Exception:
             logger.exception("Failed to sync commands")
 
-        logger.info("Starting background tasks...")
         self.reminder_task.start()
         self._cleanup_sessions_task.start()
-        logger.info("Setup hook complete")
 
     async def on_ready(self):
         """Called when bot is ready."""
@@ -130,14 +116,44 @@ class TyperBot(commands.Bot):
             logger.warning("Bot ready event fired before user was available")
             return
 
-        logger.info(f"✓ Bot connected: {self.user} (ID: {self.user.id})")
-        logger.info(f"✓ Connected to {len(self.guilds)} guild(s):")
-        for guild in self.guilds:
-            logger.info(f"  - {guild.name} (ID: {guild.id})")
+        logger.info("Bot ready", extra={"bot_id": self.user.id, "guild_count": len(self.guilds)})
 
         await self._check_permissions()
 
         await self._sync_fixture_thread()
+
+    async def on_guild_join(self, guild: discord.Guild):
+        """Log guild metadata and setup state when invited."""
+        setup_configured = None
+        try:
+            config = await self.db.get_guild_config(str(guild.id))
+            setup_configured = config is not None
+        except Exception:
+            logger.exception(
+                "Could not load guild setup state",
+                extra={"guild_id": guild.id, "guild_name": guild.name},
+            )
+
+        logger.info(
+            "Joined guild",
+            extra={
+                "guild_id": guild.id,
+                "guild_name": guild.name,
+                "member_count": guild.member_count,
+                "setup_configured": setup_configured,
+            },
+        )
+        await self._check_guild_permissions(guild)
+
+    async def on_guild_remove(self, guild: discord.Guild):
+        logger.info(
+            "Removed from guild",
+            extra={
+                "guild_id": guild.id,
+                "guild_name": guild.name,
+                "member_count": guild.member_count,
+            },
+        )
 
     async def on_error(self, event_method, *_args, **_kwargs):
         """Handle uncaught errors."""
@@ -261,18 +277,18 @@ class TyperBot(commands.Bot):
         The stored message_id doubles as the thread_id since Discord public
         threads inherit their parent message's snowflake ID.
         """
-        logger.info("Verifying fixture announcement...")
-
         try:
             open_fixtures = await self.db.get_all_open_fixtures()
             if not open_fixtures:
-                logger.info("No open fixture found, skipping verification")
+                logger.debug("No open fixture found, skipping announcement verification")
                 return
 
             for fixture in open_fixtures:
                 message_id = fixture.get("message_id")
                 if not message_id:
-                    logger.info(f"Fixture {fixture['id']} has no message_id, skipping verification")
+                    logger.debug(
+                        f"Fixture {fixture['id']} has no message_id, skipping verification"
+                    )
                     continue
 
                 message = await self._find_fixture_announcement_message(fixture)
@@ -283,9 +299,9 @@ class TyperBot(commands.Bot):
                     continue
 
                 if message.thread:
-                    logger.info(f"Fixture {fixture['id']} has thread {message.thread.id}")
+                    logger.debug(f"Fixture {fixture['id']} has thread {message.thread.id}")
                 else:
-                    logger.info(
+                    logger.warning(
                         f"Fixture {fixture['id']} has no thread (/predict cannot post publicly)"
                     )
 
@@ -410,55 +426,64 @@ class TyperBot(commands.Bot):
 
         return None
 
-    async def _check_permissions(self):
-        """Warn when a guild is missing permissions required for prediction workflows."""
+    def _missing_guild_permissions(self, guild: discord.Guild) -> list[str] | None:
         required_permissions = [
             ("send_messages", "Send Messages"),
+            ("send_messages_in_threads", "Send Messages in Threads"),
             ("read_message_history", "Read Message History"),
             ("add_reactions", "Add Reactions"),
             ("create_public_threads", "Create Public Threads"),
         ]
 
+        me = guild.me
+        if not me:
+            return None
+
+        return [
+            perm_name
+            for perm_attr, perm_name in required_permissions
+            if not getattr(me.guild_permissions, perm_attr, False)
+        ]
+
+    async def _check_guild_permissions(self, guild: discord.Guild) -> None:
+        missing = self._missing_guild_permissions(guild)
+        if missing is None:
+            logger.warning(
+                "Bot member not found in guild",
+                extra={"guild_id": guild.id, "guild_name": guild.name},
+            )
+            return
+
+        if missing:
+            logger.warning(
+                "Guild missing permissions",
+                extra={
+                    "guild_id": guild.id,
+                    "guild_name": guild.name,
+                    "missing_permissions": ", ".join(missing),
+                },
+            )
+
+    async def _check_permissions(self):
+        """Warn when a guild is missing permissions required for prediction workflows."""
         for guild in self.guilds:
-            me = guild.me
-            if not me:
-                logger.warning(f"Bot not found in guild {guild.name} (ID: {guild.id})")
-                continue
-
-            missing = []
-            for perm_attr, perm_name in required_permissions:
-                if not getattr(me.guild_permissions, perm_attr, False):
-                    missing.append(perm_name)
-
-            if missing:
-                logger.warning(
-                    f"⚠️  Guild '{guild.name}' (ID: {guild.id}): "
-                    f"Missing permissions: {', '.join(missing)}"
-                )
-            else:
-                logger.info(f"✓ Guild '{guild.name}': All required permissions present")
+            await self._check_guild_permissions(guild)
 
 
 def main():
     """Run the bot."""
-    logger.info("Starting main()...")
-
     token = os.getenv("DISCORD_TOKEN")
     if not token:
-        logger.error("❌ DISCORD_TOKEN environment variable not set!")
-        logger.error("Please set DISCORD_TOKEN in your deployment environment")
+        logger.error("DISCORD_TOKEN environment variable not set")
         sys.exit(1)
 
     if token == "your_bot_token_here":
-        logger.error("❌ DISCORD_TOKEN is set to placeholder value!")
-        logger.error("Please update it with your actual bot token")
+        logger.error("DISCORD_TOKEN is set to placeholder value")
         sys.exit(1)
 
     # The guard above exits on missing/placeholder tokens; this keeps the type checker honest.
     if token is None:
         raise RuntimeError("Token validation failed unexpectedly")
-    logger.info("✅ Token configured")
-
     environment = os.getenv("ENVIRONMENT", "development")
     is_production = environment.lower() in ("production", "prod")
 
@@ -467,23 +492,20 @@ def main():
     else:
         logger.info("Running in non-production environment: %s", environment)
 
-    logger.info("Creating TyperBot instance...")
-
     try:
         bot = TyperBot()
-        logger.info("Starting bot.run()...")
         bot.run(token, log_handler=None)
     except discord.PrivilegedIntentsRequired:
         logger.exception(
-            "❌ Privileged intents are not enabled in the Discord developer portal. "
+            "Privileged intents are not enabled in the Discord developer portal. "
             "Enable Message Content Intent and Server Members Intent for this bot application."
         )
         sys.exit(1)
     except discord.LoginFailure:
-        logger.exception("❌ Discord login failed - check if DISCORD_TOKEN is valid")
+        logger.exception("Discord login failed; check DISCORD_TOKEN")
         sys.exit(1)
     except Exception:
-        logger.exception("❌ Unexpected error")
+        logger.exception("Unexpected bot startup error")
         sys.exit(1)
 
 

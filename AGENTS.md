@@ -108,7 +108,7 @@ guild_config (
 ```
 
 ## 4. Codebase Map
-- `typer_bot/bot.py`: Entry point and setup hook.
+- `typer_bot/bot.py`: Entry point, setup hook, startup/guild lifecycle logging, and guild permission checks.
 - `typer_bot/commands/user_commands.py`: Public slash commands, including modal-driven `/predict` flow.
 - `typer_bot/commands/admin_panel/`: Admin panel UI views, selects, and modals split out of `admin_commands.py`.
 - `typer_bot/handlers/thread_prediction_handler.py`: Thread-based prediction processing (on_message) plus thread prediction cooldown state.

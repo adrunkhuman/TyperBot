@@ -3,12 +3,30 @@
 import os
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 import pytest
 
 from typer_bot.bot import TyperBot, main
+
+
+def guild_permissions(
+    *,
+    send_messages=True,
+    send_messages_in_threads=True,
+    read_message_history=True,
+    add_reactions=True,
+    create_public_threads=True,
+):
+    return SimpleNamespace(
+        send_messages=send_messages,
+        send_messages_in_threads=send_messages_in_threads,
+        read_message_history=read_message_history,
+        add_reactions=add_reactions,
+        create_public_threads=create_public_threads,
+    )
 
 
 class TestBotInitialization:
@@ -174,22 +192,27 @@ class TestPermissionCheck:
         mock_guild.name = "Test Guild"
         mock_guild.id = 123456
         mock_guild.me = MagicMock()
-        mock_guild.me.guild_permissions.send_messages = False
-        mock_guild.me.guild_permissions.read_message_history = False
-        mock_guild.me.guild_permissions.add_reactions = False
-        mock_guild.me.guild_permissions.create_public_threads = False
+        mock_guild.me.guild_permissions = guild_permissions(
+            send_messages=False,
+            send_messages_in_threads=False,
+            read_message_history=False,
+            add_reactions=False,
+            create_public_threads=False,
+        )
 
         bot_instance.guilds = [mock_guild]
 
         with patch("typer_bot.bot.logger") as mock_logger:
             await bot_instance._check_permissions()
-            warning = mock_logger.warning.call_args.args[0]
+            warning_call = mock_logger.warning.call_args
 
-        assert "Test Guild" in warning
-        assert "Send Messages" in warning
-        assert "Read Message History" in warning
-        assert "Add Reactions" in warning
-        assert "Create Public Threads" in warning
+        assert warning_call.args[0] == "Guild missing permissions"
+        assert warning_call.kwargs["extra"]["guild_name"] == "Test Guild"
+        assert "Send Messages" in warning_call.kwargs["extra"]["missing_permissions"]
+        assert "Send Messages in Threads" in warning_call.kwargs["extra"]["missing_permissions"]
+        assert "Read Message History" in warning_call.kwargs["extra"]["missing_permissions"]
+        assert "Add Reactions" in warning_call.kwargs["extra"]["missing_permissions"]
+        assert "Create Public Threads" in warning_call.kwargs["extra"]["missing_permissions"]
 
     @pytest.mark.asyncio
     async def test_check_permissions_warns_when_only_thread_permission_missing(self, bot_instance):
@@ -198,19 +221,135 @@ class TestPermissionCheck:
         mock_guild.name = "Test Guild"
         mock_guild.id = 123456
         mock_guild.me = MagicMock()
-        mock_guild.me.guild_permissions.send_messages = True
-        mock_guild.me.guild_permissions.read_message_history = True
-        mock_guild.me.guild_permissions.add_reactions = True
-        mock_guild.me.guild_permissions.create_public_threads = False
+        mock_guild.me.guild_permissions = guild_permissions(create_public_threads=False)
 
         bot_instance.guilds = [mock_guild]
 
         with patch("typer_bot.bot.logger") as mock_logger:
             await bot_instance._check_permissions()
-            warning = mock_logger.warning.call_args.args[0]
+            warning_call = mock_logger.warning.call_args
 
-            assert "Create Public Threads" in warning
+            assert warning_call.args[0] == "Guild missing permissions"
+            assert "Create Public Threads" in warning_call.kwargs["extra"]["missing_permissions"]
             mock_logger.info.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_check_permissions_warns_when_only_thread_send_permission_missing(
+        self, bot_instance
+    ):
+        mock_guild = MagicMock()
+        mock_guild.name = "Test Guild"
+        mock_guild.id = 123456
+        mock_guild.me = MagicMock()
+        mock_guild.me.guild_permissions = guild_permissions(send_messages_in_threads=False)
+
+        bot_instance.guilds = [mock_guild]
+
+        with patch("typer_bot.bot.logger") as mock_logger:
+            await bot_instance._check_permissions()
+            warning_call = mock_logger.warning.call_args
+
+            assert warning_call.args[0] == "Guild missing permissions"
+            assert "Send Messages in Threads" in warning_call.kwargs["extra"]["missing_permissions"]
+            mock_logger.info.assert_not_called()
+
+
+class TestGuildLifecycle:
+    @pytest.fixture
+    def bot_instance(self):
+        with patch("typer_bot.bot.commands.Bot.__init__", return_value=None):
+            bot = TyperBot.__new__(TyperBot)
+            bot.db = MagicMock()
+            bot.db.get_guild_config = AsyncMock(return_value=None)
+            yield bot
+
+    @pytest.mark.asyncio
+    async def test_on_guild_join_logs_invite_and_setup_state(self, bot_instance):
+        guild = MagicMock()
+        guild.id = 123456
+        guild.name = "New Guild"
+        guild.member_count = 42
+        guild.me = MagicMock()
+        guild.me.guild_permissions = guild_permissions()
+
+        with patch("typer_bot.bot.logger") as mock_logger:
+            await bot_instance.on_guild_join(guild)
+
+        bot_instance.db.get_guild_config.assert_awaited_once_with("123456")
+        info_call = mock_logger.info.call_args
+        assert info_call.args[0] == "Joined guild"
+        assert info_call.kwargs["extra"] == {
+            "guild_id": 123456,
+            "guild_name": "New Guild",
+            "member_count": 42,
+            "setup_configured": False,
+        }
+        mock_logger.warning.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_on_guild_join_logs_configured_state(self, bot_instance):
+        bot_instance.db.get_guild_config.return_value = {"guild_id": "123456"}
+        guild = MagicMock()
+        guild.id = 123456
+        guild.name = "Configured Guild"
+        guild.member_count = 10
+        guild.me = MagicMock()
+        guild.me.guild_permissions = guild_permissions()
+
+        with patch("typer_bot.bot.logger") as mock_logger:
+            await bot_instance.on_guild_join(guild)
+
+        assert mock_logger.info.call_args.kwargs["extra"]["setup_configured"] is True
+
+    @pytest.mark.asyncio
+    async def test_on_guild_join_logs_even_when_setup_lookup_fails(self, bot_instance):
+        bot_instance.db.get_guild_config.side_effect = RuntimeError("db unavailable")
+        guild = MagicMock()
+        guild.id = 123456
+        guild.name = "New Guild"
+        guild.member_count = 42
+        guild.me = MagicMock()
+        guild.me.guild_permissions = guild_permissions()
+
+        with patch("typer_bot.bot.logger") as mock_logger:
+            await bot_instance.on_guild_join(guild)
+
+        mock_logger.exception.assert_called_once()
+        info_call = mock_logger.info.call_args
+        assert info_call.args[0] == "Joined guild"
+        assert info_call.kwargs["extra"]["setup_configured"] is None
+
+    @pytest.mark.asyncio
+    async def test_on_guild_join_logs_missing_permissions(self, bot_instance):
+        guild = MagicMock()
+        guild.id = 123456
+        guild.name = "New Guild"
+        guild.member_count = 42
+        guild.me = MagicMock()
+        guild.me.guild_permissions = guild_permissions(send_messages_in_threads=False)
+
+        with patch("typer_bot.bot.logger") as mock_logger:
+            await bot_instance.on_guild_join(guild)
+
+        assert mock_logger.warning.call_args.args[0] == "Guild missing permissions"
+
+    @pytest.mark.asyncio
+    async def test_on_guild_remove_logs_guild_metadata(self, bot_instance):
+        guild = MagicMock()
+        guild.id = 123456
+        guild.name = "Old Guild"
+        guild.member_count = 5
+
+        with patch("typer_bot.bot.logger") as mock_logger:
+            await bot_instance.on_guild_remove(guild)
+
+        info_call = mock_logger.info.call_args
+        assert info_call.args[0] == "Removed from guild"
+        assert info_call.kwargs["extra"] == {
+            "guild_id": 123456,
+            "guild_name": "Old Guild",
+            "member_count": 5,
+        }
 
 
 class TestFixtureAnnouncementSync:
