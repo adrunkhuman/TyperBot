@@ -1,6 +1,7 @@
 """Tests for runtime logging formatter selection."""
 
 import io
+import json
 import logging
 
 import pytest
@@ -35,50 +36,70 @@ def restore_logging_state():
     logging.getLogger("discord.http").setLevel(discord_http_level)
 
 
-def test_production_environment_uses_json_formatter(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.delenv("LOG_FORMAT", raising=False)
-
-    formatter = logger_module._select_formatter(NonTtyBuffer())
-
-    assert isinstance(formatter, logger_module.ProductionJSONFormatter)
-
-
-def test_non_interactive_non_production_uses_plain_formatter(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "test")
-    monkeypatch.delenv("LOG_FORMAT", raising=False)
-
-    formatter = logger_module._select_formatter(NonTtyBuffer())
-
-    assert isinstance(formatter, logger_module.PlainFormatter)
-
-
-def test_interactive_non_production_uses_color_formatter(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "development")
-    monkeypatch.delenv("LOG_FORMAT", raising=False)
-
-    formatter = logger_module._select_formatter(TtyBuffer())
-
-    assert isinstance(formatter, logger_module.LocalFormatter)
-
-
-def test_plain_formatter_does_not_emit_ansi_sequences(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "test")
-    monkeypatch.delenv("LOG_FORMAT", raising=False)
-    output = NonTtyBuffer()
+def _configure_and_emit(monkeypatch, output: io.StringIO, logger_name: str = "test.logger") -> str:
     monkeypatch.setattr(logger_module.sys, "stdout", output)
 
     logger_module.setup_logging(logging.INFO)
-    logging.getLogger("test.plain").info("readable message")
+    logging.getLogger(logger_name).info("readable message")
 
-    assert "\x1b[" not in output.getvalue()
-    assert "[INFO    ] test.plain: readable message" in output.getvalue()
+    return output.getvalue().splitlines()[-1]
+
+
+def test_production_environment_emits_json_logs(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.delenv("LOG_FORMAT", raising=False)
+    output = NonTtyBuffer()
+
+    log_entry = json.loads(_configure_and_emit(monkeypatch, output, "test.production"))
+
+    assert log_entry["level"] == "info"
+    assert log_entry["logger"] == "test.production"
+    assert log_entry["message"] == "readable message"
+
+
+def test_non_interactive_non_production_emits_plain_logs(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.delenv("LOG_FORMAT", raising=False)
+    output = NonTtyBuffer()
+
+    log_line = _configure_and_emit(monkeypatch, output, "test.plain")
+
+    assert "\x1b[" not in log_line
+    assert not log_line.startswith("{")
+    assert "INFO" in log_line
+    assert "test.plain" in log_line
+    assert "readable message" in log_line
+
+
+def test_interactive_non_production_emits_color_logs(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.delenv("LOG_FORMAT", raising=False)
+    output = TtyBuffer()
+
+    log_line = _configure_and_emit(monkeypatch, output)
+
+    assert "\x1b[" in log_line
+    assert "readable message" in log_line
+
+
+def test_log_format_override_can_force_plain(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("LOG_FORMAT", "plain")
+    output = TtyBuffer()
+
+    log_line = _configure_and_emit(monkeypatch, output)
+
+    assert "\x1b[" not in log_line
+    assert not log_line.startswith("{")
+    assert "readable message" in log_line
 
 
 def test_log_format_override_can_force_json(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "test")
     monkeypatch.setenv("LOG_FORMAT", "json")
+    output = TtyBuffer()
 
-    formatter = logger_module._select_formatter(TtyBuffer())
+    log_entry = json.loads(_configure_and_emit(monkeypatch, output))
 
-    assert isinstance(formatter, logger_module.ProductionJSONFormatter)
+    assert log_entry["level"] == "info"
+    assert log_entry["message"] == "readable message"
