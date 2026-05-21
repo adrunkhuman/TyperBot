@@ -2,6 +2,7 @@
 
 import io
 import logging
+import re
 
 import pytest
 
@@ -46,7 +47,7 @@ def test_setup_logging_emits_plain_logs(monkeypatch):
 
     assert "\x1b[" not in log_line
     assert not log_line.startswith("{")
-    assert log_line.startswith("20")
+    assert re.match(r"^20\d{2}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00\s", log_line)
     assert "INFO" in log_line
     assert "test.plain" in log_line
     assert "readable message" in log_line

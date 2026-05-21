@@ -7,7 +7,8 @@ import os
 import sys
 import time
 from collections.abc import Awaitable, Callable
-from typing import Any, ParamSpec, TypeVar
+from datetime import UTC, datetime
+from typing import Any, ParamSpec, TypeVar, override
 
 _trace_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar("trace_id", default=None)
 
@@ -190,6 +191,11 @@ def _format_log_value(key: str, value: Any) -> str:
 
 
 class PlainFormatter(logging.Formatter):
+    @override
+    def formatTime(self, record: logging.LogRecord, datefmt: str | None = None) -> str:
+        _ = datefmt
+        return datetime.fromtimestamp(record.created, tz=UTC).isoformat(timespec="seconds")
+
     def format(self, record: logging.LogRecord) -> str:
         line = super().format(record)
         fields: dict[str, Any] = {}
