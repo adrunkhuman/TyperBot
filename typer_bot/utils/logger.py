@@ -317,18 +317,37 @@ class LocalFormatter(logging.Formatter):
         return formatter.format(record)
 
 
+class PlainFormatter(logging.Formatter):
+    FMT = "[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s"
+    DATEFMT = "%H:%M:%S"
+
+    def __init__(self) -> None:
+        super().__init__(self.FMT, datefmt=self.DATEFMT)
+
+
 def is_production_environment() -> bool:
-    """Detect if running in a deployed production environment."""
-    return (
-        os.getenv("ENVIRONMENT") == "production"
-        or os.getenv("COOLIFY_ENVIRONMENT_NAME") is not None
-        or os.getenv("RAILWAY_ENVIRONMENT") is not None
-        or os.getenv("RAILWAY_SERVICE_NAME") is not None
-    )
+    """Return whether ENVIRONMENT explicitly selects production."""
+    return os.getenv("ENVIRONMENT", "development").lower() in ("production", "prod")
+
+
+def _select_formatter(stream: Any) -> logging.Formatter:
+    log_format = os.getenv("LOG_FORMAT", "").lower()
+    if log_format == "json":
+        return ProductionJSONFormatter()
+    if log_format == "plain":
+        return PlainFormatter()
+    if log_format == "color":
+        return LocalFormatter()
+
+    if is_production_environment():
+        return ProductionJSONFormatter()
+    if stream.isatty():
+        return LocalFormatter()
+    return PlainFormatter()
 
 
 def setup_logging(level: int | None = None) -> None:
-    """Configure root logger for production or local environment.
+    """Configure root logger on stdout with the selected formatter.
 
     Forces ALL output to stdout. Some hosts treat stderr as error-level logs
     regardless of content, which breaks log level filtering.
@@ -341,13 +360,10 @@ def setup_logging(level: int | None = None) -> None:
     root_logger.handlers.clear()
     root_logger.setLevel(level)
 
-    handler = logging.StreamHandler(sys.stdout)
+    stream = sys.stdout
+    handler = logging.StreamHandler(stream)
     handler.setLevel(level)
-
-    if is_production_environment():
-        handler.setFormatter(ProductionJSONFormatter())
-    else:
-        handler.setFormatter(LocalFormatter())
+    handler.setFormatter(_select_formatter(stream))
 
     root_logger.addHandler(handler)
 
@@ -355,10 +371,8 @@ def setup_logging(level: int | None = None) -> None:
     logging.getLogger("discord.http").setLevel(logging.WARNING)
 
     logger = logging.getLogger(__name__)
-    env_type = "production" if is_production_environment() else "local"
-    logger.info(
-        f"Logging configured for {env_type} environment at level {logging.getLevelName(level)}"
-    )
+    formatter_name = handler.formatter.__class__.__name__ if handler.formatter else "unknown"
+    logger.info(f"Logging configured with {formatter_name} at level {logging.getLevelName(level)}")
 
 
 def log_event(

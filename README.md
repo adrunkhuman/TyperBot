@@ -86,6 +86,8 @@ uv run ruff format --check .
 uv run ty check typer_bot
 ```
 
+Non-interactive preview/test deployments use plain single-line logs by default. Set `LOG_FORMAT=json`, `LOG_FORMAT=plain`, or `LOG_FORMAT=color` only when you need to override formatter selection.
+
 ## License
 
 MIT.
