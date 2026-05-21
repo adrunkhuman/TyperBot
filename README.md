@@ -77,6 +77,8 @@ uv run python -m typer_bot
 
 Disposable non-production deployments can auto-seed an empty database by setting `SEED_TEST_DATA=true` and `TEST_GUILD_ID`.
 
+Logs are plain single-line stdout; set `LOG_LEVEL=DEBUG` when troubleshooting.
+
 Run checks:
 
 ```bash
@@ -85,8 +87,6 @@ uv run ruff check .
 uv run ruff format --check .
 uv run ty check typer_bot
 ```
-
-Non-interactive preview/test deployments use plain single-line logs by default. Set `LOG_FORMAT=json`, `LOG_FORMAT=plain`, or `LOG_FORMAT=color` only when you need to override formatter selection.
 
 ## License
 

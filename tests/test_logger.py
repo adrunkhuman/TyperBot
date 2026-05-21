@@ -1,22 +1,11 @@
-"""Tests for runtime logging formatter selection."""
+"""Tests for runtime logging setup."""
 
 import io
-import json
 import logging
 
 import pytest
 
 from typer_bot.utils import logger as logger_module
-
-
-class TtyBuffer(io.StringIO):
-    def isatty(self) -> bool:
-        return True
-
-
-class NonTtyBuffer(io.StringIO):
-    def isatty(self) -> bool:
-        return False
 
 
 @pytest.fixture(autouse=True)
@@ -26,6 +15,8 @@ def restore_logging_state():
     root_level = root_logger.level
     discord_level = logging.getLogger("discord").level
     discord_http_level = logging.getLogger("discord.http").level
+    trace_id = logger_module.get_trace_id()
+    log_context = logger_module.get_log_context()
 
     yield
 
@@ -34,6 +25,9 @@ def restore_logging_state():
     root_logger.setLevel(root_level)
     logging.getLogger("discord").setLevel(discord_level)
     logging.getLogger("discord.http").setLevel(discord_http_level)
+    logger_module.set_trace_id(trace_id)
+    logger_module.clear_log_context()
+    logger_module.set_log_context(**log_context)
 
 
 def _configure_and_emit(monkeypatch, output: io.StringIO, logger_name: str = "test.logger") -> str:
@@ -45,61 +39,79 @@ def _configure_and_emit(monkeypatch, output: io.StringIO, logger_name: str = "te
     return output.getvalue().splitlines()[-1]
 
 
-def test_production_environment_emits_json_logs(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "production")
-    monkeypatch.delenv("LOG_FORMAT", raising=False)
-    output = NonTtyBuffer()
-
-    log_entry = json.loads(_configure_and_emit(monkeypatch, output, "test.production"))
-
-    assert log_entry["level"] == "info"
-    assert log_entry["logger"] == "test.production"
-    assert log_entry["message"] == "readable message"
-
-
-def test_non_interactive_non_production_emits_plain_logs(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "test")
-    monkeypatch.delenv("LOG_FORMAT", raising=False)
-    output = NonTtyBuffer()
+def test_setup_logging_emits_plain_logs(monkeypatch):
+    output = io.StringIO()
 
     log_line = _configure_and_emit(monkeypatch, output, "test.plain")
 
     assert "\x1b[" not in log_line
     assert not log_line.startswith("{")
+    assert log_line.startswith("20")
     assert "INFO" in log_line
     assert "test.plain" in log_line
     assert "readable message" in log_line
 
 
-def test_interactive_non_production_emits_color_logs(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "development")
-    monkeypatch.delenv("LOG_FORMAT", raising=False)
-    output = TtyBuffer()
+def test_setup_logging_includes_context_and_extra_fields(monkeypatch):
+    output = io.StringIO()
+    monkeypatch.setattr(logger_module.sys, "stdout", output)
 
-    log_line = _configure_and_emit(monkeypatch, output)
+    logger_module.set_trace_id("req-1")
+    logger_module.set_log_context(guild_id="guild-1")
+    logger_module.setup_logging(logging.INFO)
+    logging.getLogger("test.context").info(
+        "context message",
+        extra={
+            "event_type": "prediction.saved",
+            "error_detail": "Fixture not found",
+            "payload": {2: "second", "token": "secret-value", "safe": "visible"},
+            "token": "secret-value",
+        },
+    )
 
-    assert "\x1b[" in log_line
-    assert "readable message" in log_line
+    log_line = output.getvalue().splitlines()[-1]
+    assert "context message" in log_line
+    assert "secret-value" not in log_line
+    assert 'error_detail="Fixture not found"' in log_line
+    assert "event_type=prediction.saved" in log_line
+    assert "guild_id=guild-1" in log_line
+    assert "payload={2:second,safe:visible,token:[REDACTED]}" in log_line
+    assert "token=[REDACTED]" in log_line
+    assert "trace_id=req-1" in log_line
 
 
-def test_log_format_override_can_force_plain(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "test")
-    monkeypatch.setenv("LOG_FORMAT", "plain")
-    output = TtyBuffer()
+def test_setup_logging_uses_stdout(monkeypatch):
+    output = io.StringIO()
 
-    log_line = _configure_and_emit(monkeypatch, output)
+    _configure_and_emit(monkeypatch, output)
 
-    assert "\x1b[" not in log_line
-    assert not log_line.startswith("{")
-    assert "readable message" in log_line
+    assert "readable message" in output.getvalue()
 
 
-def test_log_format_override_can_force_json(monkeypatch):
-    monkeypatch.setenv("ENVIRONMENT", "test")
-    monkeypatch.setenv("LOG_FORMAT", "json")
-    output = TtyBuffer()
+def test_setup_logging_respects_level(monkeypatch):
+    output = io.StringIO()
+    monkeypatch.setattr(logger_module.sys, "stdout", output)
 
-    log_entry = json.loads(_configure_and_emit(monkeypatch, output))
+    logger_module.setup_logging(logging.WARNING)
+    logging.getLogger("test.level").info("hidden message")
+    logging.getLogger("test.level").warning("visible message")
 
-    assert log_entry["level"] == "info"
-    assert log_entry["message"] == "readable message"
+    logged = output.getvalue()
+    assert "hidden message" not in logged
+    assert "WARNING" in logged
+    assert "visible message" in logged
+
+
+def test_setup_logging_uses_log_level_env(monkeypatch):
+    output = io.StringIO()
+    monkeypatch.setattr(logger_module.sys, "stdout", output)
+    monkeypatch.setenv("LOG_LEVEL", "WARNING")
+
+    logger_module.setup_logging()
+    logging.getLogger("test.env_level").info("hidden message")
+    logging.getLogger("test.env_level").warning("visible message")
+
+    logged = output.getvalue()
+    assert "hidden message" not in logged
+    assert "WARNING" in logged
+    assert "visible message" in logged
