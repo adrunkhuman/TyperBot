@@ -116,7 +116,7 @@ guild_config (
 - `typer_bot/utils/config.py`: Centralized configuration (data paths via env vars).
 - `typer_bot/utils/prediction_parser.py`: Central logic for parsing "2-1" or "2:1" strings.
 - `typer_bot/utils/scoring.py`: Point calculation using season scoring rules.
-- `typer_bot/utils/logger.py`: structured logging configuration for local and deployed environments.
+- `typer_bot/utils/logger.py`: plain stdout logging setup with contextual fields.
 - `typer_bot/utils/db_backup.py`: Automatic database backup after successful score calculation.
 - `scripts/restore_db.py`: Manual database restore from a host or container shell.
 

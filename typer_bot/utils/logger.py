@@ -1,44 +1,17 @@
-"""Logging utilities for production-compatible structured logging.
-
-This module provides structured logging capabilities for tracing user journeys,
-timing operations, and debugging production issues.
-
-Event Type Naming Convention:
-    Event types use dot notation with the format: <entity>.<action> or <entity>.<action>.<detail>
-
-    Examples:
-        - prediction.saved: User prediction was saved successfully
-        - prediction.save_failed: Error saving prediction
-        - prediction.parse_failed: User input couldn't be parsed
-        - prediction.duplicate_blocked: Race condition prevented duplicate
-        - fixture.created: New fixture created by admin
-        - results.entered: Admin entered actual scores
-        - fixture.created: Admin created a new fixture
-        - prediction.fixture_closed: Prediction rejected after a fixture closed
-        - transaction.begin/commit/rollback: Database transaction boundaries
-
-    Severity Guidelines:
-        - DEBUG: Session lifecycle, DB timing metrics, transaction boundaries
-        - INFO: Business events (saved, created, entered)
-        - WARNING: Validation failures, parsing errors, duplicate blocks
-        - ERROR: Unhandled exceptions, system errors
-"""
+"""Logging utilities."""
 
 import contextvars
 import functools
-import json
 import logging
 import os
 import sys
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Any, ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar, override
 
-# Global context for request trace IDs
 _trace_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar("trace_id", default=None)
 
-# Global context for log context fields (user_id, fixture_id, etc.)
 _log_context: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
     "log_context", default=None
 )
@@ -46,6 +19,34 @@ _log_context: contextvars.ContextVar[dict[str, Any] | None] = contextvars.Contex
 
 P = ParamSpec("P")
 T = TypeVar("T")
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+LOG_DATE_FORMAT = "%Y-%m-%dT%H:%M:%S"
+SENSITIVE_LOG_KEYS = {"token", "password", "secret", "key", "api_key", "access_token"}
+LOG_RECORD_ATTRS = {
+    "args",
+    "asctime",
+    "created",
+    "exc_info",
+    "exc_text",
+    "filename",
+    "funcName",
+    "levelname",
+    "levelno",
+    "lineno",
+    "message",
+    "module",
+    "msecs",
+    "msg",
+    "name",
+    "pathname",
+    "process",
+    "processName",
+    "relativeCreated",
+    "stack_info",
+    "taskName",
+    "thread",
+    "threadName",
+}
 
 
 def set_trace_id(trace_id: str | None) -> None:
@@ -91,7 +92,7 @@ def set_log_context(**kwargs: Any) -> None:
         fixture_id: Database fixture ID (int)
         guild_id: Discord guild/server ID (string)
         source: Where prediction came from ('dm', 'thread', 'command')
-        event_type: Semantic event classification (see module docstring)
+        event_type: Semantic event classification, e.g. "prediction.saved"
         operation: Function/method name being executed
     """
     current = _log_context.get()
@@ -165,170 +166,64 @@ def log_context(
     return decorator
 
 
-class ProductionJSONFormatter(logging.Formatter):
-    """JSON formatter for deployed structured logging.
+def _format_scalar_log_value(value: Any) -> str:
+    text = str(value).replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+    if any(char.isspace() for char in text) or "=" in text:
+        return f'"{text}"'
+    return text
 
-    Outputs single-line JSON that hosted log collectors can parse and filter.
-    Example: {"level": "info", "message": "...", "timestamp": "...", "logger": "...", "event_type": "..."}
-    """
 
-    STANDARD_RECORD_ATTRS = {
-        "name",
-        "msg",
-        "args",
-        "levelname",
-        "levelno",
-        "pathname",
-        "filename",
-        "module",
-        "exc_info",
-        "exc_text",
-        "stack_info",
-        "lineno",
-        "funcName",
-        "created",
-        "msecs",
-        "relativeCreated",
-        "thread",
-        "threadName",
-        "processName",
-        "process",
-        "message",
-        "asctime",
-        "timestamp",
-        "logger",
-        "level",
-        "error",
-        "trace_id",
-        "event_type",
-        "user_id",
-        "fixture_id",
-        "source",
-        "operation",
-        "duration_ms",
-        "rows_affected",
-        "session_id",
-        "step",
-    }
+def _format_log_value(key: str, value: Any) -> str:
+    if key.lower() in SENSITIVE_LOG_KEYS:
+        return "[REDACTED]"
+    if isinstance(value, dict):
+        return (
+            "{"
+            + ",".join(
+                f"{item_key}:{_format_log_value(str(item_key), item_value)}"
+                for item_key, item_value in sorted(value.items(), key=lambda item: str(item[0]))
+            )
+            + "}"
+        )
+    if isinstance(value, list | tuple | set):
+        return "[" + ",".join(_format_log_value(key, item) for item in value) + "]"
+    return _format_scalar_log_value(value)
 
-    SENSITIVE_KEYS = {"token", "password", "secret", "key", "api_key", "access_token"}
 
-    def _sanitize(self, obj: Any) -> Any:
-        """Recursively sanitize sensitive data from log entries.
-
-        Scans dict keys for sensitive patterns (tokens, passwords, secrets)
-        and replaces their values with "[REDACTED]". Recursively processes
-        nested dicts and lists.
-
-        Args:
-            obj: Object to sanitize (dict, list, or primitive)
-
-        Returns:
-            Sanitized object with sensitive values redacted
-        """
-        if isinstance(obj, dict):
-            return {
-                k: "[REDACTED]" if str(k).lower() in self.SENSITIVE_KEYS else self._sanitize(v)
-                for k, v in obj.items()
-            }
-        if isinstance(obj, list | tuple):
-            return type(obj)(self._sanitize(item) for item in obj)
-        return obj
+class PlainFormatter(logging.Formatter):
+    @override
+    def formatTime(self, record: logging.LogRecord, datefmt: str | None = None) -> str:
+        _ = datefmt
+        return datetime.fromtimestamp(record.created, tz=UTC).isoformat(timespec="seconds")
 
     def format(self, record: logging.LogRecord) -> str:
-        """Format log record as production JSON.
+        line = super().format(record)
+        fields: dict[str, Any] = {}
 
-        Use ISO8601 timestamps with timezone for stable log ordering. All
-        output goes to stdout so hosted runtimes do not misclassify stderr as
-        error-level logs regardless of content.
-
-        Args:
-            record: Standard library LogRecord to format
-
-        Returns:
-            Single-line JSON string for log ingestion
-        """
-        # ISO8601 with timezone keeps ordering stable across hosts.
-        timestamp = datetime.fromtimestamp(record.created, tz=UTC).isoformat()
-
-        log_entry = {
-            "level": record.levelname.lower(),
-            "message": record.getMessage(),
-            "timestamp": timestamp,
-            "logger": record.name,
-        }
-
-        # Add trace ID if available
         trace_id = get_trace_id()
         if trace_id:
-            log_entry["trace_id"] = trace_id
+            fields["trace_id"] = trace_id
 
-        # Add event_type from record if set
-        event_type = getattr(record, "event_type", None)
-        if isinstance(event_type, str) and event_type:
-            log_entry["event_type"] = event_type
+        fields.update({key: value for key, value in get_log_context().items() if value is not None})
+        fields.update(
+            {
+                key: value
+                for key, value in record.__dict__.items()
+                if key not in LOG_RECORD_ATTRS and value is not None
+            }
+        )
 
-        # Add exception info if available
-        if record.exc_info:
-            log_entry["error"] = self.formatException(record.exc_info)
+        if not fields:
+            return line
 
-        # Add context from contextvars (user_id, fixture_id, source, etc.)
-        context = get_log_context()
-        for key, value in context.items():
-            if value is not None and key not in log_entry:
-                log_entry[key] = value
-
-        # Add any extra fields from the record
-        for key, value in record.__dict__.items():
-            if key not in self.STANDARD_RECORD_ATTRS and key not in log_entry:
-                log_entry[key] = value
-
-        log_entry = self._sanitize(log_entry)
-
-        return json.dumps(log_entry, ensure_ascii=False, separators=(",", ":"))
-
-
-class LocalFormatter(logging.Formatter):
-    """Colorful formatter for local development."""
-
-    GREY = "\x1b[38;20m"
-    BLUE = "\x1b[34;20m"
-    CYAN = "\x1b[36;20m"
-    YELLOW = "\x1b[33;20m"
-    RED = "\x1b[31;20m"
-    BOLD_RED = "\x1b[31;1m"
-    RESET = "\x1b[0m"
-
-    # [TIME] [LEVEL   ] logger.name: Message
-    FMT = "[%(asctime)s] [%(levelname)-8s] %(name)s: %(message)s"
-    DATEFMT = "%H:%M:%S"
-
-    FORMATS = {
-        logging.DEBUG: GREY + FMT + RESET,
-        logging.INFO: BLUE + FMT + RESET,
-        logging.WARNING: YELLOW + FMT + RESET,
-        logging.ERROR: RED + FMT + RESET,
-        logging.CRITICAL: BOLD_RED + FMT + RESET,
-    }
-
-    def format(self, record: logging.LogRecord) -> str:
-        log_fmt = self.FORMATS.get(record.levelno, self.FMT)
-        formatter = logging.Formatter(log_fmt, datefmt=self.DATEFMT)
-        return formatter.format(record)
-
-
-def is_production_environment() -> bool:
-    """Detect if running in a deployed production environment."""
-    return (
-        os.getenv("ENVIRONMENT") == "production"
-        or os.getenv("COOLIFY_ENVIRONMENT_NAME") is not None
-        or os.getenv("RAILWAY_ENVIRONMENT") is not None
-        or os.getenv("RAILWAY_SERVICE_NAME") is not None
-    )
+        details = " ".join(
+            f"{key}={_format_log_value(key, value)}" for key, value in sorted(fields.items())
+        )
+        return f"{line} {details}"
 
 
 def setup_logging(level: int | None = None) -> None:
-    """Configure root logger for production or local environment.
+    """Configure root logger on stdout.
 
     Forces ALL output to stdout. Some hosts treat stderr as error-level logs
     regardless of content, which breaks log level filtering.
@@ -341,13 +236,10 @@ def setup_logging(level: int | None = None) -> None:
     root_logger.handlers.clear()
     root_logger.setLevel(level)
 
-    handler = logging.StreamHandler(sys.stdout)
+    stream = sys.stdout
+    handler = logging.StreamHandler(stream)
     handler.setLevel(level)
-
-    if is_production_environment():
-        handler.setFormatter(ProductionJSONFormatter())
-    else:
-        handler.setFormatter(LocalFormatter())
+    handler.setFormatter(PlainFormatter(LOG_FORMAT, datefmt=LOG_DATE_FORMAT))
 
     root_logger.addHandler(handler)
 
@@ -355,10 +247,7 @@ def setup_logging(level: int | None = None) -> None:
     logging.getLogger("discord.http").setLevel(logging.WARNING)
 
     logger = logging.getLogger(__name__)
-    env_type = "production" if is_production_environment() else "local"
-    logger.info(
-        f"Logging configured for {env_type} environment at level {logging.getLevelName(level)}"
-    )
+    logger.info("Logging configured at level %s", logging.getLevelName(level))
 
 
 def log_event(
@@ -384,9 +273,9 @@ def log_event(
 class LogTimer:
     """Context manager for timing operations and logging with duration.
 
-    Automatically logs operation start (DEBUG), completion (specified level),
-    or failure (WARNING). Duration is always recorded in milliseconds using
-    high-resolution monotonic clock (time.perf_counter).
+    Logs completion at the specified level or failure as a warning. Duration is
+    always recorded in milliseconds using high-resolution monotonic clock
+    (time.perf_counter).
 
     Args:
         logger: Logger instance to use for output

@@ -77,6 +77,8 @@ uv run python -m typer_bot
 
 Disposable non-production deployments can auto-seed an empty database by setting `SEED_TEST_DATA=true` and `TEST_GUILD_ID`.
 
+Logs are plain single-line stdout; set `LOG_LEVEL=DEBUG` when troubleshooting.
+
 Run checks:
 
 ```bash
