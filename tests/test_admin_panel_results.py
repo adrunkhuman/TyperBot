@@ -29,10 +29,10 @@ class TestResultsPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 3, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
 
         view = ResultsPanelView(
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
@@ -56,10 +56,10 @@ class TestResultsPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 4, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
 
         view = ResultsPanelView(
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
@@ -84,7 +84,7 @@ class TestResultsPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 5, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
@@ -113,10 +113,10 @@ class TestResultsPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 14, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
 
         view = ResultsPanelView(
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
@@ -124,7 +124,7 @@ class TestResultsPanelFlows:
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
-        await admin_cog.db.delete_fixture(fixture_id)
+        await admin_cog.db.fixtures.delete_fixture(fixture_id)
 
         correct_button = _get_button(view, "Correct Results")
         await correct_button.callback(mock_interaction_admin)
@@ -140,14 +140,14 @@ class TestResultsPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 23, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         view = ResultsPanelView(
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
-        await admin_cog.db.delete_fixture(fixture_id)
+        await admin_cog.db.fixtures.delete_fixture(fixture_id)
 
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
@@ -164,10 +164,10 @@ class TestResultsPanelFlows:
             f"Very Long Home Team {index:02d} - Very Long Away Team {index:02d}"
             for index in range(1, 101)
         ]
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 12, games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0"] * len(games))
+        await admin_cog.db.results.save_results(fixture_id, ["1-0"] * len(games))
 
         view = ResultsPanelView(
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
@@ -187,17 +187,17 @@ class TestResultsPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 32, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
             ["1-0", "1-1", "0-2"],
             False,
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         admin_cog.bot.get_user.return_value = None
 
         view = UnifiedAdminPanelView(
@@ -214,7 +214,7 @@ class TestResultsPanelFlows:
         view.user_select._values = ["111"]
         await view.user_select.callback(mock_interaction_admin)
 
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
         modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])
         modal.results_input._value = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
@@ -235,17 +235,17 @@ class TestResultsPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 33, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
             ["1-0", "1-1", "0-2"],
             False,
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
 
         view = UnifiedAdminPanelView(
             admin_cog.db,
@@ -260,7 +260,7 @@ class TestResultsPanelFlows:
         await view.fixture_select.callback(mock_interaction_admin)
         view.user_select._values = ["111"]
         await view.user_select.callback(mock_interaction_admin)
-        await admin_cog.db.delete_fixture(fixture_id)
+        await admin_cog.db.fixtures.delete_fixture(fixture_id)
 
         correct_button = _get_button(view, "Correct Results")
         await correct_button.callback(mock_interaction_admin)
@@ -277,10 +277,10 @@ class TestResultsPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 50, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -315,10 +315,10 @@ class TestResultsPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 51, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -347,7 +347,7 @@ class TestResultsPanelFlows:
         approve_button = _get_button(view, "Approve Late")
         await approve_button.callback(mock_interaction_admin)
 
-        prediction = await admin_cog.db.get_prediction(fixture_id, "111", "111111")
+        prediction = await admin_cog.db.predictions.get_prediction(fixture_id, "111", "111111")
         assert prediction is not None
         assert prediction["pending_partial_approval"] is False
         assert prediction["is_late"] == 0
@@ -360,10 +360,10 @@ class TestResultsPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 52, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -392,7 +392,7 @@ class TestResultsPanelFlows:
         reject_button = _get_button(view, "Reject Late")
         await reject_button.callback(mock_interaction_admin)
 
-        assert await admin_cog.db.get_prediction(fixture_id, "111", "111111") is None
+        assert await admin_cog.db.predictions.get_prediction(fixture_id, "111", "111111") is None
         assert "rejected" in target_user.dm_sent[-1].lower()
 
     @pytest.mark.asyncio
@@ -408,10 +408,10 @@ class TestResultsPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 70, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.update_fixture_announcement(
+        await admin_cog.db.fixtures.update_fixture_announcement(
             fixture_id,
             message_id="789012",
             channel_id="123456",
@@ -423,7 +423,7 @@ class TestResultsPanelFlows:
         admin_cog.bot.get_channel.side_effect = lambda channel_id: (
             thread if channel_id == 789012 else None
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -469,10 +469,10 @@ class TestResultsPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 71, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.update_fixture_announcement(
+        await admin_cog.db.fixtures.update_fixture_announcement(
             fixture_id,
             message_id="789012",
             channel_id="123456",
@@ -489,7 +489,7 @@ class TestResultsPanelFlows:
         admin_cog.bot.get_channel.side_effect = lambda channel_id: (
             thread if channel_id == 789012 else None
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -530,15 +530,15 @@ class TestResultsPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 74, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.update_fixture_announcement(
+        await admin_cog.db.fixtures.update_fixture_announcement(
             fixture_id,
             message_id="not-a-thread-id",
             channel_id="123456",
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -569,7 +569,7 @@ class TestResultsPanelFlows:
         approve_button = _get_button(view, "Approve Late")
         await approve_button.callback(mock_interaction_admin)
 
-        prediction = await admin_cog.db.get_prediction(fixture_id, "111", "111111")
+        prediction = await admin_cog.db.predictions.get_prediction(fixture_id, "111", "111111")
         assert prediction is not None
         assert prediction["pending_partial_approval"] is False
         assert "approved" in target_user.dm_sent[-1].lower()
@@ -581,11 +581,11 @@ class TestResultsPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 53, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.results.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "999",
             "Full User",
@@ -593,7 +593,7 @@ class TestResultsPanelFlows:
             False,
         )
         await admin_cog.service.calculate_fixture_scores(fixture_id, "111111")
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -622,7 +622,7 @@ class TestResultsPanelFlows:
         approve_button = _get_button(view, "Approve Late")
         await approve_button.callback(mock_interaction_admin)
 
-        standings = await admin_cog.db.get_standings("111111")
+        standings = await admin_cog.db.scores.get_standings("111111")
         assert {row["user_id"] for row in standings} == {"999", "111"}
 
     @pytest.mark.asyncio
@@ -632,11 +632,11 @@ class TestResultsPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 54, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.results.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "999",
             "Full User",
@@ -644,7 +644,7 @@ class TestResultsPanelFlows:
             False,
         )
         await admin_cog.service.calculate_fixture_scores(fixture_id, "111111")
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -673,5 +673,5 @@ class TestResultsPanelFlows:
         reject_button = _get_button(view, "Reject Late")
         await reject_button.callback(mock_interaction_admin)
 
-        standings = await admin_cog.db.get_standings("111111")
+        standings = await admin_cog.db.scores.get_standings("111111")
         assert {row["user_id"] for row in standings} == {"999"}

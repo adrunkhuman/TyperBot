@@ -279,7 +279,7 @@ class LogTimer:
 
     Args:
         logger: Logger instance to use for output
-        operation: Human-readable operation name (e.g., "db.save_prediction")
+        operation: Human-readable operation name (e.g., "db.predictions.save_prediction")
         event_type: Optional semantic event type for filtering (e.g., "transaction.commit")
         level: Log level for successful completion (default: DEBUG)
         **extra_fields: Additional context fields to include in log entry
@@ -288,18 +288,18 @@ class LogTimer:
         duration_ms: Duration of the operation in milliseconds (available after exit)
 
     Example:
-        with LogTimer(logger, "database.save_prediction"):
-            await db.save_prediction(...)
+        with LogTimer(logger, "db.predictions.save_prediction"):
+            await db.predictions.save_prediction(...)
 
         # With event_type and extra fields
         with LogTimer(
             logger,
-            "db.save_prediction",
+            "db.predictions.save_prediction",
             event_type="prediction.saved",
             user_id=user_id,
             fixture_id=fixture_id
         ):
-            await db.save_prediction(...)
+            await db.predictions.save_prediction(...)
     """
 
     def __init__(

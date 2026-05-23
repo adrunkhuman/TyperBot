@@ -37,8 +37,8 @@ class TestStandingsCommand:
                 }
             ],
         }
-        user_commands.db.get_standings = AsyncMock(return_value=standings)
-        user_commands.db.get_last_fixture_scores = AsyncMock(return_value=last_fixture)
+        user_commands.db.scores.get_standings = AsyncMock(return_value=standings)
+        user_commands.db.scores.get_last_fixture_scores = AsyncMock(return_value=last_fixture)
 
         await user_commands.standings.callback(user_commands, mock_interaction)
 
@@ -52,9 +52,9 @@ class TestStandingsCommand:
     ):
         games = ["Team A - Team B"]
         deadline = datetime.now(UTC) - timedelta(days=1)
-        current_fixture_id = await database.create_fixture("111111", 1, games, deadline)
-        other_fixture_id = await database.create_fixture("guild-2", 2, games, deadline)
-        await database.save_scores(
+        current_fixture_id = await database.fixtures.create_fixture("111111", 1, games, deadline)
+        other_fixture_id = await database.fixtures.create_fixture("guild-2", 2, games, deadline)
+        await database.scores.save_scores(
             current_fixture_id,
             [
                 {
@@ -66,7 +66,7 @@ class TestStandingsCommand:
                 }
             ],
         )
-        await database.save_scores(
+        await database.scores.save_scores(
             other_fixture_id,
             [
                 {

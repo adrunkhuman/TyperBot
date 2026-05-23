@@ -38,7 +38,7 @@ class ResultsPanelView(OwnerRestrictedView):
         self.add_item(CorrectResultsButton(self, disabled=self.selection.fixture_id is None))
 
     async def load_fixture_options(self) -> None:
-        fixtures = await self.db.get_recent_fixtures(self.guild_id, MAX_SELECT_OPTIONS)
+        fixtures = await self.db.fixtures.get_recent_fixtures(self.guild_id, MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
 
     async def populate_fixture_details(self, fixture: dict | None) -> None:
@@ -48,7 +48,7 @@ class ResultsPanelView(OwnerRestrictedView):
         if fixture is None:
             return
 
-        results = await self.db.get_results(fixture["id"])
+        results = await self.db.results.get_results(fixture["id"])
         if not results:
             self.selection.status_message = "No results saved for that fixture yet."
             return
@@ -93,7 +93,9 @@ class CorrectResultsButton(discord.ui.Button):
             await interaction.response.send_message("Select a fixture first.", ephemeral=True)
             return
 
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
+        fixture = await self.parent_view.db.fixtures.get_fixture_by_id(
+            fixture_id, self.parent_view.guild_id
+        )
         if fixture is None:
             self.parent_view.selection.fixture_id = None
             self.parent_view.selection.fixture_label = ""
@@ -111,7 +113,7 @@ class CorrectResultsButton(discord.ui.Button):
                 view=self.parent_view,
             )
             return
-        results = await self.parent_view.db.get_results(fixture_id)
+        results = await self.parent_view.db.results.get_results(fixture_id)
         if not results:
             await interaction.response.send_message(
                 "No results are stored for that fixture yet. Use the Enter Results button in `/admin panel` first.",

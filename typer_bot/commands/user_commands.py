@@ -227,7 +227,7 @@ class ContinuePredictButton(discord.ui.Button):
             )
             return
 
-        latest_fixture = await view.db.get_fixture_by_id(self.fixture["id"], view.guild_id)
+        latest_fixture = await view.db.fixtures.get_fixture_by_id(self.fixture["id"], view.guild_id)
         if latest_fixture is None or latest_fixture["status"] != "open":
             await interaction.response.edit_message(
                 content="That fixture is no longer open. Use `/predict` to refresh the list.",
@@ -235,7 +235,7 @@ class ContinuePredictButton(discord.ui.Button):
             )
             return
 
-        existing_prediction = await view.db.get_prediction(
+        existing_prediction = await view.db.predictions.get_prediction(
             self.fixture["id"], view.owner_user_id, view.guild_id
         )
         modal = PredictModal(
@@ -301,7 +301,7 @@ class FixtureSelect(discord.ui.Select):
             return
 
         fixture_id = int(self.values[0])
-        fixture = await view.db.get_fixture_by_id(fixture_id, view.guild_id)
+        fixture = await view.db.fixtures.get_fixture_by_id(fixture_id, view.guild_id)
         if fixture is None or fixture["status"] != "open":
             await interaction.response.edit_message(
                 content="That fixture is no longer open. Use `/predict` to refresh the list.",
@@ -309,7 +309,7 @@ class FixtureSelect(discord.ui.Select):
             )
             return
 
-        existing_prediction = await view.db.get_prediction(
+        existing_prediction = await view.db.predictions.get_prediction(
             fixture_id, view.owner_user_id, view.guild_id
         )
         modal = PredictModal(
@@ -396,7 +396,9 @@ class PredictModal(discord.ui.Modal):
         self.add_item(self.predictions_input)
 
     async def on_submit(self, interaction: discord.Interaction):
-        fixture = await self.db.get_fixture_by_id(self.fixture["id"], self.fixture["guild_id"])
+        fixture = await self.db.fixtures.get_fixture_by_id(
+            self.fixture["id"], self.fixture["guild_id"]
+        )
         if fixture is None or fixture["status"] != "open":
             await interaction.response.send_message(
                 "This fixture is no longer open. Use `/predict` to refresh the list.",
@@ -427,7 +429,7 @@ class PredictModal(discord.ui.Modal):
             return
 
         submitted_at = now()
-        existing_prediction = await self.db.get_prediction(
+        existing_prediction = await self.db.predictions.get_prediction(
             fixture["id"], str(interaction.user.id), fixture["guild_id"]
         )
         submission = build_prediction_submission(
@@ -469,7 +471,7 @@ class PredictModal(discord.ui.Modal):
             public_message_kind="bot_post",
         )
         try:
-            result = await self.db.save_prediction_guarded(
+            result = await self.db.predictions.save_prediction_guarded(
                 fixture["id"],
                 str(interaction.user.id),
                 self.user_name,
@@ -534,7 +536,7 @@ class PredictModal(discord.ui.Modal):
 
         completed_fixture_ids = set(self.completed_fixture_ids)
         completed_fixture_ids.add(fixture["id"])
-        open_fixtures = await self.db.get_open_fixtures(fixture["guild_id"])
+        open_fixtures = await self.db.fixtures.get_open_fixtures(fixture["guild_id"])
         remaining_fixtures = _remaining_open_fixtures(open_fixtures, completed_fixture_ids)
         if remaining_fixtures:
             view = ContinuePredictView(
@@ -615,7 +617,7 @@ class UserCommands(commands.Cog):
         if guild_id is None:
             return
 
-        open_fixtures = await self.db.get_open_fixtures(guild_id)
+        open_fixtures = await self.db.fixtures.get_open_fixtures(guild_id)
         if not open_fixtures:
             await interaction.response.send_message(
                 "❌ No active fixture found! Ask an admin to create one.", ephemeral=True
@@ -625,7 +627,7 @@ class UserCommands(commands.Cog):
         existing_prediction = None
         if len(open_fixtures) == 1:
             fixture = open_fixtures[0]
-            existing_prediction = await self.db.get_prediction(
+            existing_prediction = await self.db.predictions.get_prediction(
                 fixture["id"], str(interaction.user.id), guild_id
             )
             modal = PredictModal(
@@ -653,7 +655,9 @@ class UserCommands(commands.Cog):
         is_admin_user = await is_configured_admin(interaction, self.db)
         scoring_rules = None
         if interaction.guild_id is not None:
-            scoring_rules = await self.db.get_active_scoring_rules(str(interaction.guild_id))
+            scoring_rules = await self.db.seasons.get_active_scoring_rules(
+                str(interaction.guild_id)
+            )
         scoring_help = _format_scoring_help(scoring_rules)
 
         user_help = f"""## 📖 User Commands
@@ -726,7 +730,7 @@ Use these directly in Discord."""
         if guild_id is None:
             return
 
-        open_fixtures = await self.db.get_open_fixtures(guild_id)
+        open_fixtures = await self.db.fixtures.get_open_fixtures(guild_id)
 
         if not open_fixtures:
             await interaction.response.send_message("❌ No active fixture found!", ephemeral=True)
@@ -764,8 +768,8 @@ Use these directly in Discord."""
         if guild_id is None:
             return
 
-        standings = await self.db.get_standings(guild_id)
-        last_fixture = await self.db.get_last_fixture_scores(guild_id)
+        standings = await self.db.scores.get_standings(guild_id)
+        last_fixture = await self.db.scores.get_last_fixture_scores(guild_id)
 
         message = format_standings(standings, last_fixture)
 
@@ -780,7 +784,7 @@ Use these directly in Discord."""
         if guild_id is None:
             return
 
-        open_fixtures = await self.db.get_open_fixtures(guild_id)
+        open_fixtures = await self.db.fixtures.get_open_fixtures(guild_id)
 
         if not open_fixtures:
             await interaction.response.send_message("❌ No active fixture found!", ephemeral=True)
@@ -788,7 +792,7 @@ Use these directly in Discord."""
 
         if len(open_fixtures) == 1:
             fixture = open_fixtures[0]
-            prediction = await self.db.get_prediction(
+            prediction = await self.db.predictions.get_prediction(
                 fixture["id"], str(interaction.user.id), guild_id
             )
 
@@ -833,7 +837,7 @@ Use these directly in Discord."""
         has_any_prediction = False
 
         for fixture in open_fixtures:
-            prediction = await self.db.get_prediction(fixture["id"], user_id, guild_id)
+            prediction = await self.db.predictions.get_prediction(fixture["id"], user_id, guild_id)
             deadline_str = format_for_discord(fixture["deadline"], "F")
             relative_str = format_for_discord(fixture["deadline"], "R")
 

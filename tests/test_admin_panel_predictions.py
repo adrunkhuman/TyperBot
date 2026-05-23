@@ -60,7 +60,7 @@ class TestPredictionPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        await admin_cog.db.create_fixture(
+        await admin_cog.db.fixtures.create_fixture(
             "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
@@ -85,10 +85,10 @@ class TestPredictionPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "user-1",
             "User One",
@@ -134,7 +134,7 @@ class TestPredictionPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 10, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
@@ -160,11 +160,11 @@ class TestPredictionPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 17, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         for index in range(30):
-            await admin_cog.db.save_prediction(
+            await admin_cog.db.predictions.save_prediction(
                 fixture_id,
                 f"user-{index}",
                 f"User {index:02d}",
@@ -198,11 +198,11 @@ class TestPredictionPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 19, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         for index in range(26):
-            await admin_cog.db.save_prediction(
+            await admin_cog.db.predictions.save_prediction(
                 fixture_id,
                 f"user-{index}",
                 f"User {index:02d}",
@@ -216,7 +216,7 @@ class TestPredictionPanelFlows:
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
-        await admin_cog.db.delete_fixture(fixture_id)
+        await admin_cog.db.fixtures.delete_fixture(fixture_id)
 
         view_button = _get_button(view, "View Predictions")
         await view_button.callback(mock_interaction_admin)
@@ -231,11 +231,11 @@ class TestPredictionPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 22, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         for index in range(26):
-            await admin_cog.db.save_prediction(
+            await admin_cog.db.predictions.save_prediction(
                 fixture_id,
                 f"user-{index}",
                 f"User {index:02d}",
@@ -250,7 +250,7 @@ class TestPredictionPanelFlows:
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
         for index in range(26):
-            await admin_cog.db.delete_prediction(fixture_id, f"user-{index}")
+            await admin_cog.db.predictions.delete_prediction(fixture_id, f"user-{index}")
 
         view_button = _get_button(view, "View Predictions")
         await view_button.callback(mock_interaction_admin)
@@ -272,11 +272,11 @@ class TestPredictionPanelFlows:
             f"Very Long Home Team {index:02d} - Very Long Away Team {index:02d}"
             for index in range(1, 21)
         ]
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 20, games, datetime.now(UTC) + timedelta(days=1)
         )
         for index in range(26):
-            await admin_cog.db.save_prediction(
+            await admin_cog.db.predictions.save_prediction(
                 fixture_id,
                 f"user-{index}",
                 f"Very Long User Name {index:02d}",
@@ -305,10 +305,10 @@ class TestPredictionPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "user-1",
             "User One",
@@ -342,10 +342,10 @@ class TestPredictionPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 34, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -379,10 +379,10 @@ class TestPredictionPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 35, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -415,10 +415,10 @@ class TestPredictionPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 40, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -451,10 +451,10 @@ class TestPredictionPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 13, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "user-1",
             "User One",
@@ -470,7 +470,7 @@ class TestPredictionPanelFlows:
         await view.fixture_select.callback(mock_interaction_admin)
         view.user_select._values = ["user-1"]
         await view.user_select.callback(mock_interaction_admin)
-        await admin_cog.db.delete_prediction(fixture_id, "user-1")
+        await admin_cog.db.predictions.delete_prediction(fixture_id, "user-1")
 
         replace_button = _get_button(view, "Replace Prediction")
         await replace_button.callback(mock_interaction_admin)
@@ -486,10 +486,10 @@ class TestPredictionPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 11, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "user-1",
             "User One",
@@ -503,7 +503,7 @@ class TestPredictionPanelFlows:
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
-        await admin_cog.db.delete_fixture(fixture_id)
+        await admin_cog.db.fixtures.delete_fixture(fixture_id)
 
         view.user_select._values = ["user-1"]
         await view.user_select.callback(mock_interaction_admin)
@@ -521,10 +521,10 @@ class TestPredictionPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 2, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "user-1",
             "User One",
@@ -548,7 +548,7 @@ class TestPredictionPanelFlows:
         )
         await toggle_button.callback(mock_interaction_admin)
 
-        prediction = await admin_cog.db.get_prediction(fixture_id, "user-1", "111111")
+        prediction = await admin_cog.db.predictions.get_prediction(fixture_id, "user-1", "111111")
         assert prediction is not None
         assert prediction["late_penalty_waived"] == 1
         assert "waiver enabled" in mock_interaction_admin.response_sent[-1]["content"].lower()
@@ -560,10 +560,10 @@ class TestPredictionPanelFlows:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 18, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "user-1",
             "User One",
@@ -579,7 +579,7 @@ class TestPredictionPanelFlows:
         await view.fixture_select.callback(mock_interaction_admin)
         view.user_select._values = ["user-1"]
         await view.user_select.callback(mock_interaction_admin)
-        await admin_cog.db.delete_prediction(fixture_id, "user-1")
+        await admin_cog.db.predictions.delete_prediction(fixture_id, "user-1")
 
         toggle_button = _get_button(view, "Toggle Late Waiver")
         await toggle_button.callback(mock_interaction_admin)

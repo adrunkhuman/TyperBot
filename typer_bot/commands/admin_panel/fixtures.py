@@ -80,7 +80,7 @@ class FixturesPanelView(OwnerRestrictedView):
         self.add_item(FixturesDeleteButton(self, disabled=self.selection.fixture_id is None))
 
     async def load_fixture_options(self) -> None:
-        fixtures = await self.db.get_open_fixtures(self.guild_id)
+        fixtures = await self.db.fixtures.get_open_fixtures(self.guild_id)
         self.fixture_select.update_options(fixtures)
 
     def render_content(self) -> str:
@@ -124,7 +124,9 @@ class FixturesDeleteButton(discord.ui.Button):
             await interaction.response.send_message("Select an open fixture first.", ephemeral=True)
             return
 
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
+        fixture = await self.parent_view.db.fixtures.get_fixture_by_id(
+            fixture_id, self.parent_view.guild_id
+        )
         if fixture is None or fixture["status"] != "open":
             await interaction.response.send_message(
                 "Only open fixtures can be deleted from the panel.", ephemeral=True
@@ -182,7 +184,7 @@ class DeleteConfirmView(discord.ui.View):
             return
 
         try:
-            deleted = await self.db.delete_fixture(self.fixture_id, self.guild_id)
+            deleted = await self.db.fixtures.delete_fixture(self.fixture_id, self.guild_id)
             if not deleted:
                 await interaction.response.edit_message(
                     content="Fixture no longer exists or belongs to another server.",

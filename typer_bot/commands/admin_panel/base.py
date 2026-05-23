@@ -374,7 +374,9 @@ class FixtureSelect(discord.ui.Select):
         self.parent_view.selection.detail_lines = []
         self.parent_view.selection.has_results = False
 
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
+        fixture = await self.parent_view.db.fixtures.get_fixture_by_id(
+            fixture_id, self.parent_view.guild_id
+        )
         if fixture is None:
             self.parent_view.selection.fixture_id = None
             self.parent_view.selection.fixture_label = ""

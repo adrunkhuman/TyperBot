@@ -149,7 +149,7 @@ class ReviewPendingPartialsButton(discord.ui.Button):
         super().__init__(label="Review Late", style=discord.ButtonStyle.primary, row=row)
 
     async def callback(self, interaction: discord.Interaction):
-        pending_predictions = await self.parent_view.db.get_pending_partial_predictions(
+        pending_predictions = await self.parent_view.db.predictions.get_pending_partial_predictions(
             self.parent_view.guild_id
         )
         if not pending_predictions:
@@ -165,7 +165,7 @@ class ReviewPendingPartialsButton(discord.ui.Button):
                 next_prediction = pending_predictions[(index + 1) % len(pending_predictions)]
                 break
 
-        fixture = await self.parent_view.db.get_fixture_by_id(
+        fixture = await self.parent_view.db.fixtures.get_fixture_by_id(
             next_prediction["fixture_id"], self.parent_view.guild_id
         )
         if fixture is None:

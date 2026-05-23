@@ -113,7 +113,7 @@ async def _seed_mixed_rows(db: Database, tester_user_id: str | None, guild_id: s
     current_time = now()
     users = _build_seed_users()
 
-    scored_fixture_id = await db.create_fixture(
+    scored_fixture_id = await db.fixtures.create_fixture(
         guild_id,
         1,
         SAMPLE_GAMES,
@@ -127,7 +127,7 @@ async def _seed_mixed_rows(db: Database, tester_user_id: str | None, guild_id: s
     scored_scores: list[dict[str, int | str]] = []
     for user in users:
         predictions = scored_predictions[user["user_id"]]
-        await db.save_prediction(
+        await db.predictions.save_prediction(
             scored_fixture_id,
             user["user_id"],
             user["user_name"],
@@ -153,10 +153,10 @@ async def _seed_mixed_rows(db: Database, tester_user_id: str | None, guild_id: s
             str(score["user_name"]).lower(),
         )
     )
-    await db.save_results(scored_fixture_id, scored_results)
-    await db.save_scores(scored_fixture_id, scored_scores)
+    await db.results.save_results(scored_fixture_id, scored_results)
+    await db.scores.save_scores(scored_fixture_id, scored_scores)
 
-    open_fixture_id = await db.create_fixture(
+    open_fixture_id = await db.fixtures.create_fixture(
         guild_id,
         2,
         SAMPLE_GAMES,
@@ -174,7 +174,7 @@ async def _seed_mixed_rows(db: Database, tester_user_id: str | None, guild_id: s
         open_predictions.append((open_fixture_users[2], ["0-1", "1-1", "0-2"], False))
 
     for user, predictions, is_late in open_predictions:
-        await db.save_prediction(
+        await db.predictions.save_prediction(
             open_fixture_id,
             user["user_id"],
             user["user_name"],
@@ -182,13 +182,13 @@ async def _seed_mixed_rows(db: Database, tester_user_id: str | None, guild_id: s
             is_late,
         )
 
-    late_fixture_id = await db.create_fixture(
+    late_fixture_id = await db.fixtures.create_fixture(
         guild_id,
         3,
         SAMPLE_GAMES,
         current_time - timedelta(hours=3),
     )
-    await db.save_prediction(
+    await db.predictions.save_prediction(
         late_fixture_id,
         users[1]["user_id"],
         users[1]["user_name"],

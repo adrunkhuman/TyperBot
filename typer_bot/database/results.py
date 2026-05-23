@@ -57,9 +57,9 @@ class ResultsRepository:
 
             duration_ms = (time.perf_counter() - start_time) * 1000
             logger.debug(
-                "db.save_results completed",
+                "db.results.save_results completed",
                 extra={
-                    "operation": "db.save_results",
+                    "operation": "db.results.save_results",
                     "fixture_id": fixture_id,
                     "duration_ms": round(duration_ms, 2),
                     "rows_affected": cursor.rowcount,

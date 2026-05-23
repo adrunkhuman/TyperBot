@@ -88,7 +88,9 @@ class ThreadPredictionHandler:
             return False
 
         message_id = str(message.channel.id)
-        fixture = await self.db.get_fixture_by_message_id(message_id, str(message.guild.id))
+        fixture = await self.db.fixtures.get_fixture_by_message_id(
+            message_id, str(message.guild.id)
+        )
         if not fixture:
             return False
 
@@ -167,7 +169,7 @@ class ThreadPredictionHandler:
             )
 
         try:
-            result = await self.db.try_save_prediction(
+            result = await self.db.predictions.try_save_prediction(
                 fixture["id"],
                 user_id,
                 message.author.display_name,

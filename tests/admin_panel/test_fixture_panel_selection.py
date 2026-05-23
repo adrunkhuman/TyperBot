@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -24,7 +24,7 @@ class TestFixturePanelSelection:
         mock_interaction_admin,
         sample_games,
     ):
-        await admin_cog.db.create_fixture(
+        await admin_cog.db.fixtures.create_fixture(
             "111111", 4, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
@@ -54,10 +54,10 @@ class TestFixturePanelSelection:
         sample_games,
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        current_guild_fixture_id = await admin_cog.db.create_fixture(
+        current_guild_fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 1, sample_games, deadline
         )
-        other_guild_fixture_id = await admin_cog.db.create_fixture(
+        other_guild_fixture_id = await admin_cog.db.fixtures.create_fixture(
             "guild-2", 2, sample_games, deadline
         )
 
@@ -80,7 +80,7 @@ class TestFixturePanelSelection:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 5, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
@@ -109,7 +109,7 @@ class TestFixturePanelSelection:
         sample_games,
     ):
         """Deletion confirmation must show game list so admin can verify the right fixture."""
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 6, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
@@ -142,7 +142,7 @@ class TestFixturePanelSelection:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         view = UnifiedAdminPanelView(
@@ -166,7 +166,7 @@ class TestFixturePanelSelection:
         assert _has_button(view, "Correct Results") is False
         assert _has_button(view, "Delete Fixture") is True
 
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
 
@@ -174,7 +174,7 @@ class TestFixturePanelSelection:
         assert _has_button(view, "Calculate Scores") is True
         assert _has_button(view, "Correct Results") is True
 
-        await admin_cog.db.save_scores(
+        await admin_cog.db.scores.save_scores(
             fixture_id,
             [
                 {
@@ -202,18 +202,24 @@ class TestFixturePanelSelection:
         sample_games,
     ):
         """Silent DB failures surface as a visible error instead of timing out the interaction."""
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 7, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
         db_mock = AsyncMock(spec=Database)
-        db_mock.get_guild_config.return_value = {
-            "admin_role_id": str(
-                mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id).roles[0].id
-            ),
-            "league_channel_id": "123456",
-        }
-        db_mock.delete_fixture.side_effect = RuntimeError("DB locked")
+        db_mock.guild_config = MagicMock()
+        db_mock.guild_config.get_guild_config = AsyncMock(
+            return_value={
+                "admin_role_id": str(
+                    mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
+                    .roles[0]
+                    .id
+                ),
+                "league_channel_id": "123456",
+            }
+        )
+        db_mock.fixtures = MagicMock()
+        db_mock.fixtures.delete_fixture = AsyncMock(side_effect=RuntimeError("DB locked"))
 
         confirm_view = DeleteConfirmView(
             db_mock,

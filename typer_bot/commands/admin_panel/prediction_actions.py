@@ -50,8 +50,10 @@ class ReplacePredictionButton(discord.ui.Button):
             )
             return
 
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
-        prediction = await self.parent_view.db.get_prediction(
+        fixture = await self.parent_view.db.fixtures.get_fixture_by_id(
+            fixture_id, self.parent_view.guild_id
+        )
+        prediction = await self.parent_view.db.predictions.get_prediction(
             fixture_id, user_id, self.parent_view.guild_id
         )
         if fixture is None:
@@ -177,7 +179,9 @@ class ToggleWaiverButton(discord.ui.Button):
             )
             return
 
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
+        fixture = await self.parent_view.db.fixtures.get_fixture_by_id(
+            fixture_id, self.parent_view.guild_id
+        )
         if fixture is None:
             self.parent_view.selection.fixture_id = None
             self.parent_view.selection.fixture_label = ""
@@ -194,7 +198,7 @@ class ToggleWaiverButton(discord.ui.Button):
             )
             return
 
-        prediction = await self.parent_view.db.get_prediction(
+        prediction = await self.parent_view.db.predictions.get_prediction(
             fixture_id, user_id, self.parent_view.guild_id
         )
         if prediction is None:

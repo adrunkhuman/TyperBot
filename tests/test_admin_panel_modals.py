@@ -31,10 +31,10 @@ class TestAdminPanelModals:
         admin_cog,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 24, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
 
         modal = EnterResultsModal(fixture, admin_cog.db)
@@ -50,10 +50,10 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 25, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
 
         modal = EnterResultsModal(fixture, admin_cog.db)
@@ -70,10 +70,10 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 28, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
 
         modal = EnterResultsModal(fixture, admin_cog.db)
@@ -92,10 +92,10 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 26, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
 
         modal = EnterResultsModal(fixture, admin_cog.db)
@@ -112,7 +112,7 @@ class TestAdminPanelModals:
         await confirm_button.callback(mock_interaction_admin)
 
         assert "Results Saved!" in mock_interaction_admin.response_sent[-1]["content"]
-        assert await admin_cog.db.get_results(fixture_id) == ["2-1", "1-1", "0-2"]
+        assert await admin_cog.db.results.get_results(fixture_id) == ["2-1", "1-1", "0-2"]
 
     @pytest.mark.asyncio
     async def test_enter_results_modal_save_results_supports_cancelled_games(
@@ -121,10 +121,10 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 30, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
 
         modal = EnterResultsModal(fixture, admin_cog.db)
@@ -140,7 +140,7 @@ class TestAdminPanelModals:
         )
         await confirm_button.callback(mock_interaction_admin)
 
-        assert await admin_cog.db.get_results(fixture_id) == ["x", "1-1", "0-2"]
+        assert await admin_cog.db.results.get_results(fixture_id) == ["x", "1-1", "0-2"]
 
     @pytest.mark.asyncio
     async def test_enter_results_confirm_shows_save_error_when_fixture_becomes_unavailable(
@@ -149,17 +149,17 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 31, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
 
         modal = EnterResultsModal(fixture, admin_cog.db)
         modal.results_input._value = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
 
         await modal.on_submit(mock_interaction_admin)
-        await admin_cog.db.save_scores(
+        await admin_cog.db.scores.save_scores(
             fixture_id,
             [
                 {
@@ -189,10 +189,10 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 27, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
 
         modal = EnterResultsModal(fixture, admin_cog.db)
@@ -207,7 +207,7 @@ class TestAdminPanelModals:
         await cancel_button.callback(mock_interaction_admin)
 
         assert "Results entry cancelled" in mock_interaction_admin.response_sent[-1]["content"]
-        assert await admin_cog.db.get_results(fixture_id) is None
+        assert await admin_cog.db.results.get_results(fixture_id) is None
 
     @pytest.mark.asyncio
     async def test_enter_results_confirm_rechecks_admin_permission(
@@ -216,10 +216,10 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 29, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
 
         modal = EnterResultsModal(fixture, admin_cog.db)
@@ -239,7 +239,7 @@ class TestAdminPanelModals:
         await confirm_button.callback(mock_interaction_admin)
 
         assert "no longer have permission" in mock_interaction_admin.response_sent[-1]["content"]
-        assert await admin_cog.db.get_results(fixture_id) is None
+        assert await admin_cog.db.results.get_results(fixture_id) is None
 
     @pytest.mark.asyncio
     async def test_replace_prediction_modal_rechecks_admin_permission(
@@ -248,10 +248,10 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "user-1",
             "User One",
@@ -266,8 +266,8 @@ class TestAdminPanelModals:
         await view.fixture_select.callback(mock_interaction_admin)
         view.user_select._values = ["user-1"]
         await view.user_select.callback(mock_interaction_admin)
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
-        prediction = await admin_cog.db.get_prediction(fixture_id, "user-1", "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
+        prediction = await admin_cog.db.predictions.get_prediction(fixture_id, "user-1", "111111")
         assert fixture is not None
         assert prediction is not None
 
@@ -289,10 +289,10 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 9, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "user-1",
             "User One",
@@ -305,7 +305,7 @@ class TestAdminPanelModals:
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
-        await admin_cog.db.delete_prediction(fixture_id, "user-1")
+        await admin_cog.db.predictions.delete_prediction(fixture_id, "user-1")
 
         view.user_select._values = ["user-1"]
         await view.user_select.callback(mock_interaction_admin)
@@ -322,10 +322,10 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 15, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "user-1",
             "User One",
@@ -340,8 +340,8 @@ class TestAdminPanelModals:
         await view.fixture_select.callback(mock_interaction_admin)
         view.user_select._values = ["user-1"]
         await view.user_select.callback(mock_interaction_admin)
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
-        prediction = await admin_cog.db.get_prediction(fixture_id, "user-1", "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
+        prediction = await admin_cog.db.predictions.get_prediction(fixture_id, "user-1", "111111")
         assert fixture is not None
         assert prediction is not None
 
@@ -356,7 +356,9 @@ class TestAdminPanelModals:
             "Replaced User One's prediction in week 15."
             in mock_interaction_admin.response_sent[-1]["content"]
         )
-        updated_prediction = await admin_cog.db.get_prediction(fixture_id, "user-1", "111111")
+        updated_prediction = await admin_cog.db.predictions.get_prediction(
+            fixture_id, "user-1", "111111"
+        )
         assert updated_prediction is not None
         assert updated_prediction["predictions"] == ["2-1", "1-1", "0-2"]
 
@@ -367,10 +369,10 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 36, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -389,8 +391,8 @@ class TestAdminPanelModals:
         await view.fixture_select.callback(mock_interaction_admin)
         view.user_select._values = ["111"]
         await view.user_select.callback(mock_interaction_admin)
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
-        prediction = await admin_cog.db.get_prediction(fixture_id, "111", "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
+        prediction = await admin_cog.db.predictions.get_prediction(fixture_id, "111", "111111")
         assert fixture is not None
         assert prediction is not None
 
@@ -412,10 +414,10 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 37, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -435,8 +437,8 @@ class TestAdminPanelModals:
         await view.fixture_select.callback(mock_interaction_admin)
         view.user_select._values = ["111"]
         await view.user_select.callback(mock_interaction_admin)
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
-        prediction = await admin_cog.db.get_prediction(fixture_id, "111", "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
+        prediction = await admin_cog.db.predictions.get_prediction(fixture_id, "111", "111111")
         assert fixture is not None
         assert prediction is not None
 
@@ -458,10 +460,10 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 41, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -481,8 +483,8 @@ class TestAdminPanelModals:
         await view.fixture_select.callback(mock_interaction_admin)
         view.user_select._values = ["111"]
         await view.user_select.callback(mock_interaction_admin)
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
-        prediction = await admin_cog.db.get_prediction(fixture_id, "111", "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
+        prediction = await admin_cog.db.predictions.get_prediction(fixture_id, "111", "111111")
         assert fixture is not None
         assert prediction is not None
 
@@ -502,10 +504,10 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 21, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "user-1",
             "User One",
@@ -520,11 +522,11 @@ class TestAdminPanelModals:
         await view.fixture_select.callback(mock_interaction_admin)
         view.user_select._values = ["user-1"]
         await view.user_select.callback(mock_interaction_admin)
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
-        prediction = await admin_cog.db.get_prediction(fixture_id, "user-1", "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
+        prediction = await admin_cog.db.predictions.get_prediction(fixture_id, "user-1", "111111")
         assert fixture is not None
         assert prediction is not None
-        await admin_cog.db.delete_prediction(fixture_id, "user-1")
+        await admin_cog.db.predictions.delete_prediction(fixture_id, "user-1")
 
         modal = ReplacePredictionModal(view, fixture, prediction)
         modal.predictions_input._value = (
@@ -546,17 +548,17 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 2, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         view = ResultsPanelView(
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
 
         modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])
@@ -575,22 +577,22 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 6, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         view = ResultsPanelView(
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
 
         modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])
         modal.results_input._value = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
-        await admin_cog.db.delete_fixture(fixture_id)
+        await admin_cog.db.fixtures.delete_fixture(fixture_id)
 
         await modal.on_submit(mock_interaction_admin)
 
@@ -603,12 +605,12 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "guild-2", 7, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         original_results = ["0-0", "1-1", "2-2"]
-        await admin_cog.db.save_results(fixture_id, original_results)
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "guild-2")
+        await admin_cog.db.results.save_results(fixture_id, original_results)
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "guild-2")
         assert fixture is not None
         view = ResultsPanelView(
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
@@ -621,7 +623,7 @@ class TestAdminPanelModals:
         await modal.on_submit(mock_interaction_admin)
 
         assert "Fixture not found" in mock_interaction_admin.response_sent[-1]["content"]
-        assert await admin_cog.db.get_results(fixture_id) == original_results
+        assert await admin_cog.db.results.get_results(fixture_id) == original_results
 
     @pytest.mark.asyncio
     async def test_correct_results_modal_prefills_stored_results(
@@ -630,17 +632,17 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 7, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         view = ResultsPanelView(
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
 
         modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])
@@ -656,17 +658,17 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 16, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         view = ResultsPanelView(
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         await view.load_fixture_options()
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
 
         modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])
@@ -678,7 +680,7 @@ class TestAdminPanelModals:
             "Saved corrected results for week 16."
             in mock_interaction_admin.response_sent[-1]["content"]
         )
-        assert await admin_cog.db.get_results(fixture_id) == ["2-1", "1-1", "0-2"]
+        assert await admin_cog.db.results.get_results(fixture_id) == ["2-1", "1-1", "0-2"]
 
     @pytest.mark.asyncio
     async def test_correct_results_modal_dms_all_fixture_participants(
@@ -687,14 +689,14 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 38, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.predictions.save_prediction(
             fixture_id, "111", "User One", ["1-0", "1-1", "0-0"], False
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id, "222", "User Two", ["0-0", "2-2", "1-1"], False
         )
         user_one = MockUser("111", "User One")
@@ -707,7 +709,7 @@ class TestAdminPanelModals:
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         view.bot = admin_cog.bot
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
 
         modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])
@@ -725,14 +727,14 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 42, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.predictions.save_prediction(
             fixture_id, "111", "User One", ["1-0", "1-1", "0-0"], False
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id, "222", "User Two", ["0-0", "2-2", "1-1"], False
         )
         failing_user = MagicMock()
@@ -746,7 +748,7 @@ class TestAdminPanelModals:
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         view.bot = admin_cog.bot
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
 
         modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])
@@ -763,14 +765,14 @@ class TestAdminPanelModals:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 43, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.predictions.save_prediction(
             fixture_id, "111", "User One", ["1-0", "1-1", "0-0"], False
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id, "222", "User Two", ["0-0", "2-2", "1-1"], False
         )
         user_two = MockUser("222", "User Two")
@@ -783,7 +785,7 @@ class TestAdminPanelModals:
             admin_cog.db, admin_cog.service, str(mock_interaction_admin.user.id), "111111"
         )
         view.bot = admin_cog.bot
-        fixture = await admin_cog.db.get_fixture_by_id(fixture_id, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(fixture_id, "111111")
         assert fixture is not None
 
         modal = CorrectResultsModal(view, fixture, ["1-0", "1-1", "0-0"])

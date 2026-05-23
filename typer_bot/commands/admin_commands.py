@@ -38,7 +38,7 @@ async def _save_guild_config(
     admin_role: discord.Role,
     league_channel: discord.TextChannel,
 ) -> None:
-    await db.upsert_guild_config(
+    await db.guild_config.upsert_guild_config(
         str(interaction.guild_id),
         str(admin_role.id),
         str(league_channel.id),
@@ -262,7 +262,7 @@ def admin_only():
             return False
         if (
             interaction.guild_id is not None
-            and await db.get_guild_config(str(interaction.guild_id)) is None
+            and await db.guild_config.get_guild_config(str(interaction.guild_id)) is None
         ):
             await send_setup_prompt_if_allowed(interaction, db)
             return False
@@ -336,7 +336,7 @@ class AdminCommands(commands.Cog):
     async def panel(self, interaction: discord.Interaction):
         permission_error = await get_admin_permission_error(interaction, self.db)
         if permission_error is not None:
-            if await self.db.get_guild_config(str(interaction.guild_id)) is None:
+            if await self.db.guild_config.get_guild_config(str(interaction.guild_id)) is None:
                 await send_setup_prompt_if_allowed(interaction, self.db)
             else:
                 await interaction.response.send_message(permission_error, ephemeral=True)

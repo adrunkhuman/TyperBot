@@ -36,10 +36,10 @@ class TestFixturePanelPendingPartials:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 55, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -68,10 +68,10 @@ class TestFixturePanelPendingPartials:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "guild-2", 55, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -100,11 +100,11 @@ class TestFixturePanelPendingPartials:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 56, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -141,13 +141,13 @@ class TestFixturePanelPendingPartials:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_a = await admin_cog.db.create_fixture(
+        fixture_a = await admin_cog.db.fixtures.create_fixture(
             "111111", 57, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        fixture_b = await admin_cog.db.create_fixture(
+        fixture_b = await admin_cog.db.fixtures.create_fixture(
             "111111", 58, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_a,
             "111",
             "User One",
@@ -156,7 +156,7 @@ class TestFixturePanelPendingPartials:
             predicted_game_indexes=[1, 2],
             pending_partial_approval=True,
         )
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.predictions.save_prediction(
             fixture_b,
             "222",
             "User Two",

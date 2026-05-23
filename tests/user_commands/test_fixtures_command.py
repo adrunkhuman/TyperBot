@@ -14,7 +14,7 @@ class TestFixturesCommand:
     async def test_single_open_fixture_lists_games_and_deadline(
         self, user_commands, mock_interaction, database, sample_games
     ):
-        await database.create_fixture(
+        await database.fixtures.create_fixture(
             "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
@@ -31,8 +31,8 @@ class TestFixturesCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        await database.create_fixture("111111", 1, sample_games, deadline)
-        await database.create_fixture("111111", 2, sample_games, deadline)
+        await database.fixtures.create_fixture("111111", 1, sample_games, deadline)
+        await database.fixtures.create_fixture("111111", 2, sample_games, deadline)
 
         await user_commands.fixtures.callback(user_commands, mock_interaction)
 
@@ -46,8 +46,8 @@ class TestFixturesCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        await database.create_fixture("111111", 1, sample_games, deadline)
-        await database.create_fixture("guild-2", 2, sample_games, deadline)
+        await database.fixtures.create_fixture("111111", 1, sample_games, deadline)
+        await database.fixtures.create_fixture("guild-2", 2, sample_games, deadline)
 
         await user_commands.fixtures.callback(user_commands, mock_interaction)
 

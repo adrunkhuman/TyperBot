@@ -101,7 +101,7 @@ class NewSeasonModal(discord.ui.Modal):
             return
 
         try:
-            season = await self.parent_view.db.start_new_season(
+            season = await self.parent_view.db.seasons.start_new_season(
                 str(interaction.guild_id),
                 self.name_input.value,
             )
@@ -188,7 +188,7 @@ class ScoringRulesModal(discord.ui.Modal):
             )
             return
 
-        active_season = await self.parent_view.db.get_or_create_active_season(
+        active_season = await self.parent_view.db.seasons.get_or_create_active_season(
             str(interaction.guild_id)
         )
         if active_season["id"] != self.season_id:
@@ -199,7 +199,7 @@ class ScoringRulesModal(discord.ui.Modal):
             return
 
         try:
-            rules = await self.parent_view.db.update_active_scoring_rules(
+            rules = await self.parent_view.db.seasons.update_active_scoring_rules(
                 str(interaction.guild_id),
                 {
                     "exact_score_points": self.exact_input.value,
@@ -227,11 +227,11 @@ class ScoringRulesButton(discord.ui.Button):
         super().__init__(label="Scoring Rules", style=discord.ButtonStyle.secondary, row=row)
 
     async def callback(self, interaction: discord.Interaction):
-        self.parent_view.active_season = await self.parent_view.db.get_or_create_active_season(
-            self.parent_view.guild_id
+        self.parent_view.active_season = (
+            await self.parent_view.db.seasons.get_or_create_active_season(self.parent_view.guild_id)
         )
         self.parent_view.active_season_has_scores = (
-            await self.parent_view.db.active_season_has_scores(self.parent_view.guild_id)
+            await self.parent_view.db.seasons.active_season_has_scores(self.parent_view.guild_id)
         )
         if self.parent_view.active_season_has_scores:
             self.parent_view.selection.status_message = (
@@ -267,7 +267,9 @@ class JumpToWeekModal(discord.ui.Modal):
             )
             return
 
-        open_fixtures = await self.parent_view.db.get_open_fixtures(self.parent_view.guild_id)
+        open_fixtures = await self.parent_view.db.fixtures.get_open_fixtures(
+            self.parent_view.guild_id
+        )
         matching = [fixture for fixture in open_fixtures if fixture["week_number"] == week_number]
         if not matching:
             await interaction.response.send_message(
@@ -326,13 +328,15 @@ class EnterResultsButton(discord.ui.Button):
         if fixture_id is None:
             await interaction.response.send_message("Select a fixture first.", ephemeral=True)
             return
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
+        fixture = await self.parent_view.db.fixtures.get_fixture_by_id(
+            fixture_id, self.parent_view.guild_id
+        )
         if fixture is None or fixture["status"] != "open":
             await interaction.response.send_message(
                 "That fixture is no longer open.", ephemeral=True
             )
             return
-        existing_results = await self.parent_view.db.get_results(fixture_id)
+        existing_results = await self.parent_view.db.results.get_results(fixture_id)
         if existing_results:
             await interaction.response.send_message(
                 "Results already entered for this fixture. Use Correct Results instead.",
@@ -357,7 +361,9 @@ class CalculateScoresButton(discord.ui.Button):
         if fixture_id is None:
             await interaction.response.send_message("Select a fixture first.", ephemeral=True)
             return
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
+        fixture = await self.parent_view.db.fixtures.get_fixture_by_id(
+            fixture_id, self.parent_view.guild_id
+        )
         if fixture is None or fixture["status"] != "open":
             await self._refresh_parent_panel(fixture_id)
             await interaction.response.send_message(
@@ -410,7 +416,9 @@ class CalculateScoresButton(discord.ui.Button):
             await edit_message(content=self.parent_view.render_content(), view=self.parent_view)
 
     async def _refresh_parent_panel(self, fixture_id: int) -> None:
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
+        fixture = await self.parent_view.db.fixtures.get_fixture_by_id(
+            fixture_id, self.parent_view.guild_id
+        )
         if fixture is not None:
             self.parent_view.selection.fixture_status = fixture["status"]
             self.parent_view.selection.fixture_label = (
@@ -473,15 +481,17 @@ class PostResultsButton(discord.ui.Button):
         super().__init__(label="Re-post Results", style=discord.ButtonStyle.secondary, row=row)
 
     async def callback(self, interaction: discord.Interaction):
-        fixture_data = await self.parent_view.db.get_last_fixture_scores(self.parent_view.guild_id)
-        standings = await self.parent_view.db.get_standings(self.parent_view.guild_id)
+        fixture_data = await self.parent_view.db.scores.get_last_fixture_scores(
+            self.parent_view.guild_id
+        )
+        standings = await self.parent_view.db.scores.get_standings(self.parent_view.guild_id)
         if not fixture_data:
             await interaction.response.send_message(
                 "No completed fixtures found with scores!", ephemeral=True
             )
             return
 
-        config = await self.parent_view.db.get_guild_config(self.parent_view.guild_id)
+        config = await self.parent_view.db.guild_config.get_guild_config(self.parent_view.guild_id)
         channel = None
         if config is not None and self.parent_view.bot is not None:
             try:

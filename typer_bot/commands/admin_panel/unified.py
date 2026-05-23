@@ -153,13 +153,15 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.add_item(SetupBotButton(self, row=4))
 
     async def load_fixture_options(self) -> None:
-        self.guild_config = await self.db.get_guild_config(self.guild_id)
-        self.active_season = await self.db.get_or_create_active_season(self.guild_id)
-        self.active_season_has_scores = await self.db.active_season_has_scores(self.guild_id)
-        fixtures = await self.db.get_recent_fixtures(self.guild_id, MAX_SELECT_OPTIONS)
+        self.guild_config = await self.db.guild_config.get_guild_config(self.guild_id)
+        self.active_season = await self.db.seasons.get_or_create_active_season(self.guild_id)
+        self.active_season_has_scores = await self.db.seasons.active_season_has_scores(
+            self.guild_id
+        )
+        fixtures = await self.db.fixtures.get_recent_fixtures(self.guild_id, MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
         self.has_pending_partials = bool(
-            await self.db.get_pending_partial_predictions(self.guild_id)
+            await self.db.predictions.get_pending_partial_predictions(self.guild_id)
         )
         self._refresh_items()
 
@@ -169,7 +171,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
             self.user_select.update_options([])
             return
 
-        predictions = await self.db.get_all_predictions(
+        predictions = await self.db.predictions.get_all_predictions(
             self.selection.fixture_id, include_pending=True
         )
         self.has_user_overflow = len(predictions) > MAX_SELECT_OPTIONS
@@ -179,10 +181,10 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         self.current_prediction = None
         if self.selection.fixture_id is None or self.selection.user_id is None:
             return
-        fixture = await self.db.get_fixture_by_id(self.selection.fixture_id, self.guild_id)
+        fixture = await self.db.fixtures.get_fixture_by_id(self.selection.fixture_id, self.guild_id)
         if fixture is None:
             return
-        self.current_prediction = await self.db.get_prediction(
+        self.current_prediction = await self.db.predictions.get_prediction(
             self.selection.fixture_id, self.selection.user_id, self.guild_id
         )
 
@@ -192,7 +194,7 @@ class UnifiedAdminPanelView(OwnerRestrictedView):
         if fixture is None:
             return
 
-        results = await self.db.get_results(fixture["id"])
+        results = await self.db.results.get_results(fixture["id"])
         if results:
             self.selection.has_results = True
             self.selection.detail_lines = _build_detail_lines(fixture["games"], results)

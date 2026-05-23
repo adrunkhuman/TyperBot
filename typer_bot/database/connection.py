@@ -198,11 +198,15 @@ async def _validate_unique_results(db: aiosqlite.Connection) -> None:
 
 
 class Database:
-    """Composition root for SQLite setup and the bot's stable data facade.
+    """Composition root for SQLite setup and repository wiring.
 
-    Callers use this facade instead of reaching into repositories directly. It
-    owns path setup, schema initialization, startup validation, and the focused
-    repository objects that perform the actual reads and writes.
+    Attributes:
+        fixtures: Fixture reads/writes.
+        guild_config: Guild setup reads/writes.
+        predictions: Prediction reads/writes.
+        results: Result reads/writes.
+        scores: Score and standings reads/writes.
+        seasons: Season and scoring-rule reads/writes.
     """
 
     def __init__(self, db_path: str | None = None) -> None:
@@ -212,12 +216,12 @@ class Database:
         if db_dir and not db_dir.exists():
             db_dir.mkdir(parents=True, exist_ok=True)
 
-        self._fixtures = FixtureRepository(self.db_path)
-        self._guild_config = GuildConfigRepository(self.db_path)
-        self._predictions = PredictionRepository(self.db_path)
-        self._results = ResultsRepository(self.db_path)
-        self._scores = ScoreRepository(self.db_path)
-        self._seasons = SeasonRepository(self.db_path)
+        self.fixtures = FixtureRepository(self.db_path)
+        self.guild_config = GuildConfigRepository(self.db_path)
+        self.predictions = PredictionRepository(self.db_path)
+        self.results = ResultsRepository(self.db_path)
+        self.scores = ScoreRepository(self.db_path)
+        self.seasons = SeasonRepository(self.db_path)
 
     async def initialize(self) -> None:
         """Create tables, enable WAL mode, and validate existing schema invariants.
@@ -358,223 +362,3 @@ class Database:
             )
 
             await db.commit()
-
-    async def upsert_guild_config(self, guild_id, admin_role_id, league_channel_id):
-        return await self._guild_config.upsert_guild_config(
-            guild_id, admin_role_id, league_channel_id
-        )
-
-    async def get_guild_config(self, guild_id):
-        return await self._guild_config.get_guild_config(guild_id)
-
-    async def get_active_season(self, guild_id):
-        return await self._seasons.get_active_season(guild_id)
-
-    async def get_or_create_active_season(self, guild_id):
-        return await self._seasons.get_or_create_active_season(guild_id)
-
-    async def get_seasons(self, guild_id):
-        return await self._seasons.get_seasons(guild_id)
-
-    async def get_active_scoring_rules(self, guild_id):
-        return await self._seasons.get_active_scoring_rules(guild_id)
-
-    async def active_season_has_scores(self, guild_id):
-        return await self._seasons.active_season_has_scores(guild_id)
-
-    async def update_active_scoring_rules(self, guild_id, rules):
-        return await self._seasons.update_active_scoring_rules(guild_id, rules)
-
-    async def start_new_season(self, guild_id, name):
-        return await self._seasons.start_new_season(guild_id, name)
-
-    async def create_fixture(self, guild_id, week_number, games, deadline):
-        return await self._fixtures.create_fixture(guild_id, week_number, games, deadline)
-
-    async def create_next_fixture(self, guild_id, games, deadline):
-        return await self._fixtures.create_next_fixture(guild_id, games, deadline)
-
-    async def get_current_fixture(self, guild_id):
-        return await self._fixtures.get_current_fixture(guild_id)
-
-    async def get_open_fixtures(self, guild_id):
-        return await self._fixtures.get_open_fixtures(guild_id)
-
-    async def get_all_open_fixtures(self):
-        return await self._fixtures.get_all_open_fixtures()
-
-    async def get_open_fixture_by_week(self, guild_id, week_number):
-        return await self._fixtures.get_open_fixture_by_week(guild_id, week_number)
-
-    async def get_fixture_by_id(self, fixture_id, guild_id):
-        return await self._fixtures.get_fixture_by_id(fixture_id, guild_id)
-
-    async def _get_fixture_by_id_unchecked(self, fixture_id):
-        return await self._fixtures._get_fixture_by_id_unchecked(fixture_id)
-
-    async def get_fixture_by_week(self, guild_id, week_number):
-        return await self._fixtures.get_fixture_by_week(guild_id, week_number)
-
-    async def get_recent_fixtures(self, guild_id, limit=25):
-        return await self._fixtures.get_recent_fixtures(guild_id, limit)
-
-    async def get_fixture_by_message_id(self, message_id, guild_id=None):
-        return await self._fixtures.get_fixture_by_message_id(message_id, guild_id)
-
-    async def get_max_week_number(self, guild_id):
-        return await self._fixtures.get_max_week_number(guild_id)
-
-    async def delete_fixture(self, fixture_id, guild_id=None):
-        return await self._fixtures.delete_fixture(fixture_id, guild_id)
-
-    async def update_fixture_announcement(self, fixture_id, message_id, channel_id):
-        return await self._fixtures.update_fixture_announcement(fixture_id, message_id, channel_id)
-
-    async def save_prediction(
-        self,
-        fixture_id,
-        user_id,
-        user_name,
-        predictions,
-        is_late=False,
-        *,
-        predicted_game_indexes=None,
-        pending_partial_approval=False,
-        public_message_id=None,
-        public_message_kind=None,
-    ):
-        return await self._predictions.save_prediction(
-            fixture_id,
-            user_id,
-            user_name,
-            predictions,
-            is_late,
-            predicted_game_indexes=predicted_game_indexes,
-            pending_partial_approval=pending_partial_approval,
-            public_message_id=public_message_id,
-            public_message_kind=public_message_kind,
-        )
-
-    async def try_save_prediction(
-        self,
-        fixture_id,
-        user_id,
-        user_name,
-        predictions,
-        is_late=False,
-        *,
-        predicted_game_indexes=None,
-        pending_partial_approval=False,
-        public_message_id=None,
-        public_message_kind=None,
-    ):
-        """Insert once for thread submissions with atomic duplicate and open checks."""
-        return await self._predictions.try_save_prediction(
-            fixture_id,
-            user_id,
-            user_name,
-            predictions,
-            is_late,
-            predicted_game_indexes=predicted_game_indexes,
-            pending_partial_approval=pending_partial_approval,
-            public_message_id=public_message_id,
-            public_message_kind=public_message_kind,
-        )
-
-    async def save_prediction_guarded(
-        self,
-        fixture_id,
-        user_id,
-        user_name,
-        predictions,
-        is_late=False,
-        *,
-        predicted_game_indexes=None,
-        pending_partial_approval=False,
-        public_message_id=None,
-        public_message_kind=None,
-    ):
-        """Upsert a prediction only while the fixture is still open."""
-        return await self._predictions.save_prediction_guarded(
-            fixture_id,
-            user_id,
-            user_name,
-            predictions,
-            is_late,
-            predicted_game_indexes=predicted_game_indexes,
-            pending_partial_approval=pending_partial_approval,
-            public_message_id=public_message_id,
-            public_message_kind=public_message_kind,
-        )
-
-    async def get_prediction(self, fixture_id, user_id, guild_id):
-        return await self._predictions.get_prediction(fixture_id, user_id, guild_id)
-
-    async def admin_update_prediction(self, fixture_id, user_id, predictions, admin_user_id):
-        return await self._predictions.admin_update_prediction(
-            fixture_id, user_id, predictions, admin_user_id
-        )
-
-    async def admin_update_prediction_with_recalc(
-        self, fixture_id, user_id, predictions, admin_user_id
-    ):
-        return await self._predictions.admin_update_prediction_with_recalc(
-            fixture_id, user_id, predictions, admin_user_id
-        )
-
-    async def set_late_penalty_waiver(self, fixture_id, user_id, waived):
-        return await self._predictions.set_late_penalty_waiver(fixture_id, user_id, waived)
-
-    async def toggle_late_penalty_waiver_with_recalc(self, fixture_id, user_id):
-        """Toggle late-waiver state and recalculate scores when they already exist."""
-        return await self._predictions.toggle_late_penalty_waiver_with_recalc(fixture_id, user_id)
-
-    async def delete_prediction(self, fixture_id, user_id):
-        return await self._predictions.delete_prediction(fixture_id, user_id)
-
-    async def get_all_predictions(self, fixture_id, include_pending=False):
-        return await self._predictions.get_all_predictions(
-            fixture_id, include_pending=include_pending
-        )
-
-    async def get_pending_partial_predictions(self, guild_id):
-        return await self._predictions.get_pending_partial_predictions(guild_id)
-
-    async def approve_partial_prediction(self, fixture_id, user_id, admin_user_id):
-        return await self._predictions.approve_partial_prediction_with_recalc(
-            fixture_id, user_id, admin_user_id
-        )
-
-    async def reject_partial_prediction(self, fixture_id, user_id):
-        return await self._predictions.reject_partial_prediction_with_recalc(fixture_id, user_id)
-
-    async def save_results(self, fixture_id, results):
-        return await self._results.save_results(fixture_id, results)
-
-    async def save_results_with_recalc(self, fixture_id, results):
-        """Replace stored results and recalculate scores for already-scored fixtures."""
-        return await self._results.save_results_with_recalc(fixture_id, results)
-
-    async def get_results(self, fixture_id):
-        return await self._results.get_results(fixture_id)
-
-    async def fixture_has_scores(self, fixture_id):
-        return await self._scores.fixture_has_scores(fixture_id)
-
-    async def get_scores_for_fixture(self, fixture_id):
-        return await self._scores.get_scores_for_fixture(fixture_id)
-
-    async def save_scores(self, fixture_id, scores):
-        return await self._scores.save_scores(fixture_id, scores)
-
-    async def recalculate_fixture_scores(self, fixture_id):
-        return await self._scores.recalculate_fixture_scores(fixture_id)
-
-    async def get_standings(self, guild_id):
-        return await self._scores.get_standings(guild_id)
-
-    async def get_standings_for_season(self, guild_id, season_id):
-        return await self._scores.get_standings_for_season(guild_id, season_id)
-
-    async def get_last_fixture_scores(self, guild_id):
-        return await self._scores.get_last_fixture_scores(guild_id)

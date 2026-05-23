@@ -54,7 +54,7 @@ class TestAdminOnlyDecorator:
 
     @pytest.mark.asyncio
     async def test_configured_admin_role_grants_access(self, database, mock_interaction_admin):
-        await database.upsert_guild_config("111111", "987654", "123456")
+        await database.guild_config.upsert_guild_config("111111", "987654", "123456")
         member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
         member.roles = [MockRole("League Admin", role_id=987654)]
 
@@ -64,7 +64,7 @@ class TestAdminOnlyDecorator:
     async def test_configured_admin_role_rejects_name_only_admin(
         self, database, mock_interaction_admin
     ):
-        await database.upsert_guild_config("111111", "987654", "123456")
+        await database.guild_config.upsert_guild_config("111111", "987654", "123456")
 
         permission_error = await get_admin_permission_error(mock_interaction_admin, database)
         assert permission_error is not None
@@ -76,7 +76,7 @@ class TestAdminOnlyDecorator:
         database,
         mock_interaction_admin,
     ):
-        await database.upsert_guild_config("111111", "987654", "123456")
+        await database.guild_config.upsert_guild_config("111111", "987654", "123456")
         mock_interaction_admin.guild._members.clear()
         mock_interaction_admin.user.roles = [MockRole("League Admin", role_id=987654)]
 
@@ -105,7 +105,7 @@ class TestAdminPanelEntry:
 
     @pytest.mark.asyncio
     async def test_admin_panel_opens_unified_view(self, admin_cog, mock_interaction_admin):
-        await admin_cog.db.upsert_guild_config("111111", "987654", "123456")
+        await admin_cog.db.guild_config.upsert_guild_config("111111", "987654", "123456")
         member = mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id)
         member.roles = [MockRole("League Admin", role_id=987654)]
 
@@ -230,7 +230,7 @@ class TestAdminPanelEntry:
         view = GuildSetupPromptView(database, str(mock_interaction_admin.user.id))
 
         assert await view.interaction_check(mock_interaction_admin) is False
-        assert await database.get_guild_config("111111") is None
+        assert await database.guild_config.get_guild_config("111111") is None
 
     @pytest.mark.asyncio
     async def test_inline_setup_prompt_saves_config(
@@ -249,7 +249,7 @@ class TestAdminPanelEntry:
 
         await view.save_button.callback(mock_interaction_admin)
 
-        config = await database.get_guild_config("111111")
+        config = await database.guild_config.get_guild_config("111111")
         assert config["admin_role_id"] == "987654"
         assert config["league_channel_id"] == "765432"
         assert "this server's league" in mock_interaction_admin.response_sent[-1]["content"]
@@ -272,7 +272,7 @@ class TestAdminPanelEntry:
         await view.save_button.callback(mock_interaction_admin)
 
         assert isinstance(mock_interaction_admin.response_sent[-1]["view"], EveryoneRoleConfirmView)
-        assert await database.get_guild_config("111111") is None
+        assert await database.guild_config.get_guild_config("111111") is None
 
         confirm_view = mock_interaction_admin.response_sent[-1]["view"]
         confirm_button = next(
@@ -282,7 +282,7 @@ class TestAdminPanelEntry:
         )
         await confirm_button.callback(mock_interaction_admin)
 
-        config = await database.get_guild_config("111111")
+        config = await database.guild_config.get_guild_config("111111")
         assert config["admin_role_id"] == str(mock_interaction_admin.guild.id)
 
 

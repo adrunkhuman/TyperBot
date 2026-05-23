@@ -169,9 +169,9 @@ class PredictionRepository:
 
             duration_ms = (time.perf_counter() - start_time) * 1000
             logger.debug(
-                "db.save_prediction completed",
+                "db.predictions.save_prediction completed",
                 extra={
-                    "operation": "db.save_prediction",
+                    "operation": "db.predictions.save_prediction",
                     "fixture_id": fixture_id,
                     "user_id": user_id,
                     "duration_ms": round(duration_ms, 2),
@@ -256,9 +256,9 @@ class PredictionRepository:
 
         duration_ms = (time.perf_counter() - start_time) * 1000
         logger.debug(
-            "db.try_save_prediction completed",
+            "db.predictions.try_save_prediction completed",
             extra={
-                "operation": "db.try_save_prediction",
+                "operation": "db.predictions.try_save_prediction",
                 "fixture_id": fixture_id,
                 "user_id": user_id,
                 "duration_ms": round(duration_ms, 2),
@@ -336,9 +336,9 @@ class PredictionRepository:
 
         duration_ms = (time.perf_counter() - start_time) * 1000
         logger.debug(
-            "db.save_prediction_guarded completed",
+            "db.predictions.save_prediction_guarded completed",
             extra={
-                "operation": "db.save_prediction_guarded",
+                "operation": "db.predictions.save_prediction_guarded",
                 "fixture_id": fixture_id,
                 "user_id": user_id,
                 "duration_ms": round(duration_ms, 2),

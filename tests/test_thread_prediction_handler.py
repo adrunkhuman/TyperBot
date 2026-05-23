@@ -102,7 +102,7 @@ class TestOnMessage:
         assert result is True
         assert "✅" in mock_message.reactions_added
 
-        predictions = await handler.db.get_all_predictions(fixture_with_thread["id"])
+        predictions = await handler.db.predictions.get_all_predictions(fixture_with_thread["id"])
         assert len(predictions) == 1
         assert predictions[0]["user_id"] == "123456"
         assert not predictions[0]["is_late"]
@@ -110,10 +110,10 @@ class TestOnMessage:
     @pytest.mark.asyncio
     async def test_marks_late_predictions(self, handler, database, mock_message, sample_games):
         """Should mark predictions as late when past deadline."""
-        await database.update_active_scoring_rules("111111", {"late_prediction_points": 1})
+        await database.seasons.update_active_scoring_rules("111111", {"late_prediction_points": 1})
         deadline = datetime.now(UTC) - timedelta(hours=1)
-        fixture_id = await database.create_fixture("111111", 1, sample_games, deadline)
-        await database.update_fixture_announcement(
+        fixture_id = await database.fixtures.create_fixture("111111", 1, sample_games, deadline)
+        await database.fixtures.update_fixture_announcement(
             fixture_id, message_id="789012", channel_id="123456"
         )
 
@@ -125,7 +125,7 @@ class TestOnMessage:
         assert result is True
         assert "✅" in mock_message.reactions_added
 
-        predictions = await handler.db.get_all_predictions(fixture_id)
+        predictions = await handler.db.predictions.get_all_predictions(fixture_id)
         assert len(predictions) == 1
         assert predictions[0]["is_late"]
         assert "Late prediction" in mock_message.author.dm_sent[0]
@@ -143,7 +143,7 @@ class TestOnMessage:
         result = await handler.on_message(mock_message)
 
         assert result is True
-        predictions = await handler.db.get_all_predictions(
+        predictions = await handler.db.predictions.get_all_predictions(
             fixture_with_thread["id"], include_pending=True
         )
         assert predictions[0]["predicted_game_indexes"] == [1, 2]
@@ -156,11 +156,11 @@ class TestOnMessage:
         self, handler, database, mock_message, sample_games
     ):
         deadline = datetime.now(UTC) - timedelta(hours=1)
-        fixture_id = await database.create_fixture("111111", 1, sample_games, deadline)
-        await database.update_fixture_announcement(
+        fixture_id = await database.fixtures.create_fixture("111111", 1, sample_games, deadline)
+        await database.fixtures.update_fixture_announcement(
             fixture_id, message_id="789012", channel_id="123456"
         )
-        await database.upsert_guild_config("111111", "4242", "123456")
+        await database.guild_config.upsert_guild_config("111111", "4242", "123456")
         mock_message.content = "Team C - Team D 1-1\nTeam E - Team F 0-2"
         mock_message.channel.id = 789012
 
@@ -168,7 +168,9 @@ class TestOnMessage:
 
         assert result is True
         assert "⏳" in mock_message.reactions_added
-        predictions = await handler.db.get_all_predictions(fixture_id, include_pending=True)
+        predictions = await handler.db.predictions.get_all_predictions(
+            fixture_id, include_pending=True
+        )
         assert predictions[0]["pending_partial_approval"] is True
         assert predictions[0]["predicted_game_indexes"] == [1, 2]
         assert predictions[0]["public_message_id"] == str(mock_message.id)
@@ -203,7 +205,7 @@ class TestOnMessage:
         result = await handler.on_message(second_message)
 
         assert result is True
-        predictions = await handler.db.get_all_predictions(fixture_with_thread["id"])
+        predictions = await handler.db.predictions.get_all_predictions(fixture_with_thread["id"])
         assert predictions[0]["predictions"] == ["2-1", "1-1", "0-2"]
         assert "Use `/predict`" in second_message.author.dm_sent[-1]
 
@@ -227,7 +229,7 @@ class TestOnMessage:
 
         assert first is True
         assert second is True
-        predictions = await handler.db.get_all_predictions(fixture_with_thread["id"])
+        predictions = await handler.db.predictions.get_all_predictions(fixture_with_thread["id"])
         assert len(predictions) == 1
         assert predictions[0]["predictions"] == ["2-1", "1-1", "0-2"]
         assert second_message.reactions_added == []
@@ -238,8 +240,8 @@ class TestOnMessage:
         self, handler, database, mock_message, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_id = await database.create_fixture("222222", 1, sample_games, deadline)
-        await database.update_fixture_announcement(
+        fixture_id = await database.fixtures.create_fixture("222222", 1, sample_games, deadline)
+        await database.fixtures.update_fixture_announcement(
             fixture_id, message_id="888888", channel_id="456789"
         )
         handler.record_thread_prediction_attempt("111111", "123456", datetime.now(UTC))
@@ -376,7 +378,7 @@ class TestEdgeCases:
 
         mock_message.channel.id = 789012
         mock_message.content = "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2"
-        monkeypatch.setattr(handler.db, "try_save_prediction", raise_error)
+        monkeypatch.setattr(handler.db.predictions, "try_save_prediction", raise_error)
 
         result = await handler.on_message(mock_message)
         assert result is True
@@ -438,7 +440,7 @@ class TestEdgeCases:
         result = await handler.on_message(mock_message)
 
         assert result is True
-        predictions = await handler.db.get_all_predictions(1)
+        predictions = await handler.db.predictions.get_all_predictions(1)
         assert len(predictions) == 1
         assert len(mock_message.author.dm_sent) == 1
         assert "Prediction saved" in mock_message.author.dm_sent[0]
@@ -461,7 +463,7 @@ class TestEdgeCases:
         result = await handler.on_message(mock_message)
 
         assert result is True
-        predictions = await handler.db.get_all_predictions(1)
+        predictions = await handler.db.predictions.get_all_predictions(1)
         assert len(predictions) == 1
 
 
@@ -476,8 +478,8 @@ class TestIntegration:
         from tests.conftest import MockMessage, MockUser
 
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_id = await database.create_fixture("111111", 1, sample_games, deadline)
-        await database.update_fixture_announcement(
+        fixture_id = await database.fixtures.create_fixture("111111", 1, sample_games, deadline)
+        await database.fixtures.update_fixture_announcement(
             fixture_id, message_id="789012", channel_id="123456"
         )
 
@@ -504,7 +506,7 @@ class TestIntegration:
         result = await handler.on_message(message2)
         assert result is True
 
-        predictions = await database.get_all_predictions(fixture_id)
+        predictions = await database.predictions.get_all_predictions(fixture_id)
         assert len(predictions) == 2
         user_ids = {p["user_id"] for p in predictions}
         assert user_ids == {"111", "222"}
@@ -522,7 +524,7 @@ class TestAtomicGuards:
         async def return_closed(*_args, **_kwargs):
             return SaveResult.FIXTURE_CLOSED
 
-        monkeypatch.setattr(handler.db, "try_save_prediction", return_closed)
+        monkeypatch.setattr(handler.db.predictions, "try_save_prediction", return_closed)
 
         result = await handler.on_message(mock_message)
 
@@ -539,7 +541,7 @@ class TestAtomicGuards:
         async def return_duplicate(*_args, **_kwargs):
             return SaveResult.DUPLICATE
 
-        monkeypatch.setattr(handler.db, "try_save_prediction", return_duplicate)
+        monkeypatch.setattr(handler.db.predictions, "try_save_prediction", return_duplicate)
 
         result = await handler.on_message(mock_message)
 

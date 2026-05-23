@@ -37,11 +37,11 @@ async def test_seed_mixed_data_creates_expected_fixture_states(temp_db_path, tmp
     from typer_bot.database import Database
 
     db = Database(temp_db_path)
-    open_fixtures = await db.get_open_fixtures(DEFAULT_MANUAL_GUILD_ID)
-    standings = await db.get_standings(DEFAULT_MANUAL_GUILD_ID)
-    week_one = await db.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 1)
-    week_two = await db.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 2)
-    week_three = await db.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 3)
+    open_fixtures = await db.fixtures.get_open_fixtures(DEFAULT_MANUAL_GUILD_ID)
+    standings = await db.scores.get_standings(DEFAULT_MANUAL_GUILD_ID)
+    week_one = await db.fixtures.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 1)
+    week_two = await db.fixtures.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 2)
+    week_three = await db.fixtures.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 3)
 
     assert [fixture["week_number"] for fixture in open_fixtures] == [2, 3]
     assert week_one is not None
@@ -56,11 +56,11 @@ async def test_seed_mixed_data_creates_expected_fixture_states(temp_db_path, tmp
     assert standings[1]["user_name"] == "Seed Beta"
     assert standings[1]["total_points"] == 5
 
-    week_one_results = await db.get_results(week_one["id"])
-    week_one_scores = await db.get_scores_for_fixture(week_one["id"])
+    week_one_results = await db.results.get_results(week_one["id"])
+    week_one_scores = await db.scores.get_scores_for_fixture(week_one["id"])
 
-    open_predictions = await db.get_all_predictions(week_two["id"])
-    late_predictions = await db.get_all_predictions(week_three["id"])
+    open_predictions = await db.predictions.get_all_predictions(week_two["id"])
+    late_predictions = await db.predictions.get_all_predictions(week_three["id"])
 
     assert week_one_results == ["2-1", "1-1", "0-2"]
     assert [score["user_name"] for score in week_one_scores] == ["Seed Alpha", "Seed Beta"]
@@ -80,18 +80,18 @@ async def test_seed_mixed_data_includes_real_tester_when_user_id_provided(temp_d
     from typer_bot.database import Database
 
     db = Database(temp_db_path)
-    week_one = await db.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 1)
-    week_two = await db.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 2)
+    week_one = await db.fixtures.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 1)
+    week_two = await db.fixtures.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 2)
     assert week_one is not None
     assert week_two is not None
 
-    tester_scored_prediction = await db.get_prediction(
+    tester_scored_prediction = await db.predictions.get_prediction(
         week_one["id"], tester_user_id, DEFAULT_MANUAL_GUILD_ID
     )
-    tester_prediction = await db.get_prediction(
+    tester_prediction = await db.predictions.get_prediction(
         week_two["id"], tester_user_id, DEFAULT_MANUAL_GUILD_ID
     )
-    synthetic_prediction = await db.get_prediction(
+    synthetic_prediction = await db.predictions.get_prediction(
         week_two["id"], "seed-user-1", DEFAULT_MANUAL_GUILD_ID
     )
 
@@ -110,14 +110,14 @@ async def test_seed_mixed_data_resets_existing_database(temp_db_path, tmp_path):
     from typer_bot.database import Database
 
     db = Database(temp_db_path)
-    week_two = await db.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 2)
+    week_two = await db.fixtures.get_fixture_by_week(DEFAULT_MANUAL_GUILD_ID, 2)
     assert week_two is not None
-    await db.delete_fixture(week_two["id"])
+    await db.fixtures.delete_fixture(week_two["id"])
 
     await seed_mixed_test_data(temp_db_path, str(backup_dir), None, force_reset=True)
 
     refreshed_db = Database(temp_db_path)
-    open_fixtures = await refreshed_db.get_open_fixtures(DEFAULT_MANUAL_GUILD_ID)
+    open_fixtures = await refreshed_db.fixtures.get_open_fixtures(DEFAULT_MANUAL_GUILD_ID)
     assert [fixture["week_number"] for fixture in open_fixtures] == [2, 3]
 
 
@@ -201,13 +201,15 @@ async def test_auto_seed_populates_empty_non_production_database(temp_db_path):
     )
 
     seeded_db = Database(temp_db_path)
-    open_fixtures = await seeded_db.get_open_fixtures("111111")
-    week_two = await seeded_db.get_fixture_by_week("111111", 2)
+    open_fixtures = await seeded_db.fixtures.get_open_fixtures("111111")
+    week_two = await seeded_db.fixtures.get_fixture_by_week("111111", 2)
 
     assert seeded is True
     assert [fixture["week_number"] for fixture in open_fixtures] == [2, 3]
     assert week_two is not None
-    assert await seeded_db.get_prediction(week_two["id"], "tester-1", "111111") is not None
+    assert (
+        await seeded_db.predictions.get_prediction(week_two["id"], "tester-1", "111111") is not None
+    )
 
 
 @pytest.mark.asyncio
@@ -216,7 +218,7 @@ async def test_auto_seed_does_not_reset_non_empty_database(temp_db_path):
 
     db = Database(temp_db_path)
     await db.initialize()
-    fixture_id = await db.create_fixture("111111", 99, ["Existing A - Existing B"], now())
+    fixture_id = await db.fixtures.create_fixture("111111", 99, ["Existing A - Existing B"], now())
 
     seeded = await maybe_auto_seed_test_data(
         temp_db_path,
@@ -226,8 +228,8 @@ async def test_auto_seed_does_not_reset_non_empty_database(temp_db_path):
         guild_id="111111",
     )
 
-    existing_fixture = await db.get_fixture_by_id(fixture_id, "111111")
-    open_fixtures = await db.get_open_fixtures("111111")
+    existing_fixture = await db.fixtures.get_fixture_by_id(fixture_id, "111111")
+    open_fixtures = await db.fixtures.get_open_fixtures("111111")
 
     assert seeded is False
     assert existing_fixture is not None

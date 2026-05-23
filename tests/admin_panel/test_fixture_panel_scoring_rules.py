@@ -61,7 +61,7 @@ class TestFixturePanelScoringRules:
 
         await modal.on_submit(mock_interaction_admin)
 
-        assert await admin_cog.db.get_active_scoring_rules("111111") == {
+        assert await admin_cog.db.seasons.get_active_scoring_rules("111111") == {
             "exact_score_points": 5,
             "correct_outcome_points": 2,
             "wrong_outcome_points": 1,
@@ -86,7 +86,7 @@ class TestFixturePanelScoringRules:
             bot=admin_cog.bot,
         )
         await view.load_fixture_options()
-        await admin_cog.db.update_active_scoring_rules("111111", {"exact_score_points": 5})
+        await admin_cog.db.seasons.update_active_scoring_rules("111111", {"exact_score_points": 5})
 
         scoring_button = _get_button(view, "Scoring Rules")
         await scoring_button.callback(mock_interaction_admin)
@@ -115,18 +115,18 @@ class TestFixturePanelScoringRules:
         modal.outcome_input._value = "2"
         modal.wrong_input._value = "1"
         modal.late_input._value = "1"
-        await admin_cog.db.start_new_season("111111", "Next Season")
+        await admin_cog.db.seasons.start_new_season("111111", "Next Season")
 
         await modal.on_submit(mock_interaction_admin)
 
         assert "active season changed" in mock_interaction_admin.response_sent[-1]["content"]
-        assert await admin_cog.db.get_active_scoring_rules("111111") == {
+        assert await admin_cog.db.seasons.get_active_scoring_rules("111111") == {
             "exact_score_points": 3,
             "correct_outcome_points": 1,
             "wrong_outcome_points": 0,
             "late_prediction_points": 0,
         }
-        seasons = await admin_cog.db.get_seasons("111111")
+        seasons = await admin_cog.db.seasons.get_seasons("111111")
         assert seasons[0]["status"] == "archived"
         assert seasons[0]["scoring_rules"] == old_season_rules
 
@@ -159,7 +159,7 @@ class TestFixturePanelScoringRules:
         await modal.on_submit(outsider)
 
         assert "permission" in outsider.response_sent[-1]["content"]
-        assert await admin_cog.db.get_active_scoring_rules("111111") == {
+        assert await admin_cog.db.seasons.get_active_scoring_rules("111111") == {
             "exact_score_points": 3,
             "correct_outcome_points": 1,
             "wrong_outcome_points": 0,
@@ -192,7 +192,7 @@ class TestFixturePanelScoringRules:
         await modal.on_submit(mock_interaction_admin)
 
         assert "no longer have permission" in mock_interaction_admin.response_sent[-1]["content"]
-        assert await admin_cog.db.get_active_scoring_rules("111111") == {
+        assert await admin_cog.db.seasons.get_active_scoring_rules("111111") == {
             "exact_score_points": 3,
             "correct_outcome_points": 1,
             "wrong_outcome_points": 0,
@@ -206,11 +206,11 @@ class TestFixturePanelScoringRules:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-0"])
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.results.save_results(fixture_id, ["2-1", "1-1", "0-0"])
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "user-1",
             "User One",
@@ -233,12 +233,12 @@ class TestFixturePanelScoringRules:
         modal.outcome_input._value = "2"
         modal.wrong_input._value = "1"
         modal.late_input._value = "1"
-        await admin_cog.db.recalculate_fixture_scores(fixture_id)
+        await admin_cog.db.scores.recalculate_fixture_scores(fixture_id)
 
         await modal.on_submit(mock_interaction_admin)
 
         assert "Cannot change scoring rules" in mock_interaction_admin.response_sent[-1]["content"]
-        assert await admin_cog.db.get_active_scoring_rules("111111") == {
+        assert await admin_cog.db.seasons.get_active_scoring_rules("111111") == {
             "exact_score_points": 3,
             "correct_outcome_points": 1,
             "wrong_outcome_points": 0,
@@ -277,11 +277,11 @@ class TestFixturePanelScoringRules:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 45, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.results.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -298,7 +298,7 @@ class TestFixturePanelScoringRules:
         )
         await view.load_fixture_options()
         stale_button = _get_button(view, "Scoring Rules")
-        await admin_cog.db.recalculate_fixture_scores(fixture_id)
+        await admin_cog.db.scores.recalculate_fixture_scores(fixture_id)
 
         await stale_button.callback(mock_interaction_admin)
 

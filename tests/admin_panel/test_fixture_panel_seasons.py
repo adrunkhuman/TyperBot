@@ -59,7 +59,7 @@ class TestFixturePanelSeasons:
         mock_interaction_admin,
         sample_games,
     ):
-        await admin_cog.db.create_fixture(
+        await admin_cog.db.fixtures.create_fixture(
             "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         view = UnifiedAdminPanelView(
@@ -79,7 +79,7 @@ class TestFixturePanelSeasons:
         await modal.on_submit(mock_interaction_admin)
 
         assert "Close all open fixtures" in mock_interaction_admin.response_sent[-1]["content"]
-        assert (await admin_cog.db.get_active_season("111111"))["name"] == "Default Season"
+        assert (await admin_cog.db.seasons.get_active_season("111111"))["name"] == "Default Season"
 
     @pytest.mark.asyncio
     async def test_new_season_modal_starts_season_and_refreshes_panel(
@@ -88,10 +88,10 @@ class TestFixturePanelSeasons:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_scores(
+        await admin_cog.db.scores.save_scores(
             fixture_id,
             [
                 {
@@ -118,7 +118,7 @@ class TestFixturePanelSeasons:
         modal.name_input._value = "2026/27"
 
         await modal.on_submit(mock_interaction_admin)
-        _new_fixture_id, new_week = await admin_cog.db.create_next_fixture(
+        _new_fixture_id, new_week = await admin_cog.db.fixtures.create_next_fixture(
             "111111", sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 

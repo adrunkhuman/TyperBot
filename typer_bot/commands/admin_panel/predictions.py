@@ -56,7 +56,7 @@ class PredictionsPanelView(OwnerRestrictedView):
         )
 
     async def load_fixture_options(self) -> None:
-        fixtures = await self.db.get_recent_fixtures(self.guild_id, MAX_SELECT_OPTIONS)
+        fixtures = await self.db.fixtures.get_recent_fixtures(self.guild_id, MAX_SELECT_OPTIONS)
         self.fixture_select.update_options(fixtures)
 
     async def load_user_options(self) -> None:
@@ -65,7 +65,7 @@ class PredictionsPanelView(OwnerRestrictedView):
             self.user_select.update_options([])
             return
 
-        predictions = await self.db.get_all_predictions(
+        predictions = await self.db.predictions.get_all_predictions(
             self.selection.fixture_id, include_pending=True
         )
         self.has_user_overflow = len(predictions) > MAX_SELECT_OPTIONS
@@ -153,7 +153,9 @@ class PredictionUserSelect(discord.ui.Select):
             await interaction.response.send_message("Select a fixture first.", ephemeral=True)
             return
 
-        fixture = await self.parent_view.db.get_fixture_by_id(fixture_id, self.parent_view.guild_id)
+        fixture = await self.parent_view.db.fixtures.get_fixture_by_id(
+            fixture_id, self.parent_view.guild_id
+        )
         if fixture is None:
             self.parent_view.selection.fixture_id = None
             self.parent_view.selection.fixture_label = ""
@@ -170,7 +172,7 @@ class PredictionUserSelect(discord.ui.Select):
             )
             return
 
-        prediction = await self.parent_view.db.get_prediction(
+        prediction = await self.parent_view.db.predictions.get_prediction(
             fixture_id, selected_user_id, self.parent_view.guild_id
         )
         if prediction is None:
