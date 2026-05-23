@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
+import typer_bot.commands.admin_panel.unified_actions as unified_actions
 from tests.admin_panel_helpers import get_button as _get_button
 from tests.admin_panel_helpers import has_button as _has_button
 from typer_bot.commands.admin_panel import (
@@ -74,6 +75,7 @@ class TestFixturePanelResultsActions:
         admin_cog,
         mock_interaction_admin,
         sample_games,
+        monkeypatch,
     ):
         fixture_id = await admin_cog.db.create_fixture(
             "111111", 45, sample_games, datetime.now(UTC) + timedelta(days=1)
@@ -86,18 +88,10 @@ class TestFixturePanelResultsActions:
             ["2-1", "1-1", "0-2"],
             False,
         )
-        command_channel = MagicMock(spec=discord.TextChannel)
-        command_channel.id = 999999
-        command_channel.send = AsyncMock()
-        league_channel = MagicMock(spec=discord.TextChannel)
-        league_channel.id = 123456
-        league_channel.send = AsyncMock()
-        mock_interaction_admin.channel = command_channel
-        admin_cog.bot.get_channel.return_value = None
-        admin_cog.bot.fetch_channel = AsyncMock(return_value=league_channel)
         mock_interaction_admin.message = MagicMock()
         mock_interaction_admin.message.edit = AsyncMock()
-        admin_cog._create_backup = AsyncMock()
+        post_calculation_result = AsyncMock()
+        monkeypatch.setattr(unified_actions, "post_calculation_result", post_calculation_result)
 
         view = UnifiedAdminPanelView(
             admin_cog.db,
@@ -118,67 +112,16 @@ class TestFixturePanelResultsActions:
             admin_cog.get_calculate_cooldown("111111", str(mock_interaction_admin.user.id))
             is not None
         )
-        league_channel.send.assert_awaited_once()
-        command_channel.send.assert_not_awaited()
-        assert (
-            "Week 45 results calculated and posted to the league channel"
-            in mock_interaction_admin.response_sent[-1]["content"]
+        post_calculation_result.assert_awaited_once()
+        assert post_calculation_result.call_args.args[:3] == (
+            admin_cog.bot,
+            admin_cog.db,
+            mock_interaction_admin,
         )
-        assert "User One" in league_channel.send.call_args.args[0]
         assert view.selection.fixture_label == "Week 45 [CLOSED]"
         assert _has_button(view, "Calculate Scores") is False
         assert _has_button(view, "Delete Fixture") is False
         assert mock_interaction_admin.message.edit.await_count == 1
-
-    @pytest.mark.asyncio
-    async def test_unified_panel_calculate_scores_button_rejects_unavailable_league_channel(
-        self,
-        admin_cog,
-        mock_interaction_admin,
-        sample_games,
-    ):
-        fixture_id = await admin_cog.db.create_fixture(
-            "111111", 46, sample_games, datetime.now(UTC) + timedelta(days=1)
-        )
-        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
-        await admin_cog.db.save_prediction(
-            fixture_id,
-            "111",
-            "User One",
-            ["2-1", "1-1", "0-2"],
-            False,
-        )
-        command_channel = MagicMock(spec=discord.TextChannel)
-        command_channel.send = AsyncMock()
-        mock_interaction_admin.channel = command_channel
-        admin_cog.bot.get_channel.return_value = None
-        admin_cog.bot.fetch_channel = AsyncMock(
-            side_effect=discord.InvalidData("unknown channel type")
-        )
-        mock_interaction_admin.message = MagicMock()
-        mock_interaction_admin.message.edit = AsyncMock()
-        admin_cog._create_backup = AsyncMock()
-
-        view = UnifiedAdminPanelView(
-            admin_cog.db,
-            admin_cog.service,
-            str(mock_interaction_admin.user.id),
-            "111111",
-            admin_commands=admin_cog,
-            bot=admin_cog.bot,
-        )
-        await view.load_fixture_options()
-        view.fixture_select._values = [str(fixture_id)]
-        await view.fixture_select.callback(mock_interaction_admin)
-
-        calculate_button = _get_button(view, "Calculate Scores")
-        await calculate_button.callback(mock_interaction_admin)
-
-        command_channel.send.assert_not_awaited()
-        assert (
-            "configured league channel is unavailable"
-            in mock_interaction_admin.response_sent[-1]["content"].lower()
-        )
 
     @pytest.mark.asyncio
     async def test_stale_calculate_scores_button_refreshes_when_fixture_already_scored(
@@ -186,6 +129,7 @@ class TestFixturePanelResultsActions:
         admin_cog,
         mock_interaction_admin,
         sample_games,
+        monkeypatch,
     ):
         fixture_id = await admin_cog.db.create_fixture(
             "111111", 45, sample_games, datetime.now(UTC) + timedelta(days=1)
@@ -200,8 +144,8 @@ class TestFixturePanelResultsActions:
         )
         mock_interaction_admin.message = MagicMock()
         mock_interaction_admin.message.edit = AsyncMock()
-        admin_cog._create_backup = AsyncMock()
-        admin_cog._post_calculation_to_channel = AsyncMock()
+        post_calculation_result = AsyncMock()
+        monkeypatch.setattr(unified_actions, "post_calculation_result", post_calculation_result)
         view = UnifiedAdminPanelView(
             admin_cog.db,
             admin_cog.service,
@@ -219,8 +163,7 @@ class TestFixturePanelResultsActions:
         await stale_button.callback(mock_interaction_admin)
 
         assert "no longer open" in mock_interaction_admin.response_sent[-1]["content"]
-        admin_cog._create_backup.assert_not_awaited()
-        admin_cog._post_calculation_to_channel.assert_not_awaited()
+        post_calculation_result.assert_not_awaited()
         assert view.selection.fixture_label == "Week 45 [CLOSED]"
         assert _has_button(view, "Calculate Scores") is False
         assert _has_button(view, "Delete Fixture") is False
@@ -232,6 +175,7 @@ class TestFixturePanelResultsActions:
         admin_cog,
         mock_interaction_admin,
         sample_games,
+        monkeypatch,
     ):
         fixture_id = await admin_cog.db.create_fixture(
             "111111", 47, sample_games, datetime.now(UTC) + timedelta(days=1)
@@ -241,6 +185,8 @@ class TestFixturePanelResultsActions:
             "111111", str(mock_interaction_admin.user.id), current_time=now().timestamp()
         )
         admin_cog.service.calculate_fixture_scores = AsyncMock()
+        post_calculation_result = AsyncMock()
+        monkeypatch.setattr(unified_actions, "post_calculation_result", post_calculation_result)
 
         view = UnifiedAdminPanelView(
             admin_cog.db,
@@ -258,6 +204,7 @@ class TestFixturePanelResultsActions:
         await calculate_button.callback(mock_interaction_admin)
 
         assert "Please wait" in mock_interaction_admin.response_sent[-1]["content"]
+        post_calculation_result.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_unified_panel_calculate_scores_button_handles_service_error(
@@ -265,13 +212,14 @@ class TestFixturePanelResultsActions:
         admin_cog,
         mock_interaction_admin,
         sample_games,
+        monkeypatch,
     ):
         fixture_id = await admin_cog.db.create_fixture(
             "111111", 48, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
-        admin_cog._create_backup = AsyncMock()
-
+        post_calculation_result = AsyncMock()
+        monkeypatch.setattr(unified_actions, "post_calculation_result", post_calculation_result)
         view = UnifiedAdminPanelView(
             admin_cog.db,
             admin_cog.service,
@@ -291,6 +239,42 @@ class TestFixturePanelResultsActions:
             mock_interaction_admin.response_sent[-1]["content"]
             == "No predictions found for this fixture"
         )
+        post_calculation_result.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_calculate_scores_button_requires_bot_context(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+        monkeypatch,
+    ):
+        fixture_id = await admin_cog.db.create_fixture(
+            "111111", 49, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        admin_cog.service.calculate_fixture_scores = AsyncMock()
+        post_calculation_result = AsyncMock()
+        monkeypatch.setattr(unified_actions, "post_calculation_result", post_calculation_result)
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+            admin_commands=admin_cog,
+            bot=None,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+
+        calculate_button = _get_button(view, "Calculate Scores")
+        await calculate_button.callback(mock_interaction_admin)
+
+        assert "unavailable" in mock_interaction_admin.response_sent[-1]["content"]
+        admin_cog.service.calculate_fixture_scores.assert_not_awaited()
+        post_calculation_result.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_unified_panel_post_results_button_opens_confirmation(

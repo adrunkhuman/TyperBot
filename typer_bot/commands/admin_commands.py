@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from datetime import timedelta
 from typing import cast
 
@@ -15,22 +14,15 @@ from typer_bot.commands.admin_panel import (
 )
 from typer_bot.database import Database
 from typer_bot.services import AdminService
-from typer_bot.services.admin_service import FixtureScoreResult
 from typer_bot.utils import (
     SETUP_REQUIRED_MESSAGE,
-    format_fixture_results,
-    format_standings,
     get_admin_permission_error,
     has_setup_permission,
     now,
 )
-from typer_bot.utils.config import BACKUP_DIR
-from typer_bot.utils.db_backup import cleanup_old_backups, create_backup
 
 CALCULATE_COOLDOWN = 30.0
 COOLDOWN_ENTRY_EXPIRY = timedelta(hours=1)
-
-logger = logging.getLogger(__name__)
 
 
 def _is_everyone_role(role: discord.Role, guild_id: int | None) -> bool:
@@ -335,75 +327,6 @@ class AdminCommands(commands.Cog):
         for key in expired:
             self._calculate_cooldowns.pop(key, None)
         return len(expired)
-
-    async def _create_backup(self) -> None:
-        try:
-            await self.bot.loop.run_in_executor(
-                None, lambda: create_backup(self.db.db_path, BACKUP_DIR)
-            )
-            await self.bot.loop.run_in_executor(
-                None, lambda: cleanup_old_backups(BACKUP_DIR, keep=10)
-            )
-        except Exception as exc:
-            logger.warning(f"Backup failed but calculation succeeded: {exc}")
-
-    async def _post_calculation_to_channel(
-        self,
-        interaction: discord.Interaction,
-        score_result: FixtureScoreResult,
-    ) -> None:
-        if interaction.guild_id is None:
-            await interaction.response.send_message(
-                "Scores calculated but could not resolve this server.", ephemeral=True
-            )
-            return
-
-        config = await self.db.get_guild_config(str(interaction.guild_id))
-        channel = None
-        if config is not None:
-            try:
-                channel_id = int(config["league_channel_id"])
-            except (TypeError, ValueError):
-                channel_id = None
-            if channel_id is not None:
-                channel = self.bot.get_channel(channel_id)
-                if channel is None:
-                    fetch_channel = getattr(self.bot, "fetch_channel", None)
-                    if fetch_channel is not None:
-                        try:
-                            channel = await fetch_channel(channel_id)
-                        except discord.DiscordException:
-                            channel = None
-
-        if not isinstance(channel, discord.TextChannel):
-            await interaction.response.send_message(
-                "Scores calculated but the configured league channel is unavailable.",
-                ephemeral=True,
-            )
-            return
-
-        results_section = format_fixture_results(
-            score_result.fixture["games"],
-            score_result.results,
-            score_result.fixture["week_number"],
-        )
-        message = (
-            results_section
-            + "\n\n"
-            + format_standings(score_result.standings, score_result.last_fixture)
-        )
-
-        try:
-            await channel.send(message)
-            await interaction.response.send_message(
-                f"Week {score_result.fixture['week_number']} results calculated and posted to the league channel!",
-                ephemeral=True,
-            )
-        except Exception as exc:
-            logger.error(f"Failed to post results to channel: {exc}")
-            await interaction.response.send_message(
-                "Scores calculated but failed to post to channel.", ephemeral=True
-            )
 
     admin = app_commands.Group(
         name="admin", description="Open the admin panel and manage fixtures/results"

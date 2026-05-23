@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import discord
 
+from typer_bot.services import post_calculation_result
 from typer_bot.utils import format_standings, get_admin_permission_error, has_setup_permission, now
 
 from .modals import CreateFixtureModal, EnterResultsModal
@@ -366,7 +367,7 @@ class CalculateScoresButton(discord.ui.Button):
             return
 
         admin_commands = self.parent_view.admin_commands
-        if admin_commands is None:
+        if admin_commands is None or self.parent_view.bot is None:
             await interaction.response.send_message(
                 "Calculate Scores is unavailable in this context.", ephemeral=True
             )
@@ -396,8 +397,9 @@ class CalculateScoresButton(discord.ui.Button):
         admin_commands.record_calculate_cooldown(
             self.parent_view.guild_id, user_id, current_time=current_time
         )
-        await admin_commands._create_backup()
-        await admin_commands._post_calculation_to_channel(interaction, score_result)
+        await post_calculation_result(
+            self.parent_view.bot, self.parent_view.db, interaction, score_result
+        )
         await self._refresh_parent_panel(fixture_id)
         await self._edit_parent_message(interaction)
 
