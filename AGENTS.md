@@ -113,6 +113,7 @@ guild_config (
 - `typer_bot/commands/admin_panel/`: Admin panel UI views, selects, and modals split out of `admin_commands.py`.
 - `typer_bot/handlers/thread_prediction_handler.py`: Thread-based prediction processing (on_message) plus thread prediction cooldown state.
 - `typer_bot/commands/admin_commands.py`: `/admin` command surface and orchestration for admin workflows, including admin calculation cooldown state.
+- `typer_bot/services/calculation_posting.py`: Post-calculation side effects: best-effort DB backup, league-channel publishing, and admin interaction responses.
 - `typer_bot/utils/config.py`: Centralized configuration (data paths via env vars).
 - `typer_bot/utils/prediction_parser.py`: Central logic for parsing "2-1" or "2:1" strings.
 - `typer_bot/utils/scoring.py`: Point calculation using season scoring rules.
