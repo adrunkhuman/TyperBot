@@ -5,7 +5,7 @@ from __future__ import annotations
 import discord
 
 from typer_bot.database import Database
-from typer_bot.utils import get_admin_permission_error, parse_line_predictions
+from typer_bot.utils import get_admin_permission_error, parse_prediction_lines
 
 from .base import _format_prediction_line
 
@@ -107,7 +107,7 @@ class EnterResultsModal(discord.ui.Modal):
             await interaction.response.send_message(permission_error, ephemeral=True)
             return
 
-        results, errors = parse_line_predictions(self.results_input.value, self.fixture["games"])
+        results, _, errors = parse_prediction_lines(self.results_input.value, self.fixture["games"])
         if errors:
             await interaction.response.send_message("\n".join(errors), ephemeral=True)
             return

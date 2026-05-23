@@ -23,7 +23,7 @@ You are working on `TyperBot`, a Discord bot for football prediction leagues.
 - **Thread Predictions:** Users can post predictions in public threads under fixture announcements.
 - **Rate Limiting:** Thread predictions are rate-limited to 1 per second per user. Cooldown entries auto-expire after 1 hour.
 - **Async:** All database ops must be async (`aiosqlite`).
-- **Parsing:** Use `utils.prediction_parser.parse_line_predictions` for all score parsing. Do NOT write ad-hoc regex.
+- **Parsing:** Use `utils.prediction_parser.parse_prediction_lines` for all score parsing. Do NOT write ad-hoc regex.
 - **Logging:** Use `typer_bot.utils.logger.setup_logging()` early. Do not use `print()`.
 - **Timezones:** All datetime operations use timezone-aware objects. Use `utils.timezone.now()` instead of `datetime.now()`. Configure via `TZ` env var (default: `UTC`).
 - **Permissions:** Bot requires `Send Messages`, `Send Messages in Threads`, `Read Message History`, `Add Reactions`, `Create Public Threads`, and `Use Slash Commands`.

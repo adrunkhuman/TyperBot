@@ -15,9 +15,7 @@ from .prediction_parser import (
     format_fixture_results,
     format_predictions_preview,
     format_standings,
-    parse_line_predictions,
     parse_prediction_lines,
-    parse_predictions,
 )
 from .prediction_submission import PredictionSubmission, build_prediction_submission
 from .scoring import (
@@ -38,9 +36,7 @@ __all__ = [
     "is_admin",
     "is_admin_member",
     "is_configured_admin",
-    "parse_predictions",
     "parse_prediction_lines",
-    "parse_line_predictions",
     "format_fixture_results",
     "format_predictions_preview",
     "format_standings",
