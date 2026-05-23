@@ -56,7 +56,7 @@ async def is_configured_admin(interaction: discord.Interaction, db: "Database") 
     if not interaction.guild or interaction.guild_id is None:
         return False
 
-    config = await db.get_guild_config(str(interaction.guild_id))
+    config = await db.guild_config.get_guild_config(str(interaction.guild_id))
     if config is None:
         return False
 
@@ -66,7 +66,7 @@ async def is_configured_admin(interaction: discord.Interaction, db: "Database") 
 
 async def get_configured_admin_role_mention(guild_id: str, db: "Database") -> str | None:
     """Return the configured TyperBot admin role mention for one guild."""
-    config = await db.get_guild_config(guild_id)
+    config = await db.guild_config.get_guild_config(guild_id)
     if config is None:
         return None
     return f"<@&{config['admin_role_id']}>"
@@ -80,7 +80,7 @@ async def get_admin_permission_error(
     if not interaction.guild or interaction.guild_id is None:
         return "This command can only be used in a server."
 
-    config = await db.get_guild_config(str(interaction.guild_id))
+    config = await db.guild_config.get_guild_config(str(interaction.guild_id))
     if config is None:
         return SETUP_REQUIRED_MESSAGE
 

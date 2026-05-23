@@ -227,7 +227,7 @@ class CorrectResultsModal(discord.ui.Modal):
             view=self.parent_view,
         )
 
-        predictions = await self.parent_view.db.get_all_predictions(fixture["id"])
+        predictions = await self.parent_view.db.predictions.get_all_predictions(fixture["id"])
         dm_message_lines = [
             f"Results were corrected for Week {fixture['week_number']}.",
             "",

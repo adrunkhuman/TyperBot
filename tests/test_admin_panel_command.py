@@ -69,7 +69,7 @@ class TestAdminPanelCommand:
         mock_interaction_admin,
         sample_games,
     ):
-        await admin_cog.db.create_fixture(
+        await admin_cog.db.fixtures.create_fixture(
             "111111", 5, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         modal = CreateFixtureModal(
@@ -213,7 +213,7 @@ class TestAdminPanelCommand:
         )
         await confirm_button.callback(mock_interaction_admin)
 
-        fixture = await admin_cog.db.get_fixture_by_id(1, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(1, "111111")
         assert fixture is not None
         assert fixture["message_id"] == "999999"
         assert fixture["channel_id"] == str(mock_interaction_admin.channel.id)
@@ -250,7 +250,7 @@ class TestAdminPanelCommand:
         )
         await confirm_button.callback(mock_interaction_admin)
 
-        fixture = await admin_cog.db.get_fixture_by_id(1, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(1, "111111")
         assert fixture is not None
         assert fixture["message_id"] == "999999"
         assert fixture["channel_id"] == str(mock_interaction_admin.channel.id)
@@ -284,7 +284,7 @@ class TestAdminPanelCommand:
         )
         await confirm_button.callback(mock_interaction_admin)
 
-        assert await admin_cog.db.get_fixture_by_id(1, "111111") is not None
+        assert await admin_cog.db.fixtures.get_fixture_by_id(1, "111111") is not None
         assert (
             "couldn't announce it in the channel"
             in mock_interaction_admin.followup_sent[-1]["content"]
@@ -310,7 +310,7 @@ class TestAdminPanelCommand:
         modal.deadline_input._value = "2026-04-20 18:00"
 
         await modal.on_submit(mock_interaction_admin)
-        await admin_cog.db.create_fixture(
+        await admin_cog.db.fixtures.create_fixture(
             "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
@@ -322,7 +322,7 @@ class TestAdminPanelCommand:
         )
         await confirm_button.callback(mock_interaction_admin)
 
-        fixture = await admin_cog.db.get_fixture_by_id(2, "111111")
+        fixture = await admin_cog.db.fixtures.get_fixture_by_id(2, "111111")
         assert fixture is not None
         assert "Week number changed" in mock_interaction_admin.response_sent[-1]["content"]
 
@@ -333,7 +333,7 @@ class TestAdminPanelCommand:
         mock_interaction_admin,
         sample_games,
     ):
-        await admin_cog.db.upsert_guild_config(
+        await admin_cog.db.guild_config.upsert_guild_config(
             "111111",
             str(
                 mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id).roles[0].id
@@ -369,7 +369,7 @@ class TestAdminPanelCommand:
 
         configured_channel.send.assert_awaited_once()
         mock_interaction_admin.channel.send.assert_not_awaited()
-        fixture = await admin_cog.db.get_current_fixture("111111")
+        fixture = await admin_cog.db.fixtures.get_current_fixture("111111")
         assert fixture["channel_id"] == "654321"
 
     @pytest.mark.asyncio
@@ -379,7 +379,7 @@ class TestAdminPanelCommand:
         mock_interaction_admin,
         sample_games,
     ):
-        await admin_cog.db.upsert_guild_config(
+        await admin_cog.db.guild_config.upsert_guild_config(
             "111111",
             str(
                 mock_interaction_admin.guild.get_member(mock_interaction_admin.user.id).roles[0].id
@@ -408,7 +408,7 @@ class TestAdminPanelCommand:
         await confirm_button.callback(mock_interaction_admin)
 
         assert "league channel" in mock_interaction_admin.response_sent[-1]["content"]
-        assert await admin_cog.db.get_current_fixture("111111") is None
+        assert await admin_cog.db.fixtures.get_current_fixture("111111") is None
 
     @pytest.mark.asyncio
     async def test_create_fixture_confirm_cancel_leaves_database_unchanged(
@@ -432,7 +432,7 @@ class TestAdminPanelCommand:
         await cancel_button.callback(mock_interaction_admin)
 
         assert "Fixture creation cancelled" in mock_interaction_admin.response_sent[-1]["content"]
-        assert await admin_cog.db.get_current_fixture("111111") is None
+        assert await admin_cog.db.fixtures.get_current_fixture("111111") is None
 
     @pytest.mark.asyncio
     async def test_create_fixture_confirm_rechecks_admin_permission(
@@ -461,7 +461,7 @@ class TestAdminPanelCommand:
         await confirm_button.callback(mock_interaction_admin)
 
         assert "no longer have permission" in mock_interaction_admin.response_sent[-1]["content"]
-        assert await admin_cog.db.get_current_fixture("111111") is None
+        assert await admin_cog.db.fixtures.get_current_fixture("111111") is None
 
     @pytest.mark.asyncio
     async def test_panel_command_returns_view(self, admin_cog, mock_interaction_admin):

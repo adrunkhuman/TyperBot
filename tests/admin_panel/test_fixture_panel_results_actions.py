@@ -23,7 +23,7 @@ class TestFixturePanelResultsActions:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 44, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
         view = UnifiedAdminPanelView(
@@ -50,10 +50,10 @@ class TestFixturePanelResultsActions:
         mock_interaction_admin,
         sample_games,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 46, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         view = UnifiedAdminPanelView(
             admin_cog.db,
             admin_cog.service,
@@ -77,11 +77,11 @@ class TestFixturePanelResultsActions:
         sample_games,
         monkeypatch,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 45, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.results.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -131,11 +131,11 @@ class TestFixturePanelResultsActions:
         sample_games,
         monkeypatch,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 45, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["2-1", "1-1", "0-2"])
-        await admin_cog.db.save_prediction(
+        await admin_cog.db.results.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await admin_cog.db.predictions.save_prediction(
             fixture_id,
             "111",
             "User One",
@@ -158,7 +158,7 @@ class TestFixturePanelResultsActions:
         view.fixture_select._values = [str(fixture_id)]
         await view.fixture_select.callback(mock_interaction_admin)
         stale_button = _get_button(view, "Calculate Scores")
-        await admin_cog.db.recalculate_fixture_scores(fixture_id)
+        await admin_cog.db.scores.recalculate_fixture_scores(fixture_id)
 
         await stale_button.callback(mock_interaction_admin)
 
@@ -177,10 +177,10 @@ class TestFixturePanelResultsActions:
         sample_games,
         monkeypatch,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 47, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         admin_cog.record_calculate_cooldown(
             "111111", str(mock_interaction_admin.user.id), current_time=now().timestamp()
         )
@@ -214,10 +214,10 @@ class TestFixturePanelResultsActions:
         sample_games,
         monkeypatch,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 48, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         post_calculation_result = AsyncMock()
         monkeypatch.setattr(unified_actions, "post_calculation_result", post_calculation_result)
         view = UnifiedAdminPanelView(
@@ -249,10 +249,10 @@ class TestFixturePanelResultsActions:
         sample_games,
         monkeypatch,
     ):
-        fixture_id = await admin_cog.db.create_fixture(
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 49, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await admin_cog.db.save_results(fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.results.save_results(fixture_id, ["1-0", "1-1", "0-0"])
         admin_cog.service.calculate_fixture_scores = AsyncMock()
         post_calculation_result = AsyncMock()
         monkeypatch.setattr(unified_actions, "post_calculation_result", post_calculation_result)
@@ -290,7 +290,7 @@ class TestFixturePanelResultsActions:
         mock_interaction_admin.channel = command_channel
         admin_cog.bot.get_channel.return_value = None
         admin_cog.bot.fetch_channel = AsyncMock(return_value=league_channel)
-        admin_cog.db.get_last_fixture_scores = AsyncMock(
+        admin_cog.db.scores.get_last_fixture_scores = AsyncMock(
             return_value={
                 "week_number": 1,
                 "games": ["A - B"],
@@ -306,7 +306,7 @@ class TestFixturePanelResultsActions:
                 ],
             }
         )
-        admin_cog.db.get_standings = AsyncMock(
+        admin_cog.db.scores.get_standings = AsyncMock(
             return_value=[
                 {
                     "user_id": "123",
@@ -347,13 +347,13 @@ class TestFixturePanelResultsActions:
         mock_interaction_admin.channel = channel
         admin_cog.bot.get_channel.return_value = channel
         deadline = datetime.now(UTC) - timedelta(days=1)
-        current_fixture_id = await admin_cog.db.create_fixture(
+        current_fixture_id = await admin_cog.db.fixtures.create_fixture(
             "111111", 1, ["Team A - Team B"], deadline
         )
-        other_fixture_id = await admin_cog.db.create_fixture(
+        other_fixture_id = await admin_cog.db.fixtures.create_fixture(
             "guild-2", 2, ["Team C - Team D"], deadline
         )
-        await admin_cog.db.save_scores(
+        await admin_cog.db.scores.save_scores(
             current_fixture_id,
             [
                 {
@@ -365,7 +365,7 @@ class TestFixturePanelResultsActions:
                 }
             ],
         )
-        await admin_cog.db.save_scores(
+        await admin_cog.db.scores.save_scores(
             other_fixture_id,
             [
                 {
@@ -399,8 +399,8 @@ class TestFixturePanelResultsActions:
         admin_cog,
         mock_interaction_admin,
     ):
-        admin_cog.db.get_last_fixture_scores = AsyncMock(return_value={"scores": []})
-        admin_cog.db.get_standings = AsyncMock(return_value=[])
+        admin_cog.db.scores.get_last_fixture_scores = AsyncMock(return_value={"scores": []})
+        admin_cog.db.scores.get_standings = AsyncMock(return_value=[])
         admin_cog.bot.get_channel.return_value = None
         admin_cog.bot.fetch_channel = AsyncMock(
             side_effect=discord.InvalidData("unknown channel type")
@@ -431,7 +431,7 @@ class TestFixturePanelResultsActions:
         channel = MagicMock(spec=discord.TextChannel)
         channel.id = mock_interaction_admin.channel.id
         mock_interaction_admin.channel = channel
-        admin_cog.db.get_last_fixture_scores = AsyncMock(return_value=None)
+        admin_cog.db.scores.get_last_fixture_scores = AsyncMock(return_value=None)
 
         view = UnifiedAdminPanelView(
             admin_cog.db,

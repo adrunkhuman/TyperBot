@@ -54,7 +54,7 @@ class EnterResultsConfirmView(discord.ui.View):
             return
 
         try:
-            await self.db.save_results(self.fixture["id"], self.results)
+            await self.db.results.save_results(self.fixture["id"], self.results)
         except ValueError as exc:
             await interaction.response.edit_message(
                 content=f"**Cannot save results:** {exc}", view=None

@@ -87,9 +87,9 @@ class FixtureRepository:
 
             duration_ms = (time.perf_counter() - start_time) * 1000
             logger.debug(
-                "db.create_fixture completed",
+                "db.fixtures.create_fixture completed",
                 extra={
-                    "operation": "db.create_fixture",
+                    "operation": "db.fixtures.create_fixture",
                     "week_number": week_number,
                     "fixture_id": cursor.lastrowid,
                     "duration_ms": round(duration_ms, 2),
@@ -138,9 +138,9 @@ class FixtureRepository:
 
             duration_ms = (time.perf_counter() - start_time) * 1000
             logger.debug(
-                "db.create_next_fixture completed",
+                "db.fixtures.create_next_fixture completed",
                 extra={
-                    "operation": "db.create_next_fixture",
+                    "operation": "db.fixtures.create_next_fixture",
                     "week_number": next_week,
                     "fixture_id": insert_cursor.lastrowid,
                     "duration_ms": round(duration_ms, 2),

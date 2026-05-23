@@ -26,13 +26,15 @@ async def prediction_db(temp_db_path):
 @pytest.fixture
 async def open_fixture_id(prediction_db):
     deadline = datetime.now(UTC) + timedelta(hours=1)
-    return await prediction_db.create_fixture("111111", 1, ["A - B", "C - D"], deadline)
+    return await prediction_db.fixtures.create_fixture("111111", 1, ["A - B", "C - D"], deadline)
 
 
 @pytest.fixture
 async def closed_fixture_id(prediction_db):
     deadline = datetime.now(UTC) + timedelta(hours=1)
-    fixture_id = await prediction_db.create_fixture("111111", 2, ["A - B", "C - D"], deadline)
+    fixture_id = await prediction_db.fixtures.create_fixture(
+        "111111", 2, ["A - B", "C - D"], deadline
+    )
     async with aiosqlite.connect(prediction_db.db_path) as conn:
         await conn.execute("UPDATE fixtures SET status = 'closed' WHERE id = ?", (fixture_id,))
         await conn.commit()

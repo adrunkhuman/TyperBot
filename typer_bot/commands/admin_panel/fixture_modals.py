@@ -87,7 +87,7 @@ class CreateFixtureConfirmView(discord.ui.View):
         self.bot = bot
 
     async def _get_league_channel(self, guild_id: str):
-        config = await self.db.get_guild_config(guild_id)
+        config = await self.db.guild_config.get_guild_config(guild_id)
         if config is None:
             return None
 
@@ -128,7 +128,7 @@ class CreateFixtureConfirmView(discord.ui.View):
             )
             return
 
-        fixture_id, allocated_week = await self.db.create_next_fixture(
+        fixture_id, allocated_week = await self.db.fixtures.create_next_fixture(
             str(interaction.guild_id),
             self.games,
             self.deadline,
@@ -154,7 +154,7 @@ class CreateFixtureConfirmView(discord.ui.View):
                 f"• Or use `/predict` to fill a modal and post publicly here"
             )
 
-            await self.db.update_fixture_announcement(
+            await self.db.fixtures.update_fixture_announcement(
                 fixture_id,
                 message_id=str(announcement.id),
                 channel_id=str(league_channel.id),
@@ -242,9 +242,11 @@ class CreateFixtureModal(discord.ui.Modal):
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
 
-        preview_week_number = await self.db.get_max_week_number(str(interaction.guild_id)) + 1
+        preview_week_number = (
+            await self.db.fixtures.get_max_week_number(str(interaction.guild_id)) + 1
+        )
         preview = _build_fixture_preview_text(preview_week_number, games, deadline)
-        open_fixtures = await self.db.get_open_fixtures(str(interaction.guild_id))
+        open_fixtures = await self.db.fixtures.get_open_fixtures(str(interaction.guild_id))
         if open_fixtures:
             open_weeks = ", ".join(str(fixture["week_number"]) for fixture in open_fixtures)
             preview += (

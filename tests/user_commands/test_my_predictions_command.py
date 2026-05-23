@@ -15,8 +15,8 @@ class TestMyPredictionsCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_id = await database.create_fixture("guild-2", 1, sample_games, deadline)
-        await database.save_prediction(
+        fixture_id = await database.fixtures.create_fixture("guild-2", 1, sample_games, deadline)
+        await database.predictions.save_prediction(
             fixture_id,
             str(mock_interaction.user.id),
             mock_interaction.user.name,
@@ -32,7 +32,7 @@ class TestMyPredictionsCommand:
     async def test_single_fixture_without_prediction_shows_prompt(
         self, user_commands, mock_interaction, database, sample_games
     ):
-        await database.create_fixture(
+        await database.fixtures.create_fixture(
             "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
 
@@ -46,10 +46,10 @@ class TestMyPredictionsCommand:
     async def test_single_fixture_prediction_shows_saved_scores(
         self, user_commands, mock_interaction, database, sample_games
     ):
-        fixture_id = await database.create_fixture(
+        fixture_id = await database.fixtures.create_fixture(
             "111111", 1, sample_games, datetime.now(UTC) + timedelta(days=1)
         )
-        await database.save_prediction(
+        await database.predictions.save_prediction(
             fixture_id,
             str(mock_interaction.user.id),
             mock_interaction.user.name,
@@ -70,9 +70,9 @@ class TestMyPredictionsCommand:
         self, user_commands, mock_interaction, database, sample_games
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        fixture_week_1 = await database.create_fixture("111111", 1, sample_games, deadline)
-        await database.create_fixture("111111", 2, sample_games, deadline)
-        await database.save_prediction(
+        fixture_week_1 = await database.fixtures.create_fixture("111111", 1, sample_games, deadline)
+        await database.fixtures.create_fixture("111111", 2, sample_games, deadline)
+        await database.predictions.save_prediction(
             fixture_week_1,
             str(mock_interaction.user.id),
             mock_interaction.user.name,

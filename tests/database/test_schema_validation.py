@@ -11,8 +11,8 @@ class TestSchemaValidation:
     async def test_initialize_is_safe_for_current_schema_existing_data(self, temp_db_path):
         db = Database(temp_db_path)
         await db.initialize()
-        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
-        await db.save_prediction(
+        fixture_id = await db.fixtures.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        await db.predictions.save_prediction(
             fixture_id,
             "user-1",
             "User One",
@@ -20,15 +20,15 @@ class TestSchemaValidation:
             public_message_id="message-1",
             public_message_kind="thread_prediction",
         )
-        await db.save_results(fixture_id, ["2-1"])
+        await db.results.save_results(fixture_id, ["2-1"])
 
         restarted_db = Database(temp_db_path)
         await restarted_db.initialize()
-        await restarted_db.save_results(fixture_id, ["3-1"])
+        await restarted_db.results.save_results(fixture_id, ["3-1"])
 
-        fixture = await restarted_db.get_fixture_by_id(fixture_id, "111111")
-        prediction = await restarted_db.get_prediction(fixture_id, "user-1", "111111")
-        results = await restarted_db.get_results(fixture_id)
+        fixture = await restarted_db.fixtures.get_fixture_by_id(fixture_id, "111111")
+        prediction = await restarted_db.predictions.get_prediction(fixture_id, "user-1", "111111")
+        results = await restarted_db.results.get_results(fixture_id)
 
         assert fixture is not None
         assert fixture["guild_id"] == "111111"
@@ -144,16 +144,16 @@ class TestSchemaValidation:
     ):
         db = Database(temp_db_path)
         await db.initialize()
-        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
-        await db.save_results(fixture_id, ["1-0"])
+        fixture_id = await db.fixtures.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        await db.results.save_results(fixture_id, ["1-0"])
         async with aiosqlite.connect(temp_db_path) as conn:
             await conn.execute("DROP INDEX idx_results_fixture_id_unique")
             await conn.commit()
 
         await db.initialize()
-        await db.save_results(fixture_id, ["2-0"])
+        await db.results.save_results(fixture_id, ["2-0"])
 
-        assert await db.get_results(fixture_id) == ["2-0"]
+        assert await db.results.get_results(fixture_id) == ["2-0"]
         async with (
             aiosqlite.connect(temp_db_path) as conn,
             conn.execute(
@@ -350,7 +350,7 @@ class TestSchemaValidation:
     async def test_initialize_rejects_blank_fixture_guild_ownership(self, temp_db_path, guild_id):
         db = Database(temp_db_path)
         await db.initialize()
-        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        fixture_id = await db.fixtures.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
         async with aiosqlite.connect(temp_db_path) as conn:
             await conn.execute(
                 "UPDATE fixtures SET guild_id = ? WHERE id = ?", (guild_id, fixture_id)
@@ -402,7 +402,7 @@ class TestSchemaValidation:
     async def test_initialize_rejects_fixture_without_valid_season(self, temp_db_path, sql):
         db = Database(temp_db_path)
         await db.initialize()
-        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        fixture_id = await db.fixtures.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
         async with aiosqlite.connect(temp_db_path) as conn:
             await conn.execute(sql, (fixture_id,))
             await conn.commit()
@@ -414,9 +414,11 @@ class TestSchemaValidation:
     async def test_initialize_rejects_fixture_with_other_guild_season(self, temp_db_path):
         db = Database(temp_db_path)
         await db.initialize()
-        fixture_id = await db.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
-        other_fixture_id = await db.create_fixture("222222", 1, ["C - D"], datetime.now(UTC))
-        other_fixture = await db.get_fixture_by_id(other_fixture_id, "222222")
+        fixture_id = await db.fixtures.create_fixture("111111", 1, ["A - B"], datetime.now(UTC))
+        other_fixture_id = await db.fixtures.create_fixture(
+            "222222", 1, ["C - D"], datetime.now(UTC)
+        )
+        other_fixture = await db.fixtures.get_fixture_by_id(other_fixture_id, "222222")
         async with aiosqlite.connect(temp_db_path) as conn:
             await conn.execute(
                 "UPDATE fixtures SET season_id = ? WHERE id = ?",

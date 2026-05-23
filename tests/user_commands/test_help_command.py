@@ -9,7 +9,7 @@ class TestHelpCommand:
         mock_interaction,
         database,
     ):
-        await database.update_active_scoring_rules(
+        await database.seasons.update_active_scoring_rules(
             "111111",
             {
                 "exact_score_points": 5,

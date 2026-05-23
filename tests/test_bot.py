@@ -260,7 +260,7 @@ class TestGuildLifecycle:
         with patch("typer_bot.bot.commands.Bot.__init__", return_value=None):
             bot = TyperBot.__new__(TyperBot)
             bot.db = MagicMock()
-            bot.db.get_guild_config = AsyncMock(return_value=None)
+            bot.db.guild_config.get_guild_config = AsyncMock(return_value=None)
             yield bot
 
     @pytest.mark.asyncio
@@ -275,7 +275,7 @@ class TestGuildLifecycle:
         with patch("typer_bot.bot.logger") as mock_logger:
             await bot_instance.on_guild_join(guild)
 
-        bot_instance.db.get_guild_config.assert_awaited_once_with("123456")
+        bot_instance.db.guild_config.get_guild_config.assert_awaited_once_with("123456")
         info_call = mock_logger.info.call_args
         assert info_call.args[0] == "Joined guild"
         assert info_call.kwargs["extra"] == {
@@ -288,7 +288,7 @@ class TestGuildLifecycle:
 
     @pytest.mark.asyncio
     async def test_on_guild_join_logs_configured_state(self, bot_instance):
-        bot_instance.db.get_guild_config.return_value = {"guild_id": "123456"}
+        bot_instance.db.guild_config.get_guild_config.return_value = {"guild_id": "123456"}
         guild = MagicMock()
         guild.id = 123456
         guild.name = "Configured Guild"
@@ -303,7 +303,7 @@ class TestGuildLifecycle:
 
     @pytest.mark.asyncio
     async def test_on_guild_join_logs_even_when_setup_lookup_fails(self, bot_instance):
-        bot_instance.db.get_guild_config.side_effect = RuntimeError("db unavailable")
+        bot_instance.db.guild_config.get_guild_config.side_effect = RuntimeError("db unavailable")
         guild = MagicMock()
         guild.id = 123456
         guild.name = "New Guild"
@@ -373,7 +373,7 @@ class TestFixtureAnnouncementSync:
         message.thread = MagicMock(id=789012)
         channel = MagicMock()
         channel.fetch_message = AsyncMock(return_value=message)
-        bot_instance.db.get_all_open_fixtures = AsyncMock(return_value=[fixture])
+        bot_instance.db.fixtures.get_all_open_fixtures = AsyncMock(return_value=[fixture])
         bot_instance.get_channel.return_value = channel
 
         await bot_instance._sync_fixture_thread()
@@ -406,7 +406,7 @@ class TestFixtureAnnouncementSync:
         guild.text_channels = [miss_channel, hit_channel]
         bot_instance.guilds = [other_guild, guild]
         bot_instance.get_guild.return_value = guild
-        bot_instance.db.get_all_open_fixtures = AsyncMock(return_value=[fixture])
+        bot_instance.db.fixtures.get_all_open_fixtures = AsyncMock(return_value=[fixture])
 
         await bot_instance._sync_fixture_thread()
 
@@ -424,7 +424,7 @@ class TestFixtureAnnouncementSync:
         guild = MagicMock()
         guild.text_channels = [MagicMock()]
         bot_instance.guilds = [guild]
-        bot_instance.db.get_all_open_fixtures = AsyncMock(return_value=[fixture])
+        bot_instance.db.fixtures.get_all_open_fixtures = AsyncMock(return_value=[fixture])
         bot_instance.get_channel.return_value = None
         bot_instance.fetch_channel.side_effect = discord.NotFound(MagicMock(), "missing")
 
@@ -442,7 +442,7 @@ class TestFixtureAnnouncementSync:
         guild = MagicMock()
         guild.text_channels = [MagicMock()]
         bot_instance.guilds = [guild]
-        bot_instance.db.get_all_open_fixtures = AsyncMock(return_value=[fixture])
+        bot_instance.db.fixtures.get_all_open_fixtures = AsyncMock(return_value=[fixture])
         bot_instance.get_channel.return_value = channel
 
         await bot_instance._sync_fixture_thread()
@@ -457,7 +457,7 @@ class TestFixtureAnnouncementSync:
         message.thread = MagicMock(id=789012)
         channel = MagicMock()
         channel.fetch_message = AsyncMock(return_value=message)
-        bot_instance.db.get_all_open_fixtures = AsyncMock(return_value=[fixture])
+        bot_instance.db.fixtures.get_all_open_fixtures = AsyncMock(return_value=[fixture])
         bot_instance.get_channel.return_value = None
         bot_instance.fetch_channel.return_value = channel
 
@@ -477,7 +477,7 @@ class TestFixtureAnnouncementSync:
         guild = MagicMock()
         guild.text_channels = [MagicMock()]
         bot_instance.guilds = [guild]
-        bot_instance.db.get_all_open_fixtures = AsyncMock(return_value=[fixture])
+        bot_instance.db.fixtures.get_all_open_fixtures = AsyncMock(return_value=[fixture])
 
         await bot_instance._sync_fixture_thread()
 
@@ -511,7 +511,7 @@ class TestReminderSystem:
             "deadline": deadline,
             "week_number": 1,
         }
-        bot_instance.db.get_all_open_fixtures = AsyncMock(return_value=[fixture])
+        bot_instance.db.fixtures.get_all_open_fixtures = AsyncMock(return_value=[fixture])
 
         await bot_instance.reminder_task()
 
@@ -531,7 +531,7 @@ class TestReminderSystem:
             "deadline": deadline,
             "week_number": 1,
         }
-        bot_instance.db.get_all_open_fixtures = AsyncMock(return_value=[fixture])
+        bot_instance.db.fixtures.get_all_open_fixtures = AsyncMock(return_value=[fixture])
 
         await bot_instance.reminder_task()
 
@@ -551,7 +551,7 @@ class TestReminderSystem:
             "deadline": deadline,
             "week_number": 1,
         }
-        bot_instance.db.get_all_open_fixtures = AsyncMock(return_value=[fixture])
+        bot_instance.db.fixtures.get_all_open_fixtures = AsyncMock(return_value=[fixture])
 
         with freeze_time(current_time):
             await bot_instance.reminder_task()
@@ -566,7 +566,7 @@ class TestReminderSystem:
     async def test_reminder_skips_if_no_fixture(self, mock_now, bot_instance):
         """Reminders are skipped when no fixture is active."""
         mock_now.return_value = datetime.now(UTC)
-        bot_instance.db.get_all_open_fixtures = AsyncMock(return_value=[])
+        bot_instance.db.fixtures.get_all_open_fixtures = AsyncMock(return_value=[])
 
         await bot_instance.reminder_task()
 
@@ -580,7 +580,9 @@ class TestReminderSystem:
         mock_now.return_value = deadline - timedelta(hours=24)
         fixture_a = {"id": 1, "guild_id": "111111", "deadline": deadline, "week_number": 1}
         fixture_b = {"id": 2, "guild_id": "222222", "deadline": deadline, "week_number": 2}
-        bot_instance.db.get_all_open_fixtures = AsyncMock(return_value=[fixture_a, fixture_b])
+        bot_instance.db.fixtures.get_all_open_fixtures = AsyncMock(
+            return_value=[fixture_a, fixture_b]
+        )
 
         await bot_instance.reminder_task()
 
@@ -607,7 +609,9 @@ class TestSendReminder:
         mock_channel = MagicMock()
         mock_channel.send = AsyncMock()
         bot_instance.get_channel.return_value = mock_channel
-        bot_instance.db.get_guild_config = AsyncMock(return_value={"league_channel_id": "123456"})
+        bot_instance.db.guild_config.get_guild_config = AsyncMock(
+            return_value={"league_channel_id": "123456"}
+        )
 
         fixture = {
             "id": 1,
@@ -634,7 +638,9 @@ class TestSendReminder:
             "222222": {"league_channel_id": "234567"},
         }
         channels = {123456: channel_one, 234567: channel_two}
-        bot_instance.db.get_guild_config = AsyncMock(side_effect=lambda guild_id: configs[guild_id])
+        bot_instance.db.guild_config.get_guild_config = AsyncMock(
+            side_effect=lambda guild_id: configs[guild_id]
+        )
         bot_instance.get_channel.side_effect = lambda channel_id: channels[channel_id]
         deadline = datetime.now(UTC) + timedelta(days=1)
 
@@ -653,7 +659,7 @@ class TestSendReminder:
     @pytest.mark.asyncio
     async def test_send_reminder_missing_guild_config(self, bot_instance):
         """Missing channel configuration skips delivery."""
-        bot_instance.db.get_guild_config = AsyncMock(return_value=None)
+        bot_instance.db.guild_config.get_guild_config = AsyncMock(return_value=None)
         fixture = {"id": 1, "guild_id": "111111", "deadline": datetime.now(UTC), "week_number": 1}
         await bot_instance.send_reminder(fixture, "24 hours remaining")
 

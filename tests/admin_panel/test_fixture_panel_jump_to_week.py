@@ -20,11 +20,13 @@ class TestFixturePanelJumpToWeek:
         deadline = datetime.now(UTC) + timedelta(days=1)
         first_fixture_id = None
         for week in range(1, 28):
-            fixture_id = await admin_cog.db.create_fixture("111111", week, sample_games, deadline)
+            fixture_id = await admin_cog.db.fixtures.create_fixture(
+                "111111", week, sample_games, deadline
+            )
             if week == 1:
                 first_fixture_id = fixture_id
         assert first_fixture_id is not None
-        await admin_cog.db.save_results(first_fixture_id, ["1-0", "1-1", "0-0"])
+        await admin_cog.db.results.save_results(first_fixture_id, ["1-0", "1-1", "0-0"])
 
         view = UnifiedAdminPanelView(
             admin_cog.db,
@@ -83,8 +85,8 @@ class TestFixturePanelJumpToWeek:
         sample_games,
     ):
         deadline = datetime.now(UTC) + timedelta(days=1)
-        await admin_cog.db.create_fixture("111111", 5, sample_games, deadline)
-        await admin_cog.db.create_fixture("111111", 5, sample_games, deadline)
+        await admin_cog.db.fixtures.create_fixture("111111", 5, sample_games, deadline)
+        await admin_cog.db.fixtures.create_fixture("111111", 5, sample_games, deadline)
 
         view = UnifiedAdminPanelView(
             admin_cog.db,

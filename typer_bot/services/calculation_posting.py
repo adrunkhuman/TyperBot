@@ -52,7 +52,7 @@ async def _post_calculation_to_channel(
         )
         return
 
-    config = await db.get_guild_config(str(interaction.guild_id))
+    config = await db.guild_config.get_guild_config(str(interaction.guild_id))
     channel = None
     if config is not None:
         try:

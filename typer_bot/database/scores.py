@@ -165,7 +165,7 @@ class ScoreRepository:
         import time
 
         start_time = time.perf_counter()
-        operation = "db.save_scores.transaction"
+        operation = "db.scores.save_scores.transaction"
 
         logger.debug(
             "Transaction started",

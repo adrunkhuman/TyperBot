@@ -126,7 +126,7 @@ class TyperBot(commands.Bot):
         """Log guild metadata and setup state when invited."""
         setup_configured = None
         try:
-            config = await self.db.get_guild_config(str(guild.id))
+            config = await self.db.guild_config.get_guild_config(str(guild.id))
             setup_configured = config is not None
         except Exception:
             logger.exception(
@@ -189,7 +189,7 @@ class TyperBot(commands.Bot):
     async def reminder_task(self):
         """Send reminders 24h and 1h before each open fixture deadline."""
         current_time = now()
-        open_fixtures = await self.db.get_all_open_fixtures()
+        open_fixtures = await self.db.fixtures.get_all_open_fixtures()
 
         if not open_fixtures:
             return
@@ -235,7 +235,7 @@ class TyperBot(commands.Bot):
 
     async def send_reminder(self, fixture: dict, time_description: str):
         """Send prediction reminder to configured channel."""
-        config = await self.db.get_guild_config(fixture["guild_id"])
+        config = await self.db.guild_config.get_guild_config(fixture["guild_id"])
         if config is None:
             logger.warning(
                 "Guild %s is missing TyperBot setup, skipping reminder for fixture %s",
@@ -278,7 +278,7 @@ class TyperBot(commands.Bot):
         threads inherit their parent message's snowflake ID.
         """
         try:
-            open_fixtures = await self.db.get_all_open_fixtures()
+            open_fixtures = await self.db.fixtures.get_all_open_fixtures()
             if not open_fixtures:
                 logger.debug("No open fixture found, skipping announcement verification")
                 return

@@ -33,21 +33,21 @@ class AdminService:
         self.db = db
 
     async def _build_score_result(self, fixture_id: int, guild_id: str) -> FixtureScoreResult:
-        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
+        fixture = await self.db.fixtures.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
-        results = await self.db.get_results(fixture_id)
+        results = await self.db.results.get_results(fixture_id)
         if not results:
             raise ValueError("No results entered for this fixture")
 
-        predictions = await self.db.get_all_predictions(fixture_id)
+        predictions = await self.db.predictions.get_all_predictions(fixture_id)
         if not predictions:
             raise ValueError("No predictions found for this fixture")
 
-        scores = await self.db.get_scores_for_fixture(fixture_id)
-        standings = await self.db.get_standings(guild_id)
-        last_fixture = await self.db.get_last_fixture_scores(guild_id)
+        scores = await self.db.scores.get_scores_for_fixture(fixture_id)
+        standings = await self.db.scores.get_standings(guild_id)
+        last_fixture = await self.db.scores.get_last_fixture_scores(guild_id)
         return FixtureScoreResult(
             fixture=fixture,
             results=results,
@@ -59,19 +59,19 @@ class AdminService:
 
     async def calculate_fixture_scores(self, fixture_id: int, guild_id: str) -> FixtureScoreResult:
         """Recalculate one fixture and refresh standings."""
-        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
+        fixture = await self.db.fixtures.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
-        results = await self.db.get_results(fixture_id)
+        results = await self.db.results.get_results(fixture_id)
         if not results:
             raise ValueError("No results entered for this fixture")
 
-        predictions = await self.db.get_all_predictions(fixture_id)
+        predictions = await self.db.predictions.get_all_predictions(fixture_id)
         if not predictions:
             raise ValueError("No predictions found for this fixture")
 
-        await self.db.recalculate_fixture_scores(fixture_id)
+        await self.db.scores.recalculate_fixture_scores(fixture_id)
 
         return await self._build_score_result(fixture_id, guild_id)
 
@@ -79,7 +79,7 @@ class AdminService:
         self, fixture_id: int, guild_id: str
     ) -> FixtureScoreResult | None:
         """Recalculate a fixture only when it has already been scored."""
-        if not await self.db.fixture_has_scores(fixture_id):
+        if not await self.db.scores.fixture_has_scores(fixture_id):
             return None
         return await self.calculate_fixture_scores(fixture_id, guild_id)
 
@@ -92,11 +92,13 @@ class AdminService:
             FixtureNotFoundError: Fixture was deleted before the panel action ran.
             NoPredictionsSavedError: Fixture still exists but has no saved predictions.
         """
-        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
+        fixture = await self.db.fixtures.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
-        predictions = await self.db.get_all_predictions(fixture_id, include_pending=True)
+        predictions = await self.db.predictions.get_all_predictions(
+            fixture_id, include_pending=True
+        )
         if not predictions:
             raise NoPredictionsSavedError
 
@@ -116,24 +118,28 @@ class AdminService:
             FixtureNotFoundError: Fixture was deleted before the review action ran.
             ValueError: The selected prediction is not pending review or the write failed.
         """
-        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
+        fixture = await self.db.fixtures.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
-        prediction = await self.db.get_prediction(fixture_id, user_id, guild_id)
+        prediction = await self.db.predictions.get_prediction(fixture_id, user_id, guild_id)
         if prediction is None or not prediction["pending_partial_approval"]:
             raise ValueError("No late prediction awaiting review for that user")
 
-        approved = await self.db.approve_partial_prediction(fixture_id, user_id, admin_user_id)
+        approved = await self.db.predictions.approve_partial_prediction_with_recalc(
+            fixture_id, user_id, admin_user_id
+        )
         if not approved:
             raise ValueError("Partial approval failed")
 
-        refreshed_prediction = await self.db.get_prediction(fixture_id, user_id, guild_id)
+        refreshed_prediction = await self.db.predictions.get_prediction(
+            fixture_id, user_id, guild_id
+        )
         if refreshed_prediction is None:
             raise ValueError("Prediction disappeared after approval")
 
         recalculation = None
-        if await self.db.fixture_has_scores(fixture_id):
+        if await self.db.scores.fixture_has_scores(fixture_id):
             recalculation = await self._build_score_result(fixture_id, guild_id)
         return fixture, refreshed_prediction, recalculation
 
@@ -149,20 +155,22 @@ class AdminService:
             FixtureNotFoundError: Fixture was deleted before the review action ran.
             ValueError: The selected prediction is not pending review or the write failed.
         """
-        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
+        fixture = await self.db.fixtures.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
-        prediction = await self.db.get_prediction(fixture_id, user_id, guild_id)
+        prediction = await self.db.predictions.get_prediction(fixture_id, user_id, guild_id)
         if prediction is None or not prediction["pending_partial_approval"]:
             raise ValueError("No late prediction awaiting review for that user")
 
-        rejected = await self.db.reject_partial_prediction(fixture_id, user_id)
+        rejected = await self.db.predictions.reject_partial_prediction_with_recalc(
+            fixture_id, user_id
+        )
         if not rejected:
             raise ValueError("Partial rejection failed")
 
         recalculation = None
-        if await self.db.fixture_has_scores(fixture_id):
+        if await self.db.scores.fixture_has_scores(fixture_id):
             recalculation = await self._build_score_result(fixture_id, guild_id)
         return fixture, prediction, recalculation
 
@@ -182,11 +190,13 @@ class AdminService:
             PredictionDisappearedError: Update succeeded but the refreshed row vanished.
             ValueError: Validation or write failures that should surface directly to admins.
         """
-        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
+        fixture = await self.db.fixtures.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
-        existing_prediction = await self.db.get_prediction(fixture_id, user_id, guild_id)
+        existing_prediction = await self.db.predictions.get_prediction(
+            fixture_id, user_id, guild_id
+        )
         if existing_prediction is None:
             raise PredictionNotFoundError
 
@@ -194,7 +204,7 @@ class AdminService:
         if errors:
             raise ValueError("\n".join(errors))
 
-        updated = await self.db.admin_update_prediction_with_recalc(
+        updated = await self.db.predictions.admin_update_prediction_with_recalc(
             fixture_id,
             user_id,
             predictions,
@@ -203,12 +213,14 @@ class AdminService:
         if not updated:
             raise ValueError("Prediction update failed")
 
-        refreshed_prediction = await self.db.get_prediction(fixture_id, user_id, guild_id)
+        refreshed_prediction = await self.db.predictions.get_prediction(
+            fixture_id, user_id, guild_id
+        )
         if refreshed_prediction is None:
             raise PredictionDisappearedError("update")
 
         recalculation = None
-        if await self.db.fixture_has_scores(fixture_id):
+        if await self.db.scores.fixture_has_scores(fixture_id):
             recalculation = await self._build_score_result(fixture_id, guild_id)
         return fixture, refreshed_prediction, recalculation
 
@@ -226,26 +238,30 @@ class AdminService:
             PredictionDisappearedError: Waiver update succeeded but the refreshed row vanished.
             ValueError: On-time or write-failure cases that should surface directly to admins.
         """
-        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
+        fixture = await self.db.fixtures.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
-        prediction = await self.db.get_prediction(fixture_id, user_id, guild_id)
+        prediction = await self.db.predictions.get_prediction(fixture_id, user_id, guild_id)
         if prediction is None:
             raise PredictionNotFoundError
         if not prediction["is_late"]:
             raise ValueError("That prediction was submitted on time")
 
-        waived = await self.db.toggle_late_penalty_waiver_with_recalc(fixture_id, user_id)
+        waived = await self.db.predictions.toggle_late_penalty_waiver_with_recalc(
+            fixture_id, user_id
+        )
         if waived is None:
             raise ValueError("Late waiver update failed")
 
-        refreshed_prediction = await self.db.get_prediction(fixture_id, user_id, guild_id)
+        refreshed_prediction = await self.db.predictions.get_prediction(
+            fixture_id, user_id, guild_id
+        )
         if refreshed_prediction is None:
             raise PredictionDisappearedError("waiver update")
 
         recalculation = None
-        if await self.db.fixture_has_scores(fixture_id):
+        if await self.db.scores.fixture_has_scores(fixture_id):
             recalculation = await self._build_score_result(fixture_id, guild_id)
         return fixture, refreshed_prediction, recalculation
 
@@ -261,7 +277,7 @@ class AdminService:
             FixtureNotFoundError: Fixture was deleted before the admin action ran.
             ValueError: Result parsing or write failures that should surface directly to admins.
         """
-        fixture = await self.db.get_fixture_by_id(fixture_id, guild_id)
+        fixture = await self.db.fixtures.get_fixture_by_id(fixture_id, guild_id)
         if fixture is None:
             raise FixtureNotFoundError
 
@@ -269,7 +285,7 @@ class AdminService:
         if errors:
             raise ValueError("\n".join(errors))
 
-        recalculated = await self.db.save_results_with_recalc(fixture_id, results)
+        recalculated = await self.db.results.save_results_with_recalc(fixture_id, results)
         recalculation = (
             await self._build_score_result(fixture_id, guild_id) if recalculated else None
         )
