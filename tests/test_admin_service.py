@@ -242,7 +242,7 @@ class TestPredictionReplacement:
         fixture, updated_prediction, recalculation = await service.replace_prediction(
             fixture_id,
             "user-1",
-            "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2",
+            "Team E - Team F 0-2\nTeam A - Team B 2-1\nTeam C - Team D 1-1",
             "admin-1",
             "111111",
         )
@@ -388,7 +388,7 @@ class TestResultCorrection:
 
         fixture, results, recalculation = await service.correct_results(
             fixture1_id,
-            "Team A - Team B 2-1\nTeam C - Team D 1-1\nTeam E - Team F 0-2",
+            "Team E - Team F 0-2\nTeam A - Team B 2-1\nTeam C - Team D 1-1",
             "111111",
         )
 

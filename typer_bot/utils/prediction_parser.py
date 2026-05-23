@@ -16,12 +16,22 @@ def parse_prediction_lines(
     *,
     allow_partial: bool = False,
 ) -> tuple[list[str], list[int], list[str]]:
-    """Parse prediction lines and map them to specific fixture rows.
+    """Parse prediction lines and map them to fixture rows.
 
-    Each non-empty line must end with a score like ``2:0`` or ``2-1``. When the
-    fixture label at the start of the line matches one of the provided games, the
-    prediction is mapped to that exact game row. Full submissions can still fall
-    back to positional matching for backward compatibility.
+    Each non-empty line must end with a score like ``2:0``/``2-1``, or cancelled
+    marker ``x``. Scores are normalized to ``home-away``. When a line starts with
+    an exact fixture label from ``games``, that prediction is mapped to the matching
+    fixture row. Otherwise, full submissions fall back to positional matching when
+    line count equals fixture count. Partial submissions must include fixture names.
+
+    Args:
+        input_text: Raw text using newline or comma separators.
+        games: Fixture rows used for mapping and count validation.
+        allow_partial: Whether fewer predictions than fixture rows are accepted.
+
+    Returns:
+        A tuple of fixture-ordered predictions, mapped fixture indexes, and errors.
+        Any parse or mapping error returns empty predictions and indexes.
     """
     normalized = input_text.replace(",", "\n")
     lines = [line.strip() for line in normalized.split("\n") if line.strip()]
@@ -37,7 +47,7 @@ def parse_prediction_lines(
         match = re.search(r"(\d+)\s*[-:]\s*(\d+)\s*$", stripped)
         if not match and not is_cancelled:
             errors.append(
-                f"Line {line_number}: Could not find score (expected format: '2:0' or '2-1')"
+                f"Line {line_number}: Could not find score (expected format: '2:0' or '2-1', or 'x' for cancelled games)"
             )
             continue
 
@@ -85,91 +95,6 @@ def parse_prediction_lines(
         return [], [], [f"Expected {len(games)} predictions, found {len(ordered_predictions)}"]
 
     return ordered_predictions, ordered_indexes, []
-
-
-def parse_predictions(input_text: str, expected_count: int = 9) -> tuple[list[str], list[str]]:
-    """Parse predictions from user input.
-
-    Format agnostic: "2-1 1-0", "2:1, 1:0", "2 - 1".
-    Returns: (valid_predictions, errors)
-    """
-    logger.debug(f"Parsing predictions: expected={expected_count}, input_length={len(input_text)}")
-
-    normalized = input_text.replace(",", " ")
-    pattern = r"\s*(\d+)\s*[-:]\s*(\d+)\s*"
-
-    predictions = []
-    errors = []
-
-    matches = list(re.finditer(pattern, normalized))
-    logger.debug(f"Found {len(matches)} score matches in input")
-
-    for match in matches:
-        home = match.group(1)
-        away = match.group(2)
-        predictions.append(f"{home}-{away}")
-
-    if len(predictions) != expected_count:
-        error_msg = f"Expected {expected_count} scores, found {len(predictions)}"
-        logger.warning(f"Prediction count mismatch: {error_msg}")
-        errors.append(error_msg)
-    else:
-        logger.debug(f"Successfully parsed {len(predictions)} predictions")
-
-    return predictions, errors
-
-
-def parse_line_predictions(input_text: str, games: list[str]) -> tuple[list[str], list[str]]:
-    """Parse predictions from user input with game context.
-
-    Accepts newline-separated or comma-separated predictions. Each segment should
-    contain a score at the end in format like ``2:0`` or ``2-1``. Cancelled or
-    voided fixtures can be marked with ``x`` and numeric scores are normalized to
-    ``home-away`` output regardless of the input separator.
-
-    Args:
-        input_text: Raw input text (supports commas or newlines as delimiters)
-        games: Fixture game list used to validate line count and build errors
-
-    Returns: (valid_predictions, errors)
-    """
-    normalized = input_text.replace(",", "\n")
-    lines = [line.strip() for line in normalized.split("\n") if line.strip()]
-
-    logger.debug(f"Parsing line predictions: {len(lines)} lines, {len(games)} games")
-
-    predictions = []
-    errors = []
-
-    if len(lines) != len(games):
-        error_msg = f"Expected {len(games)} predictions, found {len(lines)}"
-        logger.warning(f"Line count mismatch: {error_msg}")
-        errors.append(error_msg)
-        return predictions, errors
-
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-
-        if re.search(r"[xX]\s*$", stripped):
-            predictions.append("x")
-            logger.debug(f"Line {i + 1}: Parsed nullified game (x)")
-            continue
-
-        match = re.search(r"(\d+)\s*[-:]\s*(\d+)\s*$", stripped)
-        if match:
-            home_score = match.group(1)
-            away_score = match.group(2)
-            predictions.append(f"{home_score}-{away_score}")
-            logger.debug(f"Line {i + 1}: Parsed {home_score}-{away_score}")
-        else:
-            error_msg = f"Line {i + 1}: Could not find score (expected format: '2:0' or '2-1', or 'x' for cancelled games)"
-            logger.warning(f"Parse error on line {i + 1}: '{line[:50]}...'")
-            errors.append(error_msg)
-
-    if not errors:
-        logger.debug(f"Successfully parsed all {len(predictions)} line predictions")
-
-    return predictions, errors
 
 
 def ascii_username(username: str, max_len: int = 20) -> str:

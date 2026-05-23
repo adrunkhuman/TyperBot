@@ -11,7 +11,7 @@ from typer_bot.services.errors import (
     PredictionDisappearedError,
     PredictionNotFoundError,
 )
-from typer_bot.utils import parse_line_predictions
+from typer_bot.utils import parse_prediction_lines
 
 
 @dataclass(slots=True)
@@ -190,7 +190,7 @@ class AdminService:
         if existing_prediction is None:
             raise PredictionNotFoundError
 
-        predictions, errors = parse_line_predictions(prediction_lines, fixture["games"])
+        predictions, _, errors = parse_prediction_lines(prediction_lines, fixture["games"])
         if errors:
             raise ValueError("\n".join(errors))
 
@@ -265,7 +265,7 @@ class AdminService:
         if fixture is None:
             raise FixtureNotFoundError
 
-        results, errors = parse_line_predictions(results_lines, fixture["games"])
+        results, _, errors = parse_prediction_lines(results_lines, fixture["games"])
         if errors:
             raise ValueError("\n".join(errors))
 
