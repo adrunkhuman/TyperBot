@@ -16,7 +16,12 @@ from typer_bot.commands.admin_commands import (
 from typer_bot.commands.admin_panel import PostResultsConfirmView, UnifiedAdminPanelView
 from typer_bot.commands.admin_panel.unified import SetupBotButton
 from typer_bot.database import Database
-from typer_bot.utils import get_admin_permission_error, has_setup_permission, now
+from typer_bot.utils import (
+    DISCORD_MESSAGE_LIMIT,
+    get_admin_permission_error,
+    has_setup_permission,
+    now,
+)
 from typer_bot.utils.permissions import is_admin
 
 
@@ -296,7 +301,6 @@ class TestResultsPostFlow:
     async def test_post_results_view_posts_without_mentions(
         self, mock_text_channel, mock_interaction_admin
     ):
-        """NO branch posts standings without pinging participants."""
         fixture_data = {
             "week_number": 1,
             "games": ["A - B"],
@@ -336,7 +340,6 @@ class TestResultsPostFlow:
     async def test_post_results_view_posts_with_mentions(
         self, mock_text_channel, mock_interaction_admin
     ):
-        """YES branch appends participant mentions to the public post."""
         fixture_data = {
             "week_number": 1,
             "games": ["A - B"],
@@ -484,10 +487,88 @@ class TestResultsPostFlow:
 
         assert mock_text_channel.messages_sent == []
 
+    @pytest.mark.asyncio
+    async def test_post_results_view_splits_oversized_scoreboard_and_mentions(
+        self, mock_text_channel, mock_interaction_admin
+    ):
+        fixture_data = {
+            "week_number": 12,
+            "games": ["A - B"],
+            "results": ["2-1"],
+            "scores": [
+                {
+                    "user_id": str(index),
+                    "user_name": f"User{index:03d}",
+                    "points": index,
+                    "exact_scores": index % 4,
+                    "correct_results": index % 7,
+                }
+                for index in range(1, 260)
+            ],
+        }
+        standings = [
+            {
+                "user_id": str(index),
+                "user_name": f"User{index:03d}",
+                "total_points": index * 2,
+                "total_exact": index % 5,
+                "total_correct": index % 9,
+            }
+            for index in range(1, 80)
+        ]
+        view = PostResultsConfirmView(fixture_data, standings, mock_text_channel)
+        yes_button = next(child for child in view.children if child.label == "Mention Users")
+
+        await yes_button.callback(mock_interaction_admin)
+
+        sent_contents = [message["content"] for message in mock_text_channel.messages_sent]
+        assert len(sent_contents) > 1
+        assert all(len(content) <= DISCORD_MESSAGE_LIMIT for content in sent_contents)
+        assert any(content.startswith("**Participants:**") for content in sent_contents)
+        assert "<@259>" in sent_contents[-1]
+
+    @pytest.mark.asyncio
+    async def test_post_results_view_splits_oversized_scoreboard_without_mentions(
+        self, mock_text_channel, mock_interaction_admin
+    ):
+        fixture_data = {
+            "week_number": 12,
+            "games": ["A - B"],
+            "results": ["2-1"],
+            "scores": [
+                {
+                    "user_id": str(index),
+                    "user_name": f"User{index:03d}",
+                    "points": index,
+                    "exact_scores": index % 4,
+                    "correct_results": index % 7,
+                }
+                for index in range(1, 260)
+            ],
+        }
+        standings = [
+            {
+                "user_id": str(index),
+                "user_name": f"User{index:03d}",
+                "total_points": index * 2,
+                "total_exact": index % 5,
+                "total_correct": index % 9,
+            }
+            for index in range(1, 80)
+        ]
+        view = PostResultsConfirmView(fixture_data, standings, mock_text_channel)
+        no_button = next(child for child in view.children if child.label == "No Mentions")
+
+        await no_button.callback(mock_interaction_admin)
+
+        sent_contents = [message["content"] for message in mock_text_channel.messages_sent]
+        assert len(sent_contents) > 1
+        assert all(len(content) <= DISCORD_MESSAGE_LIMIT for content in sent_contents)
+        assert "```\n```" not in sent_contents
+        assert any("User259" in content for content in sent_contents)
+
 
 class TestCalculationPostFormat:
-    """Test that the calculation announcement includes entered match results."""
-
     def test_format_fixture_results_included_in_post(self, sample_games):
         from typer_bot.utils import format_fixture_results
 
@@ -502,15 +583,12 @@ class TestCalculationPostFormat:
 
 
 class TestCooldownLogic:
-    """Test suite for rate limiting cooldown."""
-
     @pytest.fixture
     def admin_cog(self, mock_bot, database):
         mock_bot.db = database
         return AdminCommands(mock_bot)
 
     def test_cooldown_enforced(self, admin_cog):
-        """Rate limiting prevents leaderboard recalculation spam."""
         import time
 
         user_id = "user123"
@@ -527,7 +605,6 @@ class TestCooldownLogic:
         assert remaining > 0
 
     def test_cooldown_expires(self, admin_cog):
-        """Cooldown expires after 30 seconds."""
         import time
 
         user_id = "user123"

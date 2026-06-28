@@ -115,6 +115,7 @@ guild_config (
 - `typer_bot/commands/admin_commands.py`: `/admin` command surface and orchestration for admin workflows, including admin calculation cooldown state.
 - `typer_bot/services/calculation_posting.py`: Post-calculation side effects: best-effort DB backup, league-channel publishing, and admin interaction responses.
 - `typer_bot/utils/config.py`: Centralized configuration (data paths via env vars).
+- `typer_bot/utils/discord_messages.py`: Shared Discord 2000-character-safe message chunking helpers.
 - `typer_bot/utils/prediction_parser.py`: Central logic for parsing "2-1" or "2:1" strings.
 - `typer_bot/utils/scoring.py`: Point calculation using season scoring rules.
 - `typer_bot/utils/logger.py`: plain stdout logging setup with contextual fields.
@@ -128,6 +129,7 @@ guild_config (
 - **New Commands:** Add Cog to `commands/` folder, load in `bot.py`.
 - **Database Changes:** Edit `typer_bot/database/connection.py` `initialize()` and the focused repositories in `typer_bot/database/`. Keep fresh schema creation and startup validation explicit; handle production data ports manually when needed.
 - **Debugging:** Check `utils/logger.py` for config. Set `LOG_LEVEL=DEBUG` in env.
+- **Discord Message Lengths:** Use `utils/discord_messages.py` helpers instead of ad-hoc 2000-character splitting.
 - **Database Restore:** Use `scripts/restore_db.py` from the host or container shell for manual database restoration from backups. The script restores into a temporary SQLite file first, then atomically replaces the live DB only after success.
 
 ## 5.5 Testing Guidelines

@@ -3,6 +3,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from typer_bot.utils import DISCORD_MESSAGE_LIMIT
+
 
 class TestStandingsCommand:
     @pytest.mark.asyncio
@@ -84,3 +86,39 @@ class TestStandingsCommand:
         content = mock_interaction.response_sent[0]["content"]
         assert "Current Guild" in content
         assert "Other Guild" not in content
+
+    @pytest.mark.asyncio
+    async def test_standings_splits_oversized_response(self, user_commands, mock_interaction):
+        standings = [
+            {
+                "user_id": str(index),
+                "user_name": f"VeryLongUserName{index:03d}",
+                "total_points": index * 3,
+                "total_exact": index % 7,
+                "total_correct": index % 11,
+            }
+            for index in range(1, 80)
+        ]
+        last_fixture = {
+            "week_number": 9,
+            "scores": [
+                {
+                    "user_id": str(index),
+                    "user_name": f"VeryLongUserName{index:03d}",
+                    "points": index,
+                    "exact_scores": index % 4,
+                    "correct_results": index % 6,
+                }
+                for index in range(1, 80)
+            ],
+        }
+        user_commands.db.scores.get_standings = AsyncMock(return_value=standings)
+        user_commands.db.scores.get_last_fixture_scores = AsyncMock(return_value=last_fixture)
+
+        await user_commands.standings.callback(user_commands, mock_interaction)
+
+        sent_messages = mock_interaction.response_sent + mock_interaction.followup_sent
+        assert len(sent_messages) > 1
+        assert all(len(message["content"]) <= DISCORD_MESSAGE_LIMIT for message in sent_messages)
+        assert all(message["ephemeral"] is True for message in sent_messages)
+        assert any("VeryLongUserName079" in message["content"] for message in sent_messages)

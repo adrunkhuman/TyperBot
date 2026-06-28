@@ -124,6 +124,49 @@ class TestFixturePanelResultsActions:
         assert mock_interaction_admin.message.edit.await_count == 1
 
     @pytest.mark.asyncio
+    async def test_unified_panel_calculate_scores_ignores_missing_panel_message(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+        sample_games,
+        monkeypatch,
+    ):
+        fixture_id = await admin_cog.db.fixtures.create_fixture(
+            "111111", 50, sample_games, datetime.now(UTC) + timedelta(days=1)
+        )
+        await admin_cog.db.results.save_results(fixture_id, ["2-1", "1-1", "0-2"])
+        await admin_cog.db.predictions.save_prediction(
+            fixture_id,
+            "111",
+            "User One",
+            ["2-1", "1-1", "0-2"],
+            False,
+        )
+        mock_interaction_admin.message = MagicMock()
+        mock_interaction_admin.message.edit = AsyncMock(
+            side_effect=discord.NotFound(MagicMock(), "missing")
+        )
+        monkeypatch.setattr(unified_actions, "post_calculation_result", AsyncMock())
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        await view.load_fixture_options()
+        view.fixture_select._values = [str(fixture_id)]
+        await view.fixture_select.callback(mock_interaction_admin)
+
+        calculate_button = _get_button(view, "Calculate Scores")
+        await calculate_button.callback(mock_interaction_admin)
+
+        assert view.selection.fixture_label == "Week 50 [CLOSED]"
+        assert mock_interaction_admin.message.edit.await_count == 1
+
+    @pytest.mark.asyncio
     async def test_stale_calculate_scores_button_refreshes_when_fixture_already_scored(
         self,
         admin_cog,
@@ -236,7 +279,7 @@ class TestFixturePanelResultsActions:
         await calculate_button.callback(mock_interaction_admin)
 
         assert (
-            mock_interaction_admin.response_sent[-1]["content"]
+            mock_interaction_admin.followup_sent[-1]["content"]
             == "No predictions found for this fixture"
         )
         post_calculation_result.assert_not_awaited()
@@ -334,6 +377,62 @@ class TestFixturePanelResultsActions:
         confirm_view = mock_interaction_admin.response_sent[-1]["view"]
         assert isinstance(confirm_view, PostResultsConfirmView)
         assert confirm_view.channel is league_channel
+
+    @pytest.mark.asyncio
+    async def test_unified_panel_post_results_button_splits_oversized_preview(
+        self,
+        admin_cog,
+        mock_interaction_admin,
+    ):
+        league_channel = MagicMock(spec=discord.TextChannel)
+        league_channel.id = 123456
+        admin_cog.bot.get_channel.return_value = league_channel
+        admin_cog.db.scores.get_last_fixture_scores = AsyncMock(
+            return_value={
+                "week_number": 13,
+                "games": ["A - B"],
+                "results": ["2-1"],
+                "scores": [
+                    {
+                        "user_id": str(index),
+                        "user_name": f"VeryLongUserName{index:03d}",
+                        "points": index,
+                        "exact_scores": index % 4,
+                        "correct_results": index % 7,
+                    }
+                    for index in range(1, 90)
+                ],
+            }
+        )
+        admin_cog.db.scores.get_standings = AsyncMock(
+            return_value=[
+                {
+                    "user_id": str(index),
+                    "user_name": f"VeryLongUserName{index:03d}",
+                    "total_points": index * 2,
+                    "total_exact": index % 5,
+                    "total_correct": index % 9,
+                }
+                for index in range(1, 90)
+            ]
+        )
+
+        view = UnifiedAdminPanelView(
+            admin_cog.db,
+            admin_cog.service,
+            str(mock_interaction_admin.user.id),
+            "111111",
+            admin_commands=admin_cog,
+            bot=admin_cog.bot,
+        )
+        post_button = _get_button(view, "Re-post Results")
+        await post_button.callback(mock_interaction_admin)
+
+        sent_messages = mock_interaction_admin.response_sent + mock_interaction_admin.followup_sent
+        assert len(sent_messages) > 1
+        assert all(message["ephemeral"] is True for message in sent_messages)
+        assert all(len(message["content"]) <= 2000 for message in sent_messages)
+        assert isinstance(mock_interaction_admin.followup_sent[-1]["view"], PostResultsConfirmView)
 
     @pytest.mark.asyncio
     async def test_unified_panel_post_results_only_previews_current_guild_scores(

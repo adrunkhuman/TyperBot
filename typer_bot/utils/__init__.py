@@ -1,5 +1,11 @@
 """Utility functions and helpers."""
 
+from .discord_messages import (
+    DISCORD_MESSAGE_LIMIT,
+    build_discord_message_chunks,
+    build_scoreboard_with_mentions_chunks,
+    chunk_discord_message,
+)
 from .permissions import (
     SETUP_REQUIRED_MESSAGE,
     get_admin_permission_error,
@@ -53,4 +59,8 @@ __all__ = [
     "parse_iso",
     "APP_TZ",
     "SETUP_REQUIRED_MESSAGE",
+    "DISCORD_MESSAGE_LIMIT",
+    "build_discord_message_chunks",
+    "build_scoreboard_with_mentions_chunks",
+    "chunk_discord_message",
 ]

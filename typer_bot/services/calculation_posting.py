@@ -9,7 +9,7 @@ from discord.ext import commands
 
 from typer_bot.database import Database
 from typer_bot.services.admin_service import FixtureScoreResult
-from typer_bot.utils import format_fixture_results, format_standings
+from typer_bot.utils import build_discord_message_chunks, format_fixture_results, format_standings
 from typer_bot.utils.config import BACKUP_DIR
 from typer_bot.utils.db_backup import cleanup_old_backups, create_backup
 
@@ -24,12 +24,20 @@ async def post_calculation_result(
 ) -> None:
     """Run best-effort DB backup, then publish fixture results and standings.
 
-    The interaction response must still be unused. Backup failures are logged but
-    do not fail score calculation; posting failures are reported ephemerally to
-    the admin.
+    The interaction may already be deferred. Admin feedback is sent through the
+    initial response or an ephemeral followup based on interaction state. Backup
+    failures are logged but do not fail score calculation; posting failures are
+    reported ephemerally to the admin.
     """
     await _create_backup(bot, db.db_path)
     await _post_calculation_to_channel(bot, db, interaction, score_result)
+
+
+async def _send_interaction_feedback(interaction: discord.Interaction, content: str) -> None:
+    if interaction.response.is_done():
+        await interaction.followup.send(content, ephemeral=True)
+        return
+    await interaction.response.send_message(content, ephemeral=True)
 
 
 async def _create_backup(bot: commands.Bot | discord.Client, db_path: str) -> None:
@@ -47,8 +55,9 @@ async def _post_calculation_to_channel(
     score_result: FixtureScoreResult,
 ) -> None:
     if interaction.guild_id is None:
-        await interaction.response.send_message(
-            "Scores calculated but could not resolve this server.", ephemeral=True
+        await _send_interaction_feedback(
+            interaction,
+            "Scores calculated but could not resolve this server.",
         )
         return
 
@@ -70,9 +79,9 @@ async def _post_calculation_to_channel(
                         channel = None
 
     if not isinstance(channel, discord.TextChannel):
-        await interaction.response.send_message(
+        await _send_interaction_feedback(
+            interaction,
             "Scores calculated but the configured league channel is unavailable.",
-            ephemeral=True,
         )
         return
 
@@ -81,20 +90,19 @@ async def _post_calculation_to_channel(
         score_result.results,
         score_result.fixture["week_number"],
     )
-    message = (
-        results_section
-        + "\n\n"
-        + format_standings(score_result.standings, score_result.last_fixture)
-    )
+    standings_section = format_standings(score_result.standings, score_result.last_fixture)
+    message_chunks = build_discord_message_chunks([results_section, standings_section])
 
     try:
-        await channel.send(message)
-        await interaction.response.send_message(
+        for message_chunk in message_chunks:
+            await channel.send(message_chunk)
+        await _send_interaction_feedback(
+            interaction,
             f"Week {score_result.fixture['week_number']} results calculated and posted to the league channel!",
-            ephemeral=True,
         )
     except Exception as exc:
         logger.error(f"Failed to post results to channel: {exc}")
-        await interaction.response.send_message(
-            "Scores calculated but failed to post to channel.", ephemeral=True
+        await _send_interaction_feedback(
+            interaction,
+            "Scores calculated but failed to post to channel.",
         )

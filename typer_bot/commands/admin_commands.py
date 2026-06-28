@@ -22,6 +22,7 @@ from typer_bot.utils import (
 )
 
 CALCULATE_COOLDOWN = 30.0
+# Bounds the process-local map; the visible calculate cooldown remains 30s.
 COOLDOWN_ENTRY_EXPIRY = timedelta(hours=1)
 
 

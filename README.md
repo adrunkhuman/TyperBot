@@ -11,6 +11,7 @@ Server admins invite and configure the bot. They do not self-host it.
 - Standings use the server's active season only.
 - Scoring rules are stored per season and lock once scores exist.
 - SQLite stores league data; backups run after successful score calculation.
+- Large result/standings posts may be split across multiple Discord messages; participant mentions may be posted as separate `Participants` chunks.
 
 ## Server Admin Setup
 

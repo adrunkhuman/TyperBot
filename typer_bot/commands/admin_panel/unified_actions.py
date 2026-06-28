@@ -7,7 +7,15 @@ from typing import TYPE_CHECKING
 import discord
 
 from typer_bot.services import post_calculation_result
-from typer_bot.utils import format_standings, get_admin_permission_error, has_setup_permission, now
+from typer_bot.utils import (
+    DISCORD_MESSAGE_LIMIT,
+    build_discord_message_chunks,
+    build_scoreboard_with_mentions_chunks,
+    format_standings,
+    get_admin_permission_error,
+    has_setup_permission,
+    now,
+)
 
 from .modals import CreateFixtureModal, EnterResultsModal
 
@@ -392,12 +400,13 @@ class CalculateScoresButton(discord.ui.Button):
             )
             return
 
+        await interaction.response.defer(ephemeral=True, thinking=True)
         try:
             score_result = await self.parent_view.service.calculate_fixture_scores(
                 fixture_id, self.parent_view.guild_id
             )
         except ValueError as exc:
-            await interaction.response.send_message(str(exc), ephemeral=True)
+            await interaction.followup.send(str(exc), ephemeral=True)
             return
 
         admin_commands.record_calculate_cooldown(
@@ -413,7 +422,10 @@ class CalculateScoresButton(discord.ui.Button):
         message = getattr(interaction, "message", None)
         edit_message = getattr(message, "edit", None)
         if callable(edit_message):
-            await edit_message(content=self.parent_view.render_content(), view=self.parent_view)
+            try:
+                await edit_message(content=self.parent_view.render_content(), view=self.parent_view)
+            except (discord.HTTPException, discord.NotFound):
+                return
 
     async def _refresh_parent_panel(self, fixture_id: int) -> None:
         fixture = await self.parent_view.db.fixtures.get_fixture_by_id(
@@ -446,31 +458,39 @@ class PostResultsConfirmView(discord.ui.View):
 
     @discord.ui.button(label="No Mentions", style=discord.ButtonStyle.primary)
     async def no_mentions(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        message = format_standings(self.standings, self.fixture_data)
+        message_chunks = build_discord_message_chunks(
+            [format_standings(self.standings, self.fixture_data)]
+        )
         try:
+            # Public posts only start after the admin interaction is acknowledged.
             await interaction.response.edit_message(
                 content="Results posted without mentions!", view=None
             )
         except Exception:
             return
         try:
-            await self.channel.send(message)
+            for message_chunk in message_chunks:
+                await self.channel.send(message_chunk)
         except Exception as exc:
             await interaction.followup.send(f"Failed to post results: {exc}")
 
     @discord.ui.button(label="Mention Users", style=discord.ButtonStyle.green)
     async def with_mentions(self, interaction: discord.Interaction, _button: discord.ui.Button):
-        message = format_standings(self.standings, self.fixture_data)
         mentions = [f"<@{score['user_id']}>" for score in self.fixture_data["scores"]]
-        message += f"\n\n**Participants:**\n{' '.join(mentions)}"
+        message_chunks = build_scoreboard_with_mentions_chunks(
+            format_standings(self.standings, self.fixture_data),
+            mentions,
+        )
         try:
+            # Public posts only start after the admin interaction is acknowledged.
             await interaction.response.edit_message(
                 content="Results posted with mentions!", view=None
             )
         except Exception:
             return
         try:
-            await self.channel.send(message)
+            for message_chunk in message_chunks:
+                await self.channel.send(message_chunk)
         except Exception as exc:
             await interaction.followup.send(f"Failed to post results: {exc}")
 
@@ -517,8 +537,17 @@ class PostResultsButton(discord.ui.Button):
 
         preview = format_standings(standings, fixture_data)
         view = PostResultsConfirmView(fixture_data, standings, channel)
-        await interaction.response.send_message(
-            f"{preview}\n\nMention users in this post?",
-            view=view,
-            ephemeral=True,
-        )
+        prompt = "Mention users in this post?"
+        if len(f"{preview}\n\n{prompt}") <= DISCORD_MESSAGE_LIMIT:
+            await interaction.response.send_message(
+                f"{preview}\n\n{prompt}",
+                view=view,
+                ephemeral=True,
+            )
+            return
+
+        preview_chunks = build_discord_message_chunks([preview])
+        await interaction.response.send_message(preview_chunks[0], ephemeral=True)
+        for preview_chunk in preview_chunks[1:]:
+            await interaction.followup.send(preview_chunk, ephemeral=True)
+        await interaction.followup.send(prompt, view=view, ephemeral=True)
