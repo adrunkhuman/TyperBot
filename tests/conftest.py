@@ -302,20 +302,27 @@ class MockInteraction:
         self.response_sent = []
         self.followup_sent = []
         self.id = 123456789
+        self._response_done = False
 
         self.response = MagicMock()
-        self.response.is_done.return_value = False
+        self.response.is_done.side_effect = lambda: self._response_done
         self.response.send_message = self._response_send_message
         self.response.edit_message = self._response_edit_message
         self.response.send_modal = self._response_send_modal
+        self.response.defer = self._response_defer
 
         self.followup = MagicMock()
         self.followup.send = self._followup_send
 
     async def _response_send_message(self, content: str = None, **kwargs):
+        self._response_done = True
         msg = {"content": content}
         msg.update(kwargs)
         self.response_sent.append(msg)
+
+    async def _response_defer(self, **kwargs):
+        self._response_done = True
+        self.response_sent.append({"deferred": True, **kwargs})
 
     async def _followup_send(self, content: str = None, **kwargs):
         msg = {"content": content}
@@ -323,11 +330,13 @@ class MockInteraction:
         self.followup_sent.append(msg)
 
     async def _response_edit_message(self, content: str = None, **kwargs):
+        self._response_done = True
         msg = {"content": content}
         msg.update(kwargs)
         self.response_sent.append(msg)
 
     async def _response_send_modal(self, modal, **kwargs):
+        self._response_done = True
         self.modal_sent = {"modal": modal, **kwargs}
 
     async def response_send_message(self, content: str = None, **kwargs):

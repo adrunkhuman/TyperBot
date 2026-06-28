@@ -26,6 +26,38 @@ def _score_result(sample_games: list[str]) -> FixtureScoreResult:
     )
 
 
+def _large_score_result() -> FixtureScoreResult:
+    games = [f"Team {index:02d} Home - Team {index:02d} Away" for index in range(1, 25)]
+    standings = [
+        {
+            "user_id": str(index),
+            "user_name": f"VeryLongUserName{index:03d}",
+            "total_points": index * 3,
+            "total_exact": index,
+            "total_correct": index + 2,
+        }
+        for index in range(1, 55)
+    ]
+    scores = [
+        {
+            "user_id": str(index),
+            "user_name": f"VeryLongUserName{index:03d}",
+            "points": index,
+            "exact_scores": index % 4,
+            "correct_results": index % 7,
+        }
+        for index in range(1, 55)
+    ]
+    return FixtureScoreResult(
+        fixture={"games": games, "week_number": 11},
+        results=["2-1"] * len(games),
+        predictions=[],
+        scores=scores,
+        standings=standings,
+        last_fixture={"week_number": 11, "scores": scores},
+    )
+
+
 def _bot_with_executor() -> MagicMock:
     bot = MagicMock(spec=discord.Client)
     bot.loop = MagicMock()
@@ -59,6 +91,74 @@ async def test_post_calculation_result_posts_to_configured_league_channel(
     assert "Week 7 Results" in channel.send.call_args.args[0]
     assert "User One" in channel.send.call_args.args[0]
     assert "posted to the league channel" in mock_interaction_admin.response_sent[-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_post_calculation_result_uses_followup_after_defer(
+    database,
+    mock_interaction_admin,
+    sample_games,
+    monkeypatch,
+):
+    bot = _bot_with_executor()
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
+    bot.get_channel.return_value = channel
+    monkeypatch.setattr(calculation_posting, "create_backup", MagicMock(return_value="backup.sql"))
+    monkeypatch.setattr(calculation_posting, "cleanup_old_backups", MagicMock(return_value=0))
+    await mock_interaction_admin.response.defer(ephemeral=True, thinking=True)
+
+    await calculation_posting.post_calculation_result(
+        bot, database, mock_interaction_admin, _score_result(sample_games)
+    )
+
+    assert "posted to the league channel" in mock_interaction_admin.followup_sent[-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_post_calculation_result_uses_followup_for_deferred_unavailable_channel(
+    database,
+    mock_interaction_admin,
+    sample_games,
+    monkeypatch,
+):
+    bot = _bot_with_executor()
+    bot.get_channel.return_value = None
+    bot.fetch_channel = AsyncMock(side_effect=discord.InvalidData("unknown channel type"))
+    monkeypatch.setattr(calculation_posting, "create_backup", MagicMock(return_value="backup.sql"))
+    monkeypatch.setattr(calculation_posting, "cleanup_old_backups", MagicMock(return_value=0))
+    await mock_interaction_admin.response.defer(ephemeral=True, thinking=True)
+
+    await calculation_posting.post_calculation_result(
+        bot, database, mock_interaction_admin, _score_result(sample_games)
+    )
+
+    assert (
+        "configured league channel is unavailable"
+        in mock_interaction_admin.followup_sent[-1]["content"].lower()
+    )
+
+
+@pytest.mark.asyncio
+async def test_post_calculation_result_uses_followup_for_deferred_send_failure(
+    database,
+    mock_interaction_admin,
+    sample_games,
+    monkeypatch,
+):
+    bot = _bot_with_executor()
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock(side_effect=RuntimeError("discord unavailable"))
+    bot.get_channel.return_value = channel
+    monkeypatch.setattr(calculation_posting, "create_backup", MagicMock(return_value="backup.sql"))
+    monkeypatch.setattr(calculation_posting, "cleanup_old_backups", MagicMock(return_value=0))
+    await mock_interaction_admin.response.defer(ephemeral=True, thinking=True)
+
+    await calculation_posting.post_calculation_result(
+        bot, database, mock_interaction_admin, _score_result(sample_games)
+    )
+
+    assert "failed to post" in mock_interaction_admin.followup_sent[-1]["content"]
 
 
 @pytest.mark.asyncio
@@ -128,3 +228,29 @@ async def test_post_calculation_result_reports_unavailable_league_channel(
         "configured league channel is unavailable"
         in mock_interaction_admin.response_sent[-1]["content"].lower()
     )
+
+
+@pytest.mark.asyncio
+async def test_post_calculation_result_splits_oversized_public_post(
+    database,
+    mock_interaction_admin,
+    monkeypatch,
+):
+    bot = _bot_with_executor()
+    channel = MagicMock(spec=discord.TextChannel)
+    channel.send = AsyncMock()
+    bot.get_channel.return_value = channel
+    monkeypatch.setattr(calculation_posting, "create_backup", MagicMock(return_value="backup.sql"))
+    monkeypatch.setattr(calculation_posting, "cleanup_old_backups", MagicMock(return_value=0))
+
+    await calculation_posting.post_calculation_result(
+        bot, database, mock_interaction_admin, _large_score_result()
+    )
+
+    assert channel.send.await_count > 1
+    sent_contents = [call.args[0] for call in channel.send.await_args_list]
+    assert all(len(content) <= 2000 for content in sent_contents)
+    assert "Week 11 Results" in sent_contents[0]
+    assert any("Overall Standings" in content for content in sent_contents)
+    assert any("Team 24 Home - Team 24 Away" in content for content in sent_contents)
+    assert any("VeryLongUserName054" in content for content in sent_contents)

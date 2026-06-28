@@ -12,6 +12,7 @@ from discord.ext import commands
 from typer_bot.database import Database, SaveResult
 from typer_bot.utils import (
     build_prediction_submission,
+    chunk_discord_message,
     format_for_discord,
     format_predictions_preview,
     format_standings,
@@ -570,34 +571,7 @@ class UserCommands(commands.Cog):
     @staticmethod
     def _chunk_message(content: str, limit: int = 2000) -> list[str]:
         """Split long responses into Discord-safe chunks."""
-        if len(content) <= limit:
-            return [content]
-
-        chunks: list[str] = []
-        current = ""
-        for line in content.split("\n"):
-            candidate = f"{current}\n{line}" if current else line
-            if len(candidate) <= limit:
-                current = candidate
-                continue
-
-            if current:
-                chunks.append(current)
-
-            if len(line) <= limit:
-                current = line
-                continue
-
-            start = 0
-            while start < len(line):
-                end = min(start + limit, len(line))
-                chunks.append(line[start:end])
-                start = end
-            current = ""
-
-        if current:
-            chunks.append(current)
-        return chunks
+        return chunk_discord_message(content, limit=limit)
 
     async def _send_chunked_ephemeral(self, interaction: discord.Interaction, content: str):
         """Send an ephemeral response split across followups if needed."""
@@ -773,7 +747,7 @@ Use these directly in Discord."""
 
         message = format_standings(standings, last_fixture)
 
-        await interaction.response.send_message(message, ephemeral=True)
+        await self._send_chunked_ephemeral(interaction, message)
 
     @app_commands.command(
         name="mypredictions", description="View your predictions for open fixtures"
