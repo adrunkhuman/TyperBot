@@ -1,93 +1,34 @@
 # TyperBot
 
-Discord bot for football prediction leagues. One hosted TyperBot application can be invited into multiple Discord servers; each server gets its own isolated league, active season, fixtures, predictions, scoring rules, and standings.
+Discord bot for football prediction leagues. One hosted TyperBot application can be invited into multiple Discord servers; each server gets its own isolated league, active season, fixtures, predictions, scoring rules, and standings. Server admins invite and configure the bot — they do not self-host it.
 
-Server admins invite and configure the bot. They do not self-host it.
+![TyperBot fixture announcement showing a week's matches, the prediction deadline, and instructions to predict in the thread or with /predict.](docs/assets/fixture-announcement.png)
 
-## What It Does
+## How it works
 
-- Admins create fixture threads, enter results, calculate scores, and manage seasons.
-- Players predict in fixture threads or with `/predict`, which posts publicly into the selected thread.
-- Standings use the server's active season only.
-- Scoring rules are stored per season and lock once scores exist.
-- SQLite stores league data; backups run after successful score calculation.
-- Large result/standings posts may be split across multiple Discord messages; participant mentions may be posted as separate `Participants` chunks.
+Admins create fixture threads from `/admin panel`, and TyperBot posts a fixture preview into the league channel with a deadline. Players predict either by replying in the thread — one line per match, like `Team A - Team B 2:1` — or with `/predict`, which fills a modal and posts the result publicly into the selected thread. Partial predictions are allowed if each line names its game; missing games count as no prediction, and late partial predictions wait for admin approval.
 
-## Server Admin Setup
+When the admin enters results and runs score calculation, TyperBot scores every prediction against the season's rules, posts results and updated standings (splitting oversized posts across messages), backs up the SQLite database, and locks the scoring rules for that season. All league data lives in SQLite; backups run after each successful calculation.
 
-Ask the repo owner for the invite link. The bot needs:
+## Commands
 
-- `Send Messages`
-- `Send Messages in Threads`
-- `Read Message History`
-- `Add Reactions`
-- `Create Public Threads`
-- `Use Slash Commands`
+| Command | Who | Purpose |
+| --- | --- | --- |
+| `/admin panel` | Admins | Setup, fixtures, results, scoring rules, seasons. |
+| `/predict` | Players | Submit or replace predictions in a fixture thread. |
+| `/fixtures` | Players | Show open fixtures. |
+| `/mypredictions` | Players | Show your open-fixture predictions. |
+| `/standings` | Players | Show active-season standings and latest scored fixture. |
 
-After inviting TyperBot, run `/admin panel`. First-time setup requires Discord `Administrator` or `Manage Server` permission and stores:
+## Seasons and scoring
 
-- admin role: who can use league admin actions
-- league channel: where fixture announcements, threads, reminders, and public result/standings posts go
+Each server has one active season. Starting a new season archives the old one and resets scoring rules to defaults: exact score 3, correct outcome 1, wrong outcome 0, late full prediction 0 unless waived. Admins can edit the rules until scores exist in the active season; values must be whole numbers ≥ 0. Standings always reflect the server's active season only.
 
-After setup, members with the configured admin role use `/admin panel` to create fixtures, enter results, calculate scores, review late partial predictions, edit scoring rules, and start new seasons.
+## Setup
 
-## Player Commands
+Ask the repo owner for the invite link. After inviting TyperBot (it needs `Send Messages`, `Send Messages in Threads`, `Read Message History`, `Add Reactions`, `Create Public Threads`, and `Use Slash Commands`), run `/admin panel`. First-time setup requires Discord `Administrator` or `Manage Server` permission and stores the admin role and the league channel where fixture announcements, threads, reminders, and public result and standings posts go.
 
-- `/predict` - submit or replace predictions in a fixture thread
-- `/fixtures` - show open fixtures
-- `/mypredictions` - show your open-fixture predictions
-- `/standings` - show active-season standings and latest scored fixture
-
-Thread predictions use one line per match:
-
-```text
-Team A - Team B 2:1
-Team C - Team D 0:0
-Team E - Team F 3:2
-```
-
-Partial predictions are allowed if each line names the game. Missing games count as no prediction. Late partial predictions wait for admin approval.
-
-## Seasons And Scoring
-
-Each server has one active season. Starting a new season archives the old active season and resets scoring rules to defaults:
-
-- exact score: 3
-- correct outcome: 1
-- wrong outcome: 0
-- late full prediction: 0 unless waived
-
-Admins can edit scoring rules before scores exist in the active season. Rule values must be whole numbers greater than or equal to zero.
-
-## Local Development
-
-```bash
-uv sync --group dev
-export DISCORD_TOKEN="your_test_bot_token"
-uv run python -m typer_bot
-```
-
-Manual Discord testing can seed an isolated local database:
-
-```powershell
-$env:DISCORD_TOKEN="your_test_bot_token"
-$env:DATA_DIR="./.local/manual-discord-test"
-uv run python -m typer_bot.dev.seed_test_data --tester-user-id "your_discord_user_id" --guild-id "your_discord_server_id"
-uv run python -m typer_bot
-```
-
-Disposable non-production deployments can auto-seed an empty database by setting `SEED_TEST_DATA=true` and `TEST_GUILD_ID`.
-
-Logs are plain single-line stdout. `INFO` includes startup, guild join/remove, setup state, and permission warnings; set `LOG_LEVEL=DEBUG` for fixture announcement verification details.
-
-Run checks:
-
-```bash
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
-uv run ty check typer_bot
-```
+[Development](docs/development.md) covers local setup, manual Discord testing, seeding, and checks.
 
 ## License
 
