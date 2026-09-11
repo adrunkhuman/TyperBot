@@ -29,7 +29,3 @@ Each server has one active season. Starting a new season archives the old one an
 Ask the repo owner for the invite link. After inviting TyperBot (it needs `Send Messages`, `Send Messages in Threads`, `Read Message History`, `Add Reactions`, `Create Public Threads`, and `Use Slash Commands`), run `/admin panel`. First-time setup requires Discord `Administrator` or `Manage Server` permission and stores the admin role and the league channel where fixture announcements, threads, reminders, and public result and standings posts go.
 
 [Development](docs/development.md) covers local setup, manual Discord testing, seeding, and checks.
-
-## License
-
-MIT.
